@@ -1,12 +1,28 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: (uninitialised template) → 1.0.0
-Bump rationale: Initial ratification. Every principle and section is new; there
-                are no prior principles to remove or redefine, so 1.0.0 is the
-                correct starting point.
+Version change: 1.0.0 → 1.0.1
+Bump rationale: PATCH — a non-semantic coordinate correction in Principle IV.
+                Spring Boot 4.1 ships Jackson 3, whose tree model is
+                `tools.jackson.databind.JsonNode`; the principle previously
+                named the Jackson 2 class `com.fasterxml.jackson.databind.
+                JsonNode` and the Jackson 2 feature constant
+                `USE_BIG_DECIMAL_FOR_FLOATS` as if they were the requirement.
+                The requirements themselves are unchanged — canonical JSON tree
+                inbound, exact BigDecimal round-tripping of monetary values,
+                unknown fields surviving, typed records outbound — so no
+                existing practice is invalidated and nothing is relaxed. The
+                wording is now version-neutral, naming the platform's Jackson
+                generation rather than a fixed coordinate.
 
-Modified principles: N/A (initial ratification).
+Modified principles:
+  - IV. Canonical JSON In, Typed Models Out — Jackson class coordinate and
+    feature constant made version-neutral (see rationale above). No other
+    principle text changed in this amendment.
+
+History:
+  - 1.0.0 (2026-08-20) Initial ratification. Every principle and section was
+    new; there were no prior principles to remove or redefine.
 
 Added sections:
   - Core Principles
@@ -156,14 +172,17 @@ is what keeps a redeploy on either side from silently dropping registers.
 ### IV. Canonical JSON In, Typed Models Out (NON-NEGOTIABLE)
 
 Inbound hearing payloads (from Redis, or the results-query-api fallback) are
-large, sparsely populated, and owned elsewhere. They MUST be handled as
-`com.fasterxml.jackson.databind.JsonNode` end-to-end:
+large, sparsely populated, and owned elsewhere. They MUST be handled end-to-end
+as the JSON tree model (`JsonNode`) of the Jackson generation the platform
+(Spring Boot) provides — currently Jackson 3
+(`tools.jackson.databind.JsonNode`) under Spring Boot 4.1:
 
 - No POJO/record mapping of the inbound hearing payload. Unknown fields MUST
   survive untouched; binding to a typed model silently discards what it does
   not know, and this service is not the owner of that shape.
-- Jackson MUST be configured with `USE_BIG_DECIMAL_FOR_FLOATS` so monetary and
-  numeric values round-trip exactly — no binary-float drift into a register.
+- Jackson MUST be configured with the platform equivalent of
+  `USE_BIG_DECIMAL_FOR_FLOATS` so monetary and numeric values round-trip
+  exactly — no binary-float drift into a register.
 - Inbound trees are **immutable in practice**: never mutate a `JsonNode` you did
   not construct. Derive new nodes; do not edit inputs in place.
 - Output is the opposite: everything this service *produces* — register
@@ -331,7 +350,7 @@ them read it the same way they read everything else.
   exhaustion.
 - **HTTP surface**: Spring Boot Actuator only — health, readiness/liveness,
   metrics. No business endpoints (Principle III).
-- **Test stack**: JUnit 5 + Mockito (unit); golden-file/fixture tests for the
+- **Test stack**: JUnit Jupiter 6 (the Boot 4.1 test starter) + Mockito (unit); golden-file/fixture tests for the
   ported transformation; **Testcontainers** — Service Bus emulator and
   PostgreSQL — for integration tests (suffix `*IT`); **WireMock** for the
   Results and reference-data stubs.
@@ -418,4 +437,4 @@ retained as quick-reference material and MUST be kept in sync.
   merged without a register entry MUST be reverted or registered retrospectively
   with named approval.
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-20 | **Last Amended**: 2026-08-20
+**Version**: 1.0.1 | **Ratified**: 2026-08-20 | **Last Amended**: 2026-08-20

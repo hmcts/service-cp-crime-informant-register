@@ -93,7 +93,7 @@ recorded — whether work is repeated:
 | `maxDeliveryCount` | 5 |
 | Duplicate detection | On (broker), backed by the `(source, requestId)` processed-log |
 | Concurrency | `maxConcurrentCalls` 2 initially (parity with the function app's Durable throttle) |
-| Dead-letter | Non-transient failures and exhausted retries; DLQ depth is exposed as a metric (alert wiring is deferred to the operability story — see `doc/DEVIATIONS.md` #3) |
+| Dead-letter | Non-transient failures and exhausted retries; the service counts its own dead-lettering (`informantregister_deadlettered_total`), while DLQ **depth** is observed via Azure Monitor's native `DeadletteredMessages` broker metric (alert wiring is deferred to the operability story — see `doc/DEVIATIONS.md` #3) |
 | Health | ASB processor health is **never** in the readiness group — a broker blip must not restart the pod |
 
 ### Failure behaviour (contractual, tested)
@@ -119,7 +119,9 @@ delivery therefore gets **no `processed_request` record** — it may not even ca
 ### JSON Schema
 
 The machine-readable schema lives at `src/main/resources/contracts/distribution-command.schema.json`
-and is the validation source used by the message-contract gate. This document is the narrative
+and is the validation source used by the message-contract gate. The schema is **normative**; the
+service's own parser is the runtime implementation of it, and the contract tests run every corpus
+case through both, asserting they agree on accept and reject. This document is the narrative
 companion; if they disagree, the schema plus its tests win, and this page is corrected.
 
 ---
@@ -177,6 +179,6 @@ the one deliberate behaviour change from the function app, which swallowed these
 | `/actuator/health/liveness` | Liveness |
 | `/actuator/health/readiness` | Readiness — **excludes** Service Bus processor health |
 | `/actuator/info` | Build/git info |
-| `/actuator/prometheus` | Metrics: processed/failed counts, queue and DLQ depth |
+| `/actuator/prometheus` | Metrics: the service's own counters and gauges (processed/failed, dead-lettered, settlement failures, intake suspension, Service Bus health). Queue and DLQ **depth** are not here — they come from Azure Monitor's native broker metrics |
 
 Not a consumer contract; not versioned; not exposed outside the mesh.

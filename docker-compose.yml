@@ -41,26 +41,34 @@ services:
       timeout: 5s
       retries: 10
 
-  # Azure Service Bus emulator, per Microsoft's reference compose file. It needs the SQL Edge
+  # Azure Service Bus emulator, per Microsoft's reference compose file. It needs a SQL Server
   # container beside it for its own state; from the host the broker is on localhost:5672, and the
   # connection string is
   #   Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;
+  #
+  # The tag is PINNED deliberately, not tracked with `latest`: a moved tag on a broker emulator can
+  # change settlement or delivery-count behaviour under a green build. Bump it as its own reviewed
+  # change, re-running the *IT suites. The same config.json is mounted by the Testcontainers
+  # harness, so the queue definition cannot drift between this stack and CI.
   servicebus-emulator:
-    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:1.1.2
     ports:
       - "5672:5672"
       - "5300:5300"
     environment:
       ACCEPT_EULA: "Y"
-      SQL_SERVER: servicebus-emulator-sql
+      SQL_SERVER: servicebus-emulator-mssql
       MSSQL_SA_PASSWORD: "LocalOnly_Passw0rd!"
     volumes:
       - ./docker/servicebus-emulator/config.json:/ServiceBus_Emulator/ConfigFiles/Config.json:ro
     depends_on:
-      - servicebus-emulator-sql
+      - servicebus-emulator-mssql
 
-  servicebus-emulator-sql:
-    image: mcr.microsoft.com/azure-sql-edge:latest
+  # State store for the emulator. `mcr.microsoft.com/azure-sql-edge` is retired and must not be
+  # reintroduced; Microsoft's current emulator topology uses SQL Server. MSSQL_SA_PASSWORD matches
+  # the value the emulator is configured with above.
+  servicebus-emulator-mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_SA_PASSWORD: "LocalOnly_Passw0rd!"

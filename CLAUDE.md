@@ -44,5 +44,7 @@ There is no Checkstyle in this build.
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan
+shell commands, and other important information, read the current plan:
+`specs/CRA-220-informant-register-initial-poc/plan.md` (with `research.md`,
+`data-model.md`, `quickstart.md` and `contracts/` alongside it).
 <!-- SPECKIT END -->

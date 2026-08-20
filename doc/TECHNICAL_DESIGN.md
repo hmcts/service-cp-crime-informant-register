@@ -140,7 +140,8 @@ lands (non-429 4xx, transformation error).
 - **Request statuses:** `RECEIVED`, `RETRYING`, `COMPLETED`, `FAILED` (last two terminal).
 - Terminal is not the same as final: a resubmitted `FAILED` request is replayable (below); a
   resubmitted `COMPLETED` request is acknowledged and never reprocessed.
-- **Per-authority statuses** (`processed_output`): `POSTED`, `FAILED` — schema only in CRA-220; see
+- **Per-authority statuses** (`processed_output`): `PENDING` (row written before the POST),
+  `POSTED`, `FAILED` — schema only in CRA-220; see
   Idempotency below.
 - A hearing that legitimately yields no authorities still ends `COMPLETED`, with the reason
   `no-authorities` recorded — a business outcome, not an error, and not a status of its own.
@@ -210,7 +211,7 @@ Message shape and field semantics: `doc/API_CONTRACTS.md`.
 |-----------|----------------|--------|
 | `request_fingerprint` | Idempotency collision (spec FR-018) | A **stored SHA-256 hash** over the canonical form of the four immutable fields — `hearingId \| hearingDay \| sharedTime \| eventType` — written when the record is created and never updated. The individual fields are also kept as their own columns for support querying, but the **hash is what the collision check compares**: one fixed-width equality test, no field-by-field drift and no risk of a comparison silently omitting a field as the message contract grows. A mismatch is dead-lettered with a reason and the record is left untouched. |
 | `exhausted_message_id` | FAILED redelivery vs. resubmission (spec FR-007) | The broker message identity of the delivery that exhausted `maxDeliveryCount` — written in the same transaction that sets `status = FAILED`, `NULL` before that. A later delivery of a `FAILED` request compares its own `messageId` against this value: **equal** means the same exhausted message coming round again (stays `FAILED`, no run, dead-letter re-attempted); **different** means a deliberate support resubmission (`FAILED` → `RECEIVED`, attempts preserved, audit note, run). |
-| `claim_owner`, `claim_expires_at` | Single-runner claim (spec FR-008) | The claim is taken **atomically** in the same conditional `UPDATE`/`INSERT` that moves the record into a running state, stamping the runner's identity (instance + delivery) and an expiry comfortably beyond the longest permitted run. A competing delivery that finds an **unexpired** claim owned by someone else is abandoned for retry and never acknowledged; one that finds an **expired or absent** claim reclaims it atomically (a conditional update guarded on the old owner/expiry, so exactly one of several racing deliveries wins) and runs. The expiry is what makes a crashed runner recoverable without operator action. |
+| `claim_owner`, `claim_token`, `claim_expires_at` | Single-runner claim (spec FR-008) | The claim triple is taken **atomically** in the same conditional `UPDATE`/`INSERT` that moves the record into a running state, stamping the runner's identity (instance + delivery), a **fresh `claim_token` minted on every acquisition**, and an expiry (`now() + lease`). An enforced processing deadline strictly shorter than the lease bounds every run, so a live-but-slow runner aborts (RETRYING) before its lease can lapse; every outcome write is predicated on `claim_owner` **and** `claim_token`, so a runner whose claim was reclaimed cannot overwrite the new owner's result — it discards its work, logs at WARN and abandons. A competing delivery that finds an **unexpired** claim owned by someone else is abandoned for retry and never acknowledged; one that finds an **expired or absent** claim reclaims it atomically (a conditional update guarded on the old owner/expiry, so exactly one of several racing deliveries wins) and runs. The expiry is what makes a crashed runner recoverable without operator action. Exact SQL: `specs/CRA-220-informant-register-initial-poc/data-model.md` "Guard operations". |
 
 Deferred with `processed_output` — **the design for the later real-submission stories, not a
 contract of this increment**: one row per authority written **before** the POST and updated after,
@@ -268,6 +269,11 @@ writes · actuator · container build · structured logging · failure ERROR log
 metrics. `processed_output` is created as schema only — the stub pipeline produces no outputs, so no
 rows are written this increment.
 
+**Single replica.** CRA-220 deploys **one** consumer pod. Intake suspension on a processed-log
+outage is a per-pod decision, so with several replicas an outage could still burn deliveries on the
+pods that have not yet noticed it. Cluster-safe suspension — a shared suspension signal, or KEDA
+scaling the consumer to zero on store health — is deferred to the KEDA/scale-out story below.
+
 **Later stories:** Redis payload adapter + query-API fallback · the ported transformation pipeline ·
 the results submission adapter with retry policy · `processed_output` population · KEDA scaling ·
 DLQ **alert wiring** (dashboards and alert rules over the metrics shipped here) and reconciliation
@@ -294,7 +300,7 @@ Service Bus. **No static keys, no committed connection strings.**
 
 | Test type | Framework | Command |
 |-----------|-----------|---------|
-| Unit (application layer, no Spring) | JUnit 5 + Mockito + AssertJ | `./gradlew test` |
+| Unit (application layer, no Spring) | JUnit Jupiter 6 (Boot 4.1 test starter) + Mockito + AssertJ | `./gradlew test` |
 | Consumer integration | Testcontainers `servicebus-emulator` | `./gradlew test` |
 | Persistence integration | Testcontainers Postgres | `./gradlew test` |
 | Downstream stubs | WireMock (`dynamicPort()`, exact vendor media types) | `./gradlew test` |
