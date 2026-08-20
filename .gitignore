@@ -34,4 +34,9 @@ applicationinsights-agent-*.jar
 .DS_Store
 */.DS_Store
 
-.claude
+# Claude Code — local-only files (team-shared agents/rules/skills ARE tracked)
+.claude/settings.local.json
+.claude/projects/
+.claude/todos/
+.claude/shell-snapshots/
+.claude/worktrees/
