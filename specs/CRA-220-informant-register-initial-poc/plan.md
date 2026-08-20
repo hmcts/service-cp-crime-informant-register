@@ -24,8 +24,9 @@ integration harness.
 
 **Language/Version**: Java 25, Spring Boot 4.1 (template `hmcts/service-hmcts-crime-springboot-template`)
 
-**Primary Dependencies** (exact artefact ids; no versions — all come from the Spring Boot / template
-BOM):
+**Primary Dependencies** (exact artefact ids; versionless wherever a BOM manages them — the Spring
+Boot/template BOM for most, plus one vendor BOM for the Azure SDK, which Boot's BOM does not
+manage; the two explicitly-pinned exceptions are marked):
 
 | Artefact | Purpose |
 |----------|---------|
@@ -33,13 +34,15 @@ BOM):
 | `org.springframework.boot:spring-boot-starter-flyway` | Boot 4's modular Flyway starter (Flyway is no longer auto-configured by `flyway-core` alone) |
 | `org.flywaydb:flyway-database-postgresql` | Flyway's Postgres dialect module, required from Flyway 10 |
 | `org.postgresql:postgresql` | JDBC driver (runtime) |
-| `com.azure:azure-messaging-servicebus` | `ServiceBusProcessorClient`, explicit settlement |
-| `com.azure:azure-identity` | `DefaultAzureCredential` — workload identity in deployed environments |
+| `platform('com.azure:azure-sdk-bom:1.3.8')` | Vendor BOM (Gradle-native platform import) — Boot 4.1's BOM does not manage `com.azure:*`; mechanism follows the `cpp-context-results` precedent, version = latest release at adoption (resolves servicebus 7.17.19, identity 1.18.4) |
+| `com.azure:azure-messaging-servicebus` | `ServiceBusProcessorClient`, explicit settlement (version from the Azure BOM) |
+| `com.azure:azure-identity` | `DefaultAzureCredential` — workload identity in deployed environments (version from the Azure BOM) |
 | `io.micrometer:micrometer-registry-prometheus` | Prometheus scrape of the instruments in research §11 |
-| `org.testcontainers:postgresql` (test) | Postgres container for the persistence `*IT` suites |
-| `org.testcontainers:junit-jupiter` (test) | JUnit integration for Testcontainers |
-| `org.testcontainers:azure` (test) | `ServiceBusEmulatorContainer` for the broker `*IT` suites |
-| `com.networknt:json-schema-validator` (**testImplementation only**) | Draft-07 validator for the dual-validation corpus (research §9); never on the runtime classpath |
+| `org.testcontainers:testcontainers-postgresql` (test) | Postgres container for the persistence `*IT` suites (Testcontainers 2.x module name, managed by the Boot BOM's `testcontainers-bom` 2.0.5) |
+| `org.testcontainers:testcontainers-junit-jupiter` (test) | JUnit integration for Testcontainers (2.x name) |
+| `org.testcontainers:testcontainers-azure` (test) | `ServiceBusEmulatorContainer` for the broker `*IT` suites (2.x name) |
+| `com.microsoft.sqlserver:mssql-jdbc` (**testRuntimeOnly**) | Required by the emulator companion's `MSSQLServerContainer` readiness check (opens a JDBC connection); Boot-BOM version |
+| `com.networknt:json-schema-validator:3.0.7` (**testImplementation only, explicitly pinned**) | Draft-07 validator for the dual-validation corpus (research §9); no BOM manages it; 3.x uses Jackson 3, matching the platform; never on the runtime classpath |
 | Awaitility (test) | Async assertions — already transitively present via `spring-boot-starter-test` |
 
 Existing template stack retained: web/actuator/OTEL, Logback + `logstash-logback-encoder`, Lombok.
