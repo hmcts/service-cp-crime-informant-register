@@ -14,31 +14,31 @@ public class ContractValidationException extends RuntimeException {
 
     private static final long serialVersionUID = 1L;
 
-    private final ContractViolation violation;
-    private final String field;
+    private final ContractViolation violationCode;
+    private final String fieldName;
 
     public ContractValidationException(final ContractViolation violation, final String field) {
         super(violation + (field == null ? "" : " [" + field + "]"));
-        this.violation = violation;
-        this.field = field;
+        this.violationCode = violation;
+        this.fieldName = field;
     }
 
     public ContractValidationException(final ContractViolation violation,
                                        final String field,
                                        final Throwable cause) {
         super(violation + (field == null ? "" : " [" + field + "]"), cause);
-        this.violation = violation;
-        this.field = field;
+        this.violationCode = violation;
+        this.fieldName = field;
     }
 
     public ContractViolation violation() {
-        return violation;
+        return violationCode;
     }
 
     /**
      * The offending field's name, or {@code null} when the failure is not attributable to one field.
      */
     public String field() {
-        return field;
+        return fieldName;
     }
 }
