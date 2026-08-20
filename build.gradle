@@ -42,9 +42,36 @@ dependencies {
   }
 
 
+  // --- Persistence: processed-log store (JdbcClient + Flyway) ---
+  implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+  implementation 'org.springframework.boot:spring-boot-starter-flyway'
+  implementation 'org.flywaydb:flyway-database-postgresql'
+  runtimeOnly 'org.postgresql:postgresql'
+
+  // --- Messaging: Azure Service Bus consumer with explicit settlement ---
+  // Spring Boot's BOM does not manage com.azure:*, so the vendor BOM supplies those versions and no
+  // com.azure artefact is ever pinned individually.
+  implementation platform('com.azure:azure-sdk-bom:1.3.8')
+  implementation 'com.azure:azure-messaging-servicebus'
+  implementation 'com.azure:azure-identity'
+
   // --- Observability / Actuator / OTEL / Prometheus ---
   implementation 'org.springframework.boot:spring-boot-starter-actuator'
   implementation 'org.springframework.boot:spring-boot-starter-opentelemetry'
+  implementation 'io.micrometer:micrometer-registry-prometheus'
+
+  // --- Test: Testcontainers harness (Postgres + Service Bus emulator) ---
+  // Versions come from testcontainers-bom, imported by the Spring Boot BOM. Testcontainers 2.x
+  // renamed every module to a `testcontainers-` prefix, so these are the 2.x coordinates for the
+  // modules the plan names (postgresql, junit-jupiter, azure).
+  testImplementation 'org.testcontainers:testcontainers-postgresql'
+  testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+  testImplementation 'org.testcontainers:testcontainers-azure'
+
+  // Draft-07 validator for the dual-validation contract corpus (research §9).
+  // testImplementation ONLY — it must never reach the runtime classpath. Not managed by any BOM on
+  // this build, so the version is declared here for dependabot to track.
+  testImplementation 'com.networknt:json-schema-validator:3.0.7'
 
   // Security: pin transitive tomcat-embed-core to patched version (CVE-2026-41293, -43512, et al.)
   // Brought in transitively via spring-boot-starter-web; >=11.0.0-M1,<11.0.22 are vulnerable
