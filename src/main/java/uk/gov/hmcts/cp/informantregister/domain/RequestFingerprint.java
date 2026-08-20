@@ -47,6 +47,9 @@ public final class RequestFingerprint {
      */
     private static String canonicalFormOf(final DistributionCommand command) {
         return new StringBuilder()
+                // Redundant against UUID.toString(), which is specified to emit lower case, but
+                // kept so this method reads as the data model writes it. The case normalisation
+                // that actually does work happens at parse time, and is pinned there.
                 .append(command.hearingId().toString().toLowerCase(Locale.ROOT))
                 .append(SEPARATOR)
                 .append(command.hearingDay().format(DateTimeFormatter.ISO_LOCAL_DATE))

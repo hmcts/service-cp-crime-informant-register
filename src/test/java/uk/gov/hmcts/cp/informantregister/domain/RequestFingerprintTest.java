@@ -27,18 +27,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RequestFingerprintTest {
 
     /**
+     * The canonical hearing identifier, chosen to contain a-f hex digits in every group.
+     *
+     * <p>That is not decoration. An identifier of digits alone is unchanged by upper-casing, so a
+     * case-normalisation test written against one asserts nothing at all.
+     */
+    private static final String HEARING_ID = "a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5";
+
+    /**
      * SHA-256 of
-     * {@code 11111111-2222-4333-8444-555555555555|2026-08-20|2026-08-20T09:00:00Z|Hearing_Resulted},
+     * {@code a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5|2026-08-20|2026-08-20T09:00:00Z|Hearing_Resulted},
      * computed independently of this codebase.
      */
     private static final String GOLDEN_FINGERPRINT =
-            "567eca5ee9b28127ed93d836f646cec0964f9a99b3993637cc57e4ba84523c77";
+            "24c81c4737a070294090814da857583c50d0d3aab2556ac7be03d0f0f6d910e7";
 
     private static final String CANONICAL_BODY = """
             {
               "source": "RESULTS",
               "requestId": "3f4a2b1c-5d6e-4f70-8912-a3b4c5d6e7f8",
-              "hearingId": "11111111-2222-4333-8444-555555555555",
+              "hearingId": "a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5",
               "hearingDay": "2026-08-20",
               "sharedTime": "2026-08-20T09:00:00Z",
               "eventType": "Hearing_Resulted"
@@ -56,7 +64,7 @@ class RequestFingerprintTest {
         return new DistributionCommand(
                 "RESULTS",
                 UUID.fromString("3f4a2b1c-5d6e-4f70-8912-a3b4c5d6e7f8"),
-                UUID.fromString("11111111-2222-4333-8444-555555555555"),
+                UUID.fromString(HEARING_ID),
                 LocalDate.of(2026, 8, 20),
                 Instant.parse("2026-08-20T09:00:00Z"),
                 "Hearing_Resulted");
@@ -83,9 +91,19 @@ class RequestFingerprintTest {
 
         @Test
         void an_uppercase_hex_identifier_should_produce_the_same_fingerprint() {
-            final String uppercased = CANONICAL_BODY
-                    .replace("11111111-2222-4333-8444-555555555555",
-                            "11111111-2222-4333-8444-555555555555".toUpperCase(java.util.Locale.ROOT));
+            final String upperCaseId = HEARING_ID.toUpperCase(java.util.Locale.ROOT);
+            final String uppercased = CANONICAL_BODY.replace(HEARING_ID, upperCaseId);
+
+            // Guard against the test quietly becoming a tautology again: if the identifier is ever
+            // swapped for one without hex letters, these two wire forms are the same string and the
+            // assertion below proves nothing.
+            assertThat(upperCaseId).isNotEqualTo(HEARING_ID);
+            assertThat(uppercased).isNotEqualTo(CANONICAL_BODY);
+
+            // Pins where the normalisation happens. The data model says components are normalised
+            // after parsing, and this is that claim made testable: were the command ever to carry
+            // the identifier as wire text rather than a parsed UUID, this fails.
+            assertThat(parser.parse(uppercased).hearingId()).hasToString(HEARING_ID);
 
             assertThat(fingerprintOf(uppercased)).isEqualTo(GOLDEN_FINGERPRINT);
         }
@@ -124,9 +142,8 @@ class RequestFingerprintTest {
 
         @Test
         void a_different_hearing_should_change_the_fingerprint() {
-            assertThat(fingerprintOf(CANONICAL_BODY
-                    .replace("11111111-2222-4333-8444-555555555555",
-                            "22222222-3333-4444-8555-666666666666")))
+            assertThat(fingerprintOf(
+                    CANONICAL_BODY.replace(HEARING_ID, "f9e8d7c6-b5a4-4392-8180-7f6e5d4c3b2a")))
                     .isNotEqualTo(GOLDEN_FINGERPRINT);
         }
 
