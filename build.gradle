@@ -1,0 +1,52 @@
+plugins {
+  id 'application'
+  id 'java'
+  id 'org.springframework.boot' version '4.1.0'
+  id 'io.spring.dependency-management' version '1.1.7'
+  id 'jacoco'
+  id 'maven-publish'
+  id 'com.github.ben-manes.versions' version '0.61.0'
+  id 'org.cyclonedx.bom' version '3.4.1'
+  id 'com.gorylenko.gradle-git-properties' version '4.0.1'
+}
+
+group = 'uk.gov.hmcts.cp'
+version = System.getProperty('ARTEFACT_VERSION') ?: '0.0.999'
+
+apply {
+  from("$rootDir/gradle/repositories.gradle")
+  from("$rootDir/gradle/java.gradle")
+  from("$rootDir/gradle/dependency.gradle")
+  from("$rootDir/gradle/pmd.gradle")
+  from("$rootDir/gradle/test.gradle")
+  from("$rootDir/gradle/jar.gradle")
+}
+
+// We MUST keep all dependencies in the build.gradle to allow dependabot to provide version updates
+// Sadly, dependabot does not track dependencies in the apply-from files
+dependencies {
+  // Java core
+  implementation 'net.logstash.logback:logstash-logback-encoder:9.0'
+
+  compileOnly 'org.projectlombok:lombok:1.18.46'
+  annotationProcessor 'org.projectlombok:lombok:1.18.46'
+  testCompileOnly 'org.projectlombok:lombok:1.18.46'
+  testAnnotationProcessor 'org.projectlombok:lombok:1.18.46'
+
+  // Spring boot core
+  implementation 'org.springframework.boot:spring-boot-starter-web'
+  testImplementation "org.springframework.boot:spring-boot-starter-webmvc-test"
+  testImplementation('org.springframework.boot:spring-boot-starter-test') {
+    exclude group: 'junit', module: 'junit'
+    exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
+  }
+
+
+  // --- Observability / Actuator / OTEL / Prometheus ---
+  implementation 'org.springframework.boot:spring-boot-starter-actuator'
+  implementation 'org.springframework.boot:spring-boot-starter-opentelemetry'
+
+  // Security: pin transitive tomcat-embed-core to patched version (CVE-2026-41293, -43512, et al.)
+  // Brought in transitively via spring-boot-starter-web; >=11.0.0-M1,<11.0.22 are vulnerable
+  implementation 'org.apache.tomcat.embed:tomcat-embed-core:11.0.24'
+}

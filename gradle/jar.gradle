@@ -1,0 +1,17 @@
+jar {
+  // we dont need jar task which just creates *-plain.jar
+  enabled = false
+}
+
+bootJar {
+  archiveFileName = "${rootProject.name}-${project.version}.jar"
+
+  manifest {
+    attributes('Implementation-Version': project.version.toString())
+  }
+}
+
+tasks.withType(AbstractArchiveTask).configureEach {
+  preserveFileTimestamps = false
+  reproducibleFileOrder = true
+}
