@@ -61,6 +61,31 @@ public class DistributionCommandParser {
 
     private static final String UNPRINTABLE_FIELD_NAME = "<unprintable>";
 
+    /**
+     * RFC 3339 {@code full-date}, which is what draft-07's {@code date} format means.
+     *
+     * <p>Checked before {@link LocalDate#parse}, which is looser in two ways this contract cannot
+     * afford: it accepts a signed, expanded year ({@code +12026-08-20}, {@code -0001-08-20}) and it
+     * would accept an unpadded month were the formatter any more lenient.
+     */
+    private static final Pattern RFC3339_DATE = Pattern.compile("^\\d{4}-\\d{2}-\\d{2}$");
+
+    /**
+     * RFC 3339 {@code date-time}, which is what draft-07's {@code date-time} format means.
+     *
+     * <p>Checked before {@link OffsetDateTime#parse}, which accepts four shapes RFC 3339 does not:
+     * an offset carrying seconds ({@code +01:00:30}), an omitted seconds field
+     * ({@code 2026-08-20T09:00Z}), a signed or expanded year, and a fractional part with no digits
+     * after the point. The lower-case {@code t} and {@code z} forms are deliberately permitted —
+     * RFC 3339 allows them and the schema accepts them, so rejecting them here would trade one
+     * divergence for another.
+     *
+     * <p>{@code -00:00} is excluded explicitly: RFC 3339 gives it the distinct meaning "offset
+     * unknown", and the schema refuses it.
+     */
+    private static final Pattern RFC3339_DATE_TIME = Pattern.compile(
+            "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?([Zz]|\\+\\d{2}:\\d{2}|-(?!00:00)\\d{2}:\\d{2})$");
+
     private final ObjectMapper objectMapper;
 
     public DistributionCommandParser(final ObjectMapper objectMapper) {
@@ -153,24 +178,37 @@ public class DistributionCommandParser {
 
     private static LocalDate isoDate(final JsonNode root, final String field) {
         final String text = requiredText(root, field);
+        requireLexicalShape(RFC3339_DATE, text, field);
         try {
-            // ISO_LOCAL_DATE resolves strictly, so a well-formed but non-existent day — 30 February,
-            // 29 February in a common year — is a rejection rather than a silent shift.
+            // Lexically an RFC 3339 date by now, so this parse is purely semantic: ISO_LOCAL_DATE
+            // resolves strictly, making a well-formed but non-existent day — 30 February, 29
+            // February in a common year — a rejection rather than a silent shift.
             return LocalDate.parse(text, DateTimeFormatter.ISO_LOCAL_DATE);
         } catch (DateTimeParseException notADate) {
-            throw new ContractValidationException(ContractViolation.INVALID_FORMAT, field, notADate);
+            throw new ContractValidationException(ContractViolation.INVALID_FORMAT, field);
         }
     }
 
     private static Instant isoInstant(final JsonNode root, final String field) {
         final String text = requiredText(root, field);
+        requireLexicalShape(RFC3339_DATE_TIME, text, field);
         try {
-            // An offset is mandatory, and any offset is accepted: the value is normalised to UTC
-            // here so that 09:00Z and 10:00+01:00 become the same instant, and therefore the same
-            // request fingerprint.
+            // Lexically an RFC 3339 date-time by now, so this parse is purely semantic: it rejects
+            // an impossible hour or more precision than a nanosecond, and normalises to UTC so that
+            // 09:00Z and 10:00+01:00 become the same instant, and therefore the same fingerprint.
             return OffsetDateTime.parse(text, DateTimeFormatter.ISO_OFFSET_DATE_TIME).toInstant();
         } catch (DateTimeParseException notAnInstant) {
-            throw new ContractValidationException(ContractViolation.INVALID_FORMAT, field, notAnInstant);
+            throw new ContractValidationException(ContractViolation.INVALID_FORMAT, field);
+        }
+    }
+
+    /**
+     * Rejects a value whose shape is outside the contract's grammar, before any parser gets to be
+     * generous about it.
+     */
+    private static void requireLexicalShape(final Pattern grammar, final String text, final String field) {
+        if (!grammar.matcher(text).matches()) {
+            throw new ContractValidationException(ContractViolation.INVALID_FORMAT, field);
         }
     }
 }
