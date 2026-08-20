@@ -15,16 +15,16 @@ public enum FailureClassification {
     /** Not worth retrying: no redelivery will change the outcome. */
     NON_TRANSIENT("non-transient");
 
-    private final String label;
+    private final String metricLabel;
 
     FailureClassification(final String label) {
-        this.label = label;
+        this.metricLabel = label;
     }
 
     /**
      * The metric label value.
      */
     public String label() {
-        return label;
+        return metricLabel;
     }
 }

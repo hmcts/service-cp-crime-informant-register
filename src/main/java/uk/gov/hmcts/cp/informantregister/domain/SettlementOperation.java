@@ -14,16 +14,16 @@ public enum SettlementOperation {
     /** Park the delivery with a reason. */
     DEADLETTER("deadletter");
 
-    private final String label;
+    private final String metricLabel;
 
     SettlementOperation(final String label) {
-        this.label = label;
+        this.metricLabel = label;
     }
 
     /**
      * The metric label value.
      */
     public String label() {
-        return label;
+        return metricLabel;
     }
 }

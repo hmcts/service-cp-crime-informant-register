@@ -179,17 +179,17 @@ class ProcessingMetricsTest {
             metrics.deadLettered(DeadLetterReason.EXHAUSTED);
             metrics.deadLettered(DeadLetterReason.NON_TRANSIENT);
 
-            assertThat(counter(ProcessingMetrics.DEADLETTERED, "reason", "validation")).isEqualTo(1);
-            assertThat(counter(ProcessingMetrics.DEADLETTERED, "reason", "collision")).isEqualTo(1);
-            assertThat(counter(ProcessingMetrics.DEADLETTERED, "reason", "exhausted")).isEqualTo(1);
-            assertThat(counter(ProcessingMetrics.DEADLETTERED, "reason", "non-transient")).isEqualTo(1);
+            assertThat(counter(ProcessingMetrics.DEAD_LETTERED, "reason", "validation")).isEqualTo(1);
+            assertThat(counter(ProcessingMetrics.DEAD_LETTERED, "reason", "collision")).isEqualTo(1);
+            assertThat(counter(ProcessingMetrics.DEAD_LETTERED, "reason", "exhausted")).isEqualTo(1);
+            assertThat(counter(ProcessingMetrics.DEAD_LETTERED, "reason", "non-transient")).isEqualTo(1);
         }
 
         @Test
         void it_should_carry_the_reason_label_and_nothing_else() {
             metrics.deadLettered(DeadLetterReason.VALIDATION);
 
-            assertThat(tagKeysOf(ProcessingMetrics.DEADLETTERED)).containsExactly("reason");
+            assertThat(tagKeysOf(ProcessingMetrics.DEAD_LETTERED)).containsExactly("reason");
         }
     }
 
@@ -294,7 +294,7 @@ class ProcessingMetricsTest {
                             ProcessingMetrics.PROCESSED,
                             ProcessingMetrics.PROCESSING_FAILURES,
                             ProcessingMetrics.INTAKE_SUSPENSIONS,
-                            ProcessingMetrics.DEADLETTERED,
+                            ProcessingMetrics.DEAD_LETTERED,
                             ProcessingMetrics.SETTLEMENT_FAILURES,
                             ProcessingMetrics.LOCK_LOSS,
                             ProcessingMetrics.STALE_RUNNER_REJECTIONS,

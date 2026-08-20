@@ -1,5 +1,9 @@
 package uk.gov.hmcts.cp.informantregister.config;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
 import uk.gov.hmcts.cp.informantregister.domain.DeadLetterReason;
@@ -25,7 +29,7 @@ public class ProcessingMetrics {
     public static final String PROCESSED = "informantregister_processed_total";
     public static final String PROCESSING_FAILURES = "informantregister_processing_failures_total";
     public static final String INTAKE_SUSPENSIONS = "informantregister_intake_suspensions_total";
-    public static final String DEADLETTERED = "informantregister_deadlettered_total";
+    public static final String DEAD_LETTERED = "informantregister_deadlettered_total";
     public static final String SETTLEMENT_FAILURES = "informantregister_settlement_failures_total";
     public static final String LOCK_LOSS = "informantregister_lock_loss_total";
     public static final String STALE_RUNNER_REJECTIONS =
@@ -38,77 +42,104 @@ public class ProcessingMetrics {
     public static final String REASON_TAG = "reason";
     public static final String OPERATION_TAG = "operation";
 
+    private static final int UP = 1;
+    private static final int DOWN = 0;
+
     private final MeterRegistry registry;
+
+    /**
+     * Gauge state. Held here rather than read from a collaborator so the gauges exist from
+     * construction: a dashboard must be able to read them from a pod that has not yet seen a
+     * message, and a gauge that only appears after the first incident is not an alerting surface.
+     */
+    private final AtomicInteger intakeSuspendedState = new AtomicInteger(DOWN);
+
+    /** Up until an outage is observed — the honest starting position for a healthy pod. */
+    private final AtomicInteger serviceBusUpState = new AtomicInteger(UP);
 
     public ProcessingMetrics(final MeterRegistry registry) {
         this.registry = registry;
+
+        Gauge.builder(INTAKE_SUSPENDED, intakeSuspendedState, AtomicInteger::get)
+                .description("1 while intake is suspended, 0 while it is running")
+                .register(registry);
+        Gauge.builder(SERVICEBUS_UP, serviceBusUpState, AtomicInteger::get)
+                .description("1 while the Service Bus health component is up, 0 while it is down")
+                .register(registry);
     }
 
     /**
      * A request reached a terminal outcome.
      */
     public void requestSettled(final RequestOutcome outcome) {
-        // Not implemented yet.
+        counter(PROCESSED, OUTCOME_TAG, outcome.label()).increment();
     }
 
     /**
      * A pipeline run failed — every failed run, including a transient one that ends in RETRYING,
-     * not only terminal exhaustion.
+     * not only terminal exhaustion. A request retrying quietly forever is exactly what this service
+     * exists to make visible.
      */
     public void pipelineFailed(final FailureClassification classification) {
-        // Not implemented yet.
+        counter(PROCESSING_FAILURES, CLASSIFICATION_TAG, classification.label()).increment();
     }
 
     /**
      * Intake moved into SUSPENDED.
      */
     public void intakeSuspended() {
-        // Not implemented yet.
+        intakeSuspendedState.set(UP);
+        counter(INTAKE_SUSPENSIONS).increment();
     }
 
     /**
-     * Intake moved back into RUNNING.
+     * Intake moved back into RUNNING. Deliberately not counted: the counter records incidents, and
+     * recovering from one is not a second incident.
      */
     public void intakeResumed() {
-        // Not implemented yet.
+        intakeSuspendedState.set(DOWN);
     }
 
     /**
      * A delivery was parked on the dead-letter queue.
      */
     public void deadLettered(final DeadLetterReason reason) {
-        // Not implemented yet.
+        counter(DEAD_LETTERED, REASON_TAG, reason.label()).increment();
     }
 
     /**
      * A settlement call itself failed.
      */
     public void settlementFailed(final SettlementOperation operation) {
-        // Not implemented yet.
+        counter(SETTLEMENT_FAILURES, OPERATION_TAG, operation.label()).increment();
     }
 
     /**
      * The delivery lock was lost before settlement.
      */
     public void lockLost() {
-        // Not implemented yet.
+        counter(LOCK_LOSS).increment();
     }
 
     /**
      * An outcome write was rejected by the owner-and-token predicate.
      */
     public void staleRunnerRejected() {
-        // Not implemented yet.
+        counter(STALE_RUNNER_REJECTIONS).increment();
     }
 
     /**
      * Mirrors the Service Bus health component.
      */
     public void serviceBusUp(final boolean up) {
-        // Not implemented yet.
+        serviceBusUpState.set(up ? UP : DOWN);
     }
 
-    protected MeterRegistry registry() {
-        return registry;
+    private Counter counter(final String name) {
+        return Counter.builder(name).register(registry);
+    }
+
+    private Counter counter(final String name, final String tag, final String value) {
+        return Counter.builder(name).tag(tag, value).register(registry);
     }
 }

@@ -20,16 +20,16 @@ public enum DeadLetterReason {
     /** The run failed in a way no redelivery would fix. */
     NON_TRANSIENT("non-transient");
 
-    private final String label;
+    private final String metricLabel;
 
     DeadLetterReason(final String label) {
-        this.label = label;
+        this.metricLabel = label;
     }
 
     /**
      * The metric label value, and the reason recorded on the dead-lettered message.
      */
     public String label() {
-        return label;
+        return metricLabel;
     }
 }

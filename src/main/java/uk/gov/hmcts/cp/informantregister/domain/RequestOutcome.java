@@ -11,10 +11,10 @@ public enum RequestOutcome {
     /** The request was parked after exhausting its permitted deliveries. */
     FAILED("failed");
 
-    private final String label;
+    private final String metricLabel;
 
     RequestOutcome(final String label) {
-        this.label = label;
+        this.metricLabel = label;
     }
 
     /**
@@ -22,6 +22,6 @@ public enum RequestOutcome {
      * constant cannot silently rename a dashboard's series.
      */
     public String label() {
-        return label;
+        return metricLabel;
     }
 }
