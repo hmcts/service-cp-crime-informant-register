@@ -1,0 +1,32 @@
+# The `test` profile — plain context-load tests only.
+#
+# It exists so tests that have nothing to do with messaging or persistence (ActuatorIntegrationTest
+# and any future context-load test) keep running with no broker and no database, and therefore
+# without Docker. Container-backed suites do NOT activate it: they boot the real configuration
+# against Testcontainers.
+informantregister:
+  consumer:
+    # Master switch for starting the Service Bus processor at all. Off here, so no test in this
+    # profile ever tries to reach a broker.
+    enabled: false
+
+spring:
+  autoconfigure:
+    # No datasource is configured in this profile, and with the JDBC starter on the classpath
+    # DataSourceAutoConfiguration would otherwise fail the context demanding a URL. Flyway's
+    # auto-configuration is conditional on a DataSource and would back off on its own; it is
+    # excluded explicitly so the reason is stated rather than inferred.
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+      - org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration
+
+management:
+  endpoint:
+    health:
+      group:
+        # The deployed readiness group is `db` (the store gates readiness, the broker never does).
+        # Spring validates group membership at startup, so naming an absent `db` contributor here —
+        # absent precisely because the datasource auto-configuration is excluded above — would fail
+        # the context. `ping` keeps the group well formed and the endpoint shape identical.
+        readiness:
+          include: ping
