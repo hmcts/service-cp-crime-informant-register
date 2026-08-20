@@ -188,6 +188,16 @@ class DistributionCommandSchemaCorpusTest {
                         bodyWith("sharedTime", "\"2026-08-20T04:00:00-05:00\"")),
                 accepted("instant with fractional seconds",
                         bodyWith("sharedTime", "\"2026-08-20T09:00:00.123456Z\"")),
+                accepted("instant with nanosecond precision",
+                        bodyWith("sharedTime", "\"2026-08-20T09:00:00.123456789Z\"")),
+                accepted("zero offset written out rather than as Z",
+                        bodyWith("sharedTime", "\"2026-08-20T09:00:00+00:00\"")),
+                // RFC 3339 permits the lower-case forms, and so must this parser: rejecting them
+                // would be a new divergence from the schema, not a tightening.
+                accepted("lower-case date-time separator",
+                        bodyWith("sharedTime", "\"2026-08-20t09:00:00Z\"")),
+                accepted("lower-case zulu designator",
+                        bodyWith("sharedTime", "\"2026-08-20T09:00:00z\"")),
                 accepted("leap day in a leap year", bodyWith("hearingDay", "\"2024-02-29\"")),
 
                 // --- rejected: dates that do not exist ----------------------------------
@@ -195,6 +205,11 @@ class DistributionCommandSchemaCorpusTest {
                 rejected("month beyond twelve", bodyWith("hearingDay", "\"2026-13-01\"")),
                 rejected("leap day in a common year", bodyWith("hearingDay", "\"2025-02-29\"")),
                 rejected("date in a non-ISO layout", bodyWith("hearingDay", "\"20/08/2026\"")),
+                // Java's ISO date parser accepts a signed, expanded year; RFC 3339 does not, so the
+                // schema rejects both of these and the parser must too.
+                rejected("date with an expanded positive year", bodyWith("hearingDay", "\"+12026-08-20\"")),
+                rejected("date with a signed negative year", bodyWith("hearingDay", "\"-0001-08-20\"")),
+                rejected("date with an unpadded month", bodyWith("hearingDay", "\"2026-8-20\"")),
 
                 // --- rejected: non-canonical identifiers --------------------------------
                 rejected("braced identifier",
@@ -208,6 +223,19 @@ class DistributionCommandSchemaCorpusTest {
                 rejected("instant with no offset at all",
                         bodyWith("sharedTime", "\"2026-08-20T09:00:00\"")),
                 rejected("instant that is not a date-time", bodyWith("sharedTime", "\"yesterday\"")),
+                // Java's ISO offset parser is looser than RFC 3339 in four separate ways. Each has
+                // its own case, because each is a way a producer's clock library could drift out of
+                // contract without anything noticing.
+                rejected("offset carrying seconds",
+                        bodyWith("sharedTime", "\"2026-08-20T09:00:00+01:00:30\"")),
+                rejected("instant with no seconds", bodyWith("sharedTime", "\"2026-08-20T09:00Z\"")),
+                rejected("instant with an expanded year",
+                        bodyWith("sharedTime", "\"+12026-08-20T09:00:00Z\"")),
+                rejected("negative zero offset",
+                        bodyWith("sharedTime", "\"2026-08-20T09:00:00-00:00\"")),
+                rejected("fractional part with no digits",
+                        bodyWith("sharedTime", "\"2026-08-20T09:00:00.Z\"")),
+                rejected("offset with no colon", bodyWith("sharedTime", "\"2026-08-20T09:00:00+0100\"")),
 
                 // --- rejected: empties, nulls and wrong types ---------------------------
                 rejected("empty source", bodyWith("source", "\"\"")),
