@@ -3,6 +3,7 @@ package uk.gov.hmcts.cp.informantregister.config;
 import java.time.Duration;
 
 import org.springframework.beans.factory.InitializingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
@@ -14,6 +15,10 @@ import org.springframework.stereotype.Component;
  * are made to fail.
  */
 @Component
+// The properties record is registered here, explicitly, rather than left to a scan: without it the
+// packaged application starts no context at all ("No qualifying bean of type
+// InformantRegisterProperties"), which the container smoke found and no JUnit suite did.
+@EnableConfigurationProperties(InformantRegisterProperties.class)
 public class PropertiesValidator implements InitializingBean {
 
     /**

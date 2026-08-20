@@ -75,6 +75,12 @@ jobs:
       - name: Coverage report
         run: ./gradlew jacocoTestReport
 
+      # Proves the packaged artefact starts and answers, which no JUnit suite can: the *IT suites
+      # run inside the build's JVM and would still pass if the image were unbuildable. The script is
+      # the same one developers run locally, so CI and the workstation cannot drift.
+      - name: Container smoke
+        run: ./scripts/container-smoke.sh
+
       - name: Extract repo name
         id: repo_vars
         run: |
