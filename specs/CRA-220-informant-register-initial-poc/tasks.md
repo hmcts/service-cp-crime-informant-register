@@ -13,6 +13,12 @@ whose methods throw `UnsupportedOperationException` — so that the recorded red
 assertion**, never a missing class or a compile error. The failing assertion is quoted in the test
 task's commit narrative; the paired implementation task's narrative quotes the green run.
 
+**Phase 1 setup tasks are infrastructure, not TDD pairs**: T001–T003 create build configuration,
+a test profile and shared test fixtures. They have no assertable behaviour of their own, so the
+red-run convention does not apply to them (constitution Principle II's mechanical/infrastructure
+exemption); their commits record verification evidence (a passing suite, a started container)
+instead of a red assertion.
+
 **[A] Acceptance/characterisation tasks**: a small number of tests verify already-fixed behaviour
 (broker configuration, assembled end-to-end behaviour, the container). No implementation task
 follows them, they may legitimately pass on introduction, and **no red run is required** — the
