@@ -67,6 +67,10 @@ dependencies {
   testImplementation 'org.testcontainers:testcontainers-postgresql'
   testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
   testImplementation 'org.testcontainers:testcontainers-azure'
+  // The Service Bus emulator's SQL Server companion is an MSSQLServerContainer, and its readiness
+  // check opens a JDBC connection — without the driver the companion never reports started. Version
+  // from the Spring Boot BOM.
+  testRuntimeOnly 'com.microsoft.sqlserver:mssql-jdbc'
 
   // Draft-07 validator for the dual-validation contract corpus (research §9).
   // testImplementation ONLY — it must never reach the runtime classpath. Not managed by any BOM on
