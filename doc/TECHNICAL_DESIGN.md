@@ -94,27 +94,78 @@ Every command reaches an explicit recorded outcome — "nothing happened" is nev
 ```
 message received
    ▼
-(source, requestId) already COMPLETED? ── yes ─▶ log + complete()   [no re-submission]
-(source, requestId) already FAILED?    ── yes ─▶ FAILED → RECEIVED  [audit note, attempts kept]
-   │ no                                         │  then reprocess below,
-   │                                            │  skipping POSTED authorities
-   ▼ INSERT processed_request status=RECEIVED
+processed-log store reachable?
+   └─ no ─▶ abandon() + suspend intake until it returns  [no record, attempts unchanged]
+   ▼ yes
+validate against the message contract
+   └─ invalid ─▶ deadLetter() with a sanitised reason   [NO processed_request record]
+   ▼ valid — the state machine starts here
+look up (source, requestId) in processed_request
+   ├─ no record ───────────────▶ INSERT status=RECEIVED, take the claim ─────────▶ RUN
+   ├─ record found, fingerprint of the immutable fields DIFFERS
+   │        ───────────────────▶ idempotency collision: deadLetter() with a reason,
+   │                              record untouched, NO run
+   ├─ COMPLETED ───────────────▶ log + complete()            [no run, no re-submission]
+   ├─ FAILED, arriving messageId ≠ the recorded exhausting identity
+   │        ───────────────────▶ FAILED → RECEIVED, take the claim ──────────────▶ RUN
+   │                              [audit note, attempts preserved]
+   ├─ FAILED, arriving messageId = the recorded exhausting identity
+   │        ───────────────────▶ stays FAILED, NO run, deadLetter() re-attempted
+   ├─ RECEIVED/RETRYING, claim held by a LIVE runner
+   │        ───────────────────▶ abandon() → broker redelivers    [NO run, never complete()]
+   └─ RECEIVED/RETRYING, claim expired or absent (crashed runner)
+            ───────────────────▶ reclaim the claim atomically ────────────────────▶ RUN
+   ▼
+RUN — attempts++ atomically as the run starts
    ▼ fetch payload → transform → submit per authority
    ├─ all authorities settled ─▶ COMPLETED ─▶ complete()
-   ├─ transient failure ──────▶ RETRYING, attempts++ ─▶ abandon() → ASB redelivers
-   └─ non-transient failure ──▶ FAILED + reason ─────▶ deadLetter() → DLQ alert
+   ├─ transient failure, deliveries of this message remaining
+   │        ───────────────────▶ RETRYING + reason ─▶ abandon() → ASB redelivers
+   ├─ transient failure on the fifth (final) delivery
+   │        ───────────────────▶ FAILED + reason + exhausting messageId ─▶ deadLetter()
+   └─ non-transient failure ───▶ FAILED + reason + this messageId ───────▶ deadLetter()
 ```
+
+Only the three branches that reach RUN take the single-runner claim, and each of them releases it on
+the way out, whichever outcome the run reaches — so a crashed runner is the only way a claim is left
+held, and its expiry is what the reclaim branch waits on. The branches that settle without a run
+(COMPLETED, collision, exhausted-identity redelivery, contested delivery) never take it. There is no
+path that inserts a fresh `RECEIVED` record over an existing one: an existing non-terminal record is
+either contested (abandon) or reclaimed, never duplicated.
+
+In CRA-220 the only non-transient path is contract validation, which is settled before the state
+machine starts; the non-transient RUN branch above is exercised once the real submission adapter
+lands (non-429 4xx, transformation error).
 
 - **Request statuses:** `RECEIVED`, `RETRYING`, `COMPLETED`, `FAILED` (last two terminal).
 - Terminal is not the same as final: a resubmitted `FAILED` request is replayable (below); a
   resubmitted `COMPLETED` request is acknowledged and never reprocessed.
-- **Per-authority statuses** (`processed_output`): `POSTED`, `FAILED`.
+- **Per-authority statuses** (`processed_output`): `POSTED`, `FAILED` — schema only in CRA-220; see
+  Idempotency below.
 - A hearing that legitimately yields no authorities still ends `COMPLETED`, with the reason
   `no-authorities` recorded — a business outcome, not an error, and not a status of its own.
+- **`attempts` semantics.** `attempts` is the **lifetime cumulative count of pipeline-run starts**
+  for a request, incremented **atomically as a run begins** — successful runs count too. It is
+  **not** incremented for a contract-validation rejection, for a delivery returned because the
+  processed-log store was unavailable, or for a duplicate settled without a run (a `COMPLETED`
+  acknowledgement, a contested non-terminal delivery, an idempotency collision, or a redelivery of
+  the identity that already exhausted the retries). It is a support/diagnostic tally, never a
+  control variable: **retry exhaustion is judged solely by the broker's delivery count for the
+  current message against `maxDeliveryCount` 5, never by `attempts`.** Five failed deliveries
+  followed by one successful resubmission therefore leave the record showing `attempts` = 6.
 - **Transient** (abandon → retry): connect/IO, 5xx, 429 (honour `Retry-After`), payload source
-  unavailable, lock lost.
+  unavailable, and processed-log store unavailable — the last of these also suspends intake until
+  the store recovers, so an outage cannot burn through `maxDeliveryCount`.
 - **Non-transient** (dead-letter): unparseable message, schema violation, non-429 4xx from a
-  downstream command, transformation error.
+  downstream command, transformation error, and an idempotency collision (same `(source, requestId)`
+  carrying a different immutable-field fingerprint). A contract-validation failure is dead-lettered
+  *before* the state machine starts, so it produces no `processed_request` row — it is accounted for
+  by the DLQ entry, an ERROR log and a failure metric.
+- **Lock loss is neither.** Losing the delivery lock is not an "abandon → retry" outcome, because
+  once the lock is gone the handler can no longer settle the message at all — there is nothing left
+  to abandon, complete or dead-letter. The outcome is therefore a sanitised ERROR log plus a failure
+  metric, and recovery relies entirely on the broker redelivering the message when the lock expires.
+  The redelivery is then handled by the state machine above like any other delivery.
 - State is persisted **before** the message is settled.
 
 ## Queue and message
@@ -124,12 +175,18 @@ message received
 - Peek-lock, auto-complete disabled, explicit complete/abandon/dead-letter, `maxDeliveryCount` **5**,
   broker duplicate detection **on**, `maxConcurrentCalls` **2** to start (parity with the function
   app's Durable throttle).
-- `messageId` = `"{source}:{requestId}"`. Replay tooling always mints a **fresh** `messageId` so a
-  deliberate replay is not swallowed by the duplicate-detection window; the processed-log then
-  decides, visibly. A resubmitted request in `COMPLETED` is acknowledged without reprocessing; one in
-  `FAILED` is **replayable** — the guard transitions it `FAILED` → `RECEIVED` (attempts preserved,
-  audit note) and reprocesses it, skipping authorities already `POSTED`. Replaying a dead-lettered
-  message is the supported recovery route.
+- `messageId` = `"{source}:{requestId}"` for **normal publishing by the producer**. Replay tooling is
+  the exception: a support resubmission carries the **same body** (same `requestId`) but must mint a
+  **fresh `messageId`, distinct from any identity previously used for that request**, so the replay
+  is neither swallowed by the duplicate-detection window nor mistaken for the delivery that
+  exhausted the retries. The processed-log then decides, visibly. A resubmitted request in
+  `COMPLETED` is acknowledged without reprocessing; one in `FAILED` is **replayable under a fresh
+  `messageId`** — the guard transitions it `FAILED` → `RECEIVED` (attempts preserved, audit note) and
+  reprocesses it. Replaying a dead-lettered message is the supported recovery route. A redelivery
+  carrying the *original* `messageId` (e.g. dead-lettering did not settle and the lock expired) is
+  not a replay: the record stays `FAILED`, the pipeline does not run, and dead-lettering is
+  re-attempted. Once the real submission adapter lands, a replayed run also skips authorities already
+  `POSTED` (see Idempotency — deferred with `processed_output`).
 - `requestId` is minted deterministically by the publisher from `hearingId | hearingDay | sharedTime`,
   so a republish of the same share carries the same id while a genuine re-share mints a new one
   (re-shares are legitimate and must be reprocessed).
@@ -144,8 +201,24 @@ Message shape and field semantics: `doc/API_CONTRACTS.md`.
 
 | Table | Key | Purpose |
 |-------|-----|---------|
-| `processed_request` | PK `(source, request_id)` | The idempotency claim. Insert-on-first-sight; a unique violation means a concurrent/duplicate delivery. Carries `hearing_id`, `hearing_day`, `event_type`, `status`, `attempts`, timestamps, `failure_reason`. |
-| `processed_output` | PK `output_id`, UNIQUE `(source, request_id, prosecution_authority_id)` | One row per authority, written **before** the POST and updated after. Already-`POSTED` authorities are skipped on redelivery or replay, so partial progress is never re-sent. Carries `request_digest` (SHA-256 of the outbound body) for reconciliation. |
+| `processed_request` | PK `(source, request_id)` | The idempotency claim. Insert-on-first-sight; a unique violation means a concurrent/duplicate delivery. Carries `hearing_id`, `hearing_day`, `shared_time`, `event_type`, `status`, `attempts`, `completion_reason`, `failure_reason`, timestamps — plus the three groups of columns the state machine's branches need, below. |
+| `processed_output` | PK `output_id`, UNIQUE `(source, request_id, prosecution_authority_id)` | **CRA-220 creates the schema and writes no rows** — the stub pipeline produces no outputs. Its semantics are deferred; see below. |
+
+`processed_request` columns that the branches of the state machine depend on:
+
+| Column(s) | Rule it serves | Design |
+|-----------|----------------|--------|
+| `request_fingerprint` | Idempotency collision (spec FR-018) | A **stored SHA-256 hash** over the canonical form of the four immutable fields — `hearingId \| hearingDay \| sharedTime \| eventType` — written when the record is created and never updated. The individual fields are also kept as their own columns for support querying, but the **hash is what the collision check compares**: one fixed-width equality test, no field-by-field drift and no risk of a comparison silently omitting a field as the message contract grows. A mismatch is dead-lettered with a reason and the record is left untouched. |
+| `exhausted_message_id` | FAILED redelivery vs. resubmission (spec FR-007) | The broker message identity of the delivery that exhausted `maxDeliveryCount` — written in the same transaction that sets `status = FAILED`, `NULL` before that. A later delivery of a `FAILED` request compares its own `messageId` against this value: **equal** means the same exhausted message coming round again (stays `FAILED`, no run, dead-letter re-attempted); **different** means a deliberate support resubmission (`FAILED` → `RECEIVED`, attempts preserved, audit note, run). |
+| `claim_owner`, `claim_expires_at` | Single-runner claim (spec FR-008) | The claim is taken **atomically** in the same conditional `UPDATE`/`INSERT` that moves the record into a running state, stamping the runner's identity (instance + delivery) and an expiry comfortably beyond the longest permitted run. A competing delivery that finds an **unexpired** claim owned by someone else is abandoned for retry and never acknowledged; one that finds an **expired or absent** claim reclaims it atomically (a conditional update guarded on the old owner/expiry, so exactly one of several racing deliveries wins) and runs. The expiry is what makes a crashed runner recoverable without operator action. |
+
+Deferred with `processed_output` — **the design for the later real-submission stories, not a
+contract of this increment**: one row per authority written **before** the POST and updated after,
+so an authority already `POSTED` is skipped on redelivery or replay and partial progress is never
+re-sent; `request_digest` (SHA-256 of the outbound body) carried for reconciliation. None of that
+is observable in CRA-220, because the stub pipeline produces no outputs and therefore writes no
+rows; the semantics become testable and contractual with the stories that attach the real
+submission adapter.
 
 **Delivery guarantee.** At-most-once submission in all normal operation, redeliveries and replays
 included. Across a crash in the instant between a successful POST and recording it, the guarantee
@@ -191,11 +264,14 @@ The build is done when every twin passes and the recorded set matches.
 **Build now:** ASB consumer with correct settlement discipline · `DistributionCommand` parsing and
 validation · `(source, requestId)` idempotency guard + `processed_request` (Flyway) · port interfaces
 with **stub adapters** (payload fetch and register submission as logging no-ops) · processing-state
-writes · actuator · container build · structured logging.
+writes · actuator · container build · structured logging · failure ERROR logs and failure/DLQ
+metrics. `processed_output` is created as schema only — the stub pipeline produces no outputs, so no
+rows are written this increment.
 
 **Later stories:** Redis payload adapter + query-API fallback · the ported transformation pipeline ·
 the results submission adapter with retry policy · `processed_output` population · KEDA scaling ·
-DLQ alerting and reconciliation tooling.
+DLQ **alert wiring** (dashboards and alert rules over the metrics shipped here) and reconciliation
+tooling.
 
 ## Configuration
 
@@ -228,9 +304,17 @@ TDD is mandatory: failing test first, every commit.
 
 ## Observability
 
-Structured JSON logs with `requestId` / `hearingId` in MDC (no defendant PII at `info`); metrics for
-processed / failed and queue + DLQ depth; alerts on DLQ > 0 and on sustained failures over 15 minutes.
-This alone is a step change from the function app, which fails silently.
+Structured JSON logs with `requestId` / `hearingId` in MDC (no defendant PII at `info` or above);
+metrics for processed / failed and queue + DLQ depth. Every failure path — processing failure,
+contract-validation dead-letter, store-outage suspension, settlement failure, lock loss — emits a
+sanitised ERROR log and increments a failure metric, and dead-lettered messages are countable from a
+metric.
+
+**Logs and metrics ship in CRA-220; alert wiring does not.** The intended alerts — DLQ depth > 0 and
+failures sustained over 15 minutes — are dashboards and alert rules built on these metrics, and they
+are deferred to the later operability story. That deferral is a named waiver of the constitution's
+alerting requirement (Principle VI), recorded in `doc/DEVIATIONS.md` #3. Even without the alert
+rules, the logs and metrics are already a step change from the function app, which fails silently.
 
 ## Security
 
