@@ -115,6 +115,16 @@ Exact SQL for every guard statement is in `data-model.md` "Guard operations".
     the first store probe passes. Readiness stays down until then, consistent with
     store-gates-readiness (§8). A service that boots while Postgres is down therefore consumes
     nothing rather than abandoning a queue's worth of deliveries.
+  - **Resilient startup makes that possible — deferred migration**: by default, connection-pool
+    initialisation and Flyway both connect *during context refresh*, so with the store down the
+    refresh would block or fail — retry settings only delay it. The skeleton therefore (a) sets
+    Hikari `initialization-fail-timeout: -1` (lazy pool — no eager connection at refresh) and
+    (b) registers a **no-op `FlywayMigrationStrategy`** so refresh completes without touching the
+    database; the **controller itself invokes `flyway.migrate()` when the first store probe
+    passes, before the processor is started** — migration success is part of the probe-gated
+    start, so no message can be consumed against an unmigrated schema. Test fixtures that boot
+    persistence slices without the controller apply Flyway to their Testcontainers database
+    themselves.
   - **Suspension trigger**: store unavailability detected inside the message callback. The callback
     abandons its own delivery first, then *requests* suspension; `stop()` is invoked on a separate
     single-threaded executor, **never inside the SDK callback thread** (stopping a processor from
