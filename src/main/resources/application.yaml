@@ -1,13 +1,13 @@
 spring:
   application:
-    name: service-UPDATE-TO-BE-NAME-OF-SERVICE
+    name: service-cp-crime-informant-register
 
 server:
   port: ${SERVER_PORT:8082}
 
-azure:
-  application-insights:
-    instrumentation-key: ${rpe.AppInsightsInstrumentationKey:00000000-0000-0000-0000-000000000000}
+# Application Insights is configured by the Java agent (lib/applicationinsights.json).
+# The per-environment connection string is supplied as APPLICATIONINSIGHTS_CONNECTION_STRING,
+# mounted from Key Vault via the Secrets Store CSI driver; there is nothing to set here.
 
 management:
   endpoints:

@@ -17,6 +17,9 @@ WORKDIR /app
 # ---- Application files ----
 COPY docker/* /app/
 COPY build/libs/*.jar /app/
+# The agent config reads the connection string from APPLICATIONINSIGHTS_CONNECTION_STRING.
+# The per-environment value is mounted from Key Vault by the Secrets Store CSI driver and
+# exported into the container environment; it is never baked into the image.
 COPY lib/applicationinsights.json /app/
 
 USER app

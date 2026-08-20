@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hmcts.gov.uk/cp/crime/informant-register/contracts/distribution-command.schema.json",
+  "title": "Informant Register distribution command",
+  "description": "Body of a message on the ASB queue informantregister.requests. This is the inbound queue message contract, agreed jointly with cpp-context-results (results-event-processor), which publishes one message per resulted regular hearing. The message is a claim check: the hearing payload is fetched separately from Redis, with the results query API as fallback. Any change to this schema is a cross-team change and must be agreed with the Results team first. The narrative companion is doc/API_CONTRACTS.md; if the two disagree, this schema plus its tests win.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "source",
+    "requestId",
+    "hearingId",
+    "hearingDay",
+    "sharedTime",
+    "eventType"
+  ],
+  "properties": {
+    "source": {
+      "type": "string",
+      "enum": ["RESULTS"],
+      "description": "Publishing system. Half of the idempotency key: it namespaces requestId so a future second publisher cannot collide with Results."
+    },
+    "requestId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Publisher-minted, deterministic from hearingId, hearingDay and sharedTime. A republish of the same share carries the same id; a genuine re-share produces a new sharedTime and so a new id, and must be reprocessed."
+    },
+    "hearingId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The resulted hearing. With hearingDay it forms the Redis cache key and the query-API fallback path."
+    },
+    "hearingDay": {
+      "type": "string",
+      "format": "date",
+      "description": "The hearing day this share relates to, as YYYY-MM-DD. Part of the Redis key INT_{hearingId}_{hearingDay}_result_."
+    },
+    "sharedTime": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 instant at which the hearing was shared. Becomes the register date used for subscription lookup and appears in the outbound document."
+    },
+    "eventType": {
+      "type": "string",
+      "enum": ["Hearing_Resulted"],
+      "description": "Hearing_Resulted only. SJP hearings are out of scope and stay in the NOWs function app. Any other value is a non-transient failure (dead-letter with reason), never a silent skip."
+    }
+  }
+}

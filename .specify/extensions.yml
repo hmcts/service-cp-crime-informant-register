@@ -9,10 +9,12 @@
 #   sequential numbering for occasional non-Jira features.
 # - before_constitution (speckit.git.initialize) is DISABLED — repo is already
 #   a git repo; the hook is a no-op.
-# - All speckit.git.commit hooks are DISABLED. They are configured as no-ops
-#   in .specify/extensions/git/git-config.yml anyway, so leaving them enabled
-#   produces misleading prompts at every phase. The team commits manually
-#   with Conventional Commits messages.
+# - Every speckit.git.commit hook is DISABLED except after_specify, which stays
+#   ENABLED so a new feature specification is committed as soon as it is
+#   written. The rest are configured as no-ops in
+#   .specify/extensions/git/git-config.yml anyway, so leaving them enabled
+#   produces misleading prompts at every phase. Beyond that one hook, the team
+#   commits manually with Conventional Commits messages.
 installed: []
 settings:
   auto_execute_hooks: true
@@ -103,7 +105,7 @@ hooks:
     enabled: true
     optional: true
     prompt: Commit specification changes?
-    description: Auto-commit after specification (writes "docs(spec): add feature specification")
+    description: 'Auto-commit after specification (writes "docs(spec): add feature specification")'
     condition: null
   after_clarify:
   - extension: git

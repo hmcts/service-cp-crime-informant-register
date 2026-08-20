@@ -1,139 +1,28 @@
-openapi: 3.1.0
-info:
-  title: "service-cp-crime-informant-register API"
-  description: "Consumes hearing-resulted messages from a dedicated Azure Service Bus queue and produces per-authority informant register submissions (Option 2 lift-and-shift of the informant register function app)"
-  version: 1.0.0
-  contact:
-    name: "Resulting Assistant"
-
-servers:
-  - url: http://localhost:8082
-    description: Local development
-  - url: https://service-cp-crime-informant-register.sit.platform.hmcts.net
-    description: SIT environment
-
-tags:
-  - name: "DistributionCommand, ProcessedRequest, ProcessedOutput, RegisterFragment, InformantRegisterDocument"
-    description: "CRUD operations for DistributionCommand, ProcessedRequest, ProcessedOutput, RegisterFragment, InformantRegisterDocument"
-
-paths:
-  # ============================================================
-  # REPLACE the example paths below with your actual API design.
-  # Use the entity fields from design_rules.md as the schema source.
-  # ============================================================
-
-  # --- Example paths (replace with your domain) ---
-
-  # /api/{resource}:
-  #   get:
-  #     operationId: listResources
-  #     summary: List all resources
-  #     tags: ["DistributionCommand, ProcessedRequest, ProcessedOutput, RegisterFragment, InformantRegisterDocument"]
-  #     responses:
-  #       '200':
-  #         description: List of resources
-  #         content:
-  #           application/json:
-  #             schema:
-  #               type: array
-  #               items:
-  #                 $ref: '#/components/schemas/{Entity}'
-  #
-  #   post:
-  #     operationId: createResource
-  #     summary: Create a new resource
-  #     tags: ["DistributionCommand, ProcessedRequest, ProcessedOutput, RegisterFragment, InformantRegisterDocument"]
-  #     requestBody:
-  #       required: true
-  #       content:
-  #         application/json:
-  #           schema:
-  #             $ref: '#/components/schemas/Create{Entity}Request'
-  #     responses:
-  #       '201':
-  #         description: Resource created
-  #         content:
-  #           application/json:
-  #             schema:
-  #               $ref: '#/components/schemas/{Entity}'
-  #       '400':
-  #         description: Invalid request
-  #         content:
-  #           application/problem+json:
-  #             schema:
-  #               $ref: '#/components/schemas/ProblemDetail'
-  #
-  # /api/{resource}/{id}:
-  #   get:
-  #     operationId: getResourceById
-  #     summary: Get a resource by ID
-  #     tags: ["DistributionCommand, ProcessedRequest, ProcessedOutput, RegisterFragment, InformantRegisterDocument"]
-  #     parameters:
-  #       - name: id
-  #         in: path
-  #         required: true
-  #         schema:
-  #           type: string
-  #           format: uuid
-  #     responses:
-  #       '200':
-  #         description: Resource found
-  #         content:
-  #           application/json:
-  #             schema:
-  #               $ref: '#/components/schemas/{Entity}'
-  #       '404':
-  #         description: Resource not found
-  #         content:
-  #           application/problem+json:
-  #             schema:
-  #               $ref: '#/components/schemas/ProblemDetail'
-
-components:
-  schemas:
-
-    # ============================================================
-    # REPLACE the example schemas below with your actual domain model.
-    # Fields should match the entity definitions in design_rules.md.
-    # ============================================================
-
-    # --- Example schemas (replace with your domain) ---
-
-    # {Entity}:
-    #   type: object
-    #   required: [id, name]
-    #   properties:
-    #     id:
-    #       type: string
-    #       format: uuid
-    #     name:
-    #       type: string
-    #     # Add remaining fields from design_rules.md entity table
-
-    # Create{Entity}Request:
-    #   type: object
-    #   required: [name]
-    #   properties:
-    #     name:
-    #       type: string
-    #     # All fields except id (server-generated)
-
-    ProblemDetail:
-      type: object
-      description: RFC 9457 Problem Details for HTTP APIs
-      properties:
-        type:
-          type: string
-          description: URI reference identifying the problem type
-        title:
-          type: string
-          description: Short human-readable summary
-        status:
-          type: integer
-          description: HTTP status code
-        detail:
-          type: string
-          description: Human-readable explanation specific to this occurrence
-        instance:
-          type: string
-          description: URI reference identifying the specific occurrence
+# ---------------------------------------------------------------------------
+# service-cp-crime-informant-register — intentionally EMPTY
+#
+# This service has NO REST API.
+#
+# It is a message-driven pipeline: it consumes hearing-resulted commands from the
+# Azure Service Bus queue `informantregister.requests` and POSTs one
+# `add-informant-register` command per prosecuting authority to cpp-context-results.
+# The only HTTP surface it exposes is Spring Boot Actuator (health, info, metrics),
+# which is operational and is not a contract with any consumer.
+#
+# There is therefore no OpenAPI specification to maintain, and no API-first gate.
+# The two real contracts are documented in doc/API_CONTRACTS.md:
+#
+#   1. INBOUND  — the ASB queue message schema (owned by this service).
+#                 Machine-readable schema:
+#                 src/main/resources/contracts/distribution-command.schema.json
+#   2. OUTBOUND — the `add-informant-register` command, owned by cpp-context-results
+#                 (results-command-api.raml + informantRegisterDocumentRequest.json,
+#                 media type application/vnd.results.add-informant-register+json,
+#                 additionalProperties: false).
+#
+# Do NOT populate this file. Adding REST endpoints to this service is a design
+# decision requiring an agreed story — see doc/TECHNICAL_DESIGN.md and
+# .claude/rules/design_rules.md ("Out of Scope — do not build here").
+#
+# See also: doc/API_CONTRACTS.md
+# ---------------------------------------------------------------------------

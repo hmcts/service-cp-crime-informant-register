@@ -1,3 +1,14 @@
+# Local development stack for CRA-220.
+#
+# Everything here is LOCAL ONLY. The credentials below are development defaults, deliberately
+# committed so the stack starts with no .env file; they are never used in any deployed environment,
+# where Postgres credentials and the Service Bus identity come from Key Vault via the Secrets Store
+# CSI driver.
+#
+#   docker compose up -d postgres servicebus-emulator   # dependencies only, for ./gradlew bootRun
+#   docker compose up app                               # the service in its container
+#
+# `app` deliberately declares no depends_on, so it can be started on its own.
 services:
   app:
     build:
@@ -5,3 +16,54 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8082:8082"
+    environment:
+      SERVER_PORT: 8082
+      # Maps to informantregister.servicebus.* @ConfigurationProperties.
+      INFORMANTREGISTER_SERVICEBUS_CONNECTIONSTRING: "Endpoint=sb://servicebus-emulator;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;"
+      INFORMANTREGISTER_SERVICEBUS_QUEUENAME: informantregister.requests
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/informantregister
+      SPRING_DATASOURCE_USERNAME: informantregister
+      SPRING_DATASOURCE_PASSWORD: informantregister
+
+  postgres:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: informantregister
+      POSTGRES_USER: informantregister
+      POSTGRES_PASSWORD: informantregister
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U informantregister -d informantregister"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Azure Service Bus emulator, per Microsoft's reference compose file. It needs the SQL Edge
+  # container beside it for its own state; from the host the broker is on localhost:5672, and the
+  # connection string is
+  #   Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;
+  servicebus-emulator:
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
+    ports:
+      - "5672:5672"
+      - "5300:5300"
+    environment:
+      ACCEPT_EULA: "Y"
+      SQL_SERVER: servicebus-emulator-sql
+      MSSQL_SA_PASSWORD: "LocalOnly_Passw0rd!"
+    volumes:
+      - ./docker/servicebus-emulator/config.json:/ServiceBus_Emulator/ConfigFiles/Config.json:ro
+    depends_on:
+      - servicebus-emulator-sql
+
+  servicebus-emulator-sql:
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "LocalOnly_Passw0rd!"
+
+volumes:
+  postgres-data:

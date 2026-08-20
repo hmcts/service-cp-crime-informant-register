@@ -31,20 +31,24 @@ The branch name must match one of these patterns:
 
 1. **Sequential**: `^[0-9]{3,}-` (e.g., `001-feature-name`, `042-fix-bug`, `1000-big-feature`)
 2. **Timestamp**: `^[0-9]{8}-[0-9]{6}-` (e.g., `20260319-143022-feature-name`)
+3. **Jira ticket id**: `^[A-Z][A-Z0-9_]*-[0-9]+-` (e.g., `CRA-220-informant-register-initial-poc`,
+   `CCT-1222-enforcement`) — this is the convention this team actually uses, and it matches the
+   pattern accepted by `.specify/scripts/bash/common.sh`
 
 ## Execution
 
-If on a feature branch (matches either pattern):
+If on a feature branch (matches any of the patterns):
 - Output: `✓ On feature branch: <branch-name>`
 - Check if the corresponding spec directory exists under `specs/`:
   - For sequential branches, look for `specs/<prefix>-*` where prefix matches the numeric portion
   - For timestamp branches, look for `specs/<prefix>-*` where prefix matches the `YYYYMMDD-HHMMSS` portion
+  - For Jira branches, look for `specs/<prefix>-*` where prefix matches the ticket id (e.g. `CRA-220`)
 - If spec directory exists: `✓ Spec directory found: <path>`
 - If spec directory missing: `⚠ No spec directory found for prefix <prefix>`
 
 If NOT on a feature branch:
 - Output: `✗ Not on a feature branch. Current branch: <branch-name>`
-- Output: `Feature branches should be named like: 001-feature-name or 20260319-143022-feature-name`
+- Output: `Feature branches should be named like: 001-feature-name, CRA-220-feature-name, or 20260319-143022-feature-name`
 
 ## Graceful Degradation
 

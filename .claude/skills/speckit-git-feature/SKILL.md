@@ -28,17 +28,17 @@ If the user explicitly provided `GIT_BRANCH_NAME` (e.g., via environment variabl
 
 ## SPECKIT-LOCAL-PATCH: Jira-id branch prefix (this project)
 
-This project's local convention is to prefix feature branches with the Jira ticket id (e.g. `DD-41656-extended-test-disqualification`) instead of a sequential `001-...` number. The patched script supports this via:
+This project's local convention is to prefix feature branches with the Jira ticket id (e.g. `CRA-220-informant-register-initial-poc`) instead of a sequential `001-...` number. The patched script supports this via:
 
-- **Auto-detection** — if the feature description starts with a token matching `^[A-Z][A-Z0-9_]*-[0-9]+` (e.g. `DD-41656`, `CCT-1222`, `PROJ_X-9`), the script uses it as the branch prefix and strips it from the short-name suffix automatically.
+- **Auto-detection** — if the feature description starts with a token matching `^[A-Z][A-Z0-9_]*-[0-9]+` (e.g. `CRA-220`, `CCT-1222`, `PROJ_X-9`), the script uses it as the branch prefix and strips it from the short-name suffix automatically.
 - **Explicit flag** — `--jira-id <ID>` (or `JIRA_ID=<ID>` / `SPECKIT_JIRA_ID=<ID>` env var) overrides auto-detection.
 - **Opt-out** — `--no-jira-id` falls back to sequential `001-...` numbering for features that aren't tracked in Jira (spikes, refactors, etc.).
 
 **Before invoking the script you MUST do the following:**
 
-1. Inspect the user's feature description. If it starts with a Jira-style id matching `^[A-Z][A-Z0-9_]*-[0-9]+` (e.g. `DD-41656`, `CCT-1222`, `PROJ_X-9`), proceed normally — the script will detect and use it. Skip step 2.
+1. Inspect the user's feature description. If it starts with a Jira-style id matching `^[A-Z][A-Z0-9_]*-[0-9]+` (e.g. `CRA-220`, `CCT-1222`, `PROJ_X-9`), proceed normally — the script will detect and use it. Skip step 2.
 2. If the description does NOT start with a Jira id (and the user has not set `JIRA_ID` / `SPECKIT_JIRA_ID` / `GIT_BRANCH_NAME` already), ASK the user before invoking the script:
-   > "What Jira ticket is this for? (e.g. `DD-41656`. Reply with `none` to skip Jira numbering and use a sequential `001-...` prefix.)"
+   > "What Jira ticket is this for? (e.g. `CRA-220`. Reply with `none` to skip Jira numbering and use a sequential `001-...` prefix.)"
 3. Wait for the user's reply.
    - If they give a Jira id matching `^[A-Z][A-Z0-9_]*-[0-9]+`, pass it via `--jira-id <ID>` to the script.
    - If they reply with `none` (or similar), pass `--no-jira-id`.
@@ -69,7 +69,7 @@ Generate a concise short name (2-4 words) for the branch:
 
 Run the appropriate script based on your platform. Pass `--jira-id <ID>` or `--no-jira-id` UNLESS the description already starts with a Jira id — in that case auto-detect handles it and no flag is needed. The script exits 2 only when none of these three signals — explicit flag, env var, or description prefix — is present:
 
-- **Bash (Jira id auto-detected from description, no flag needed)**: `.specify/extensions/git/scripts/bash/create-new-feature.sh --json --short-name "<short-name>" "<feature description starting with the Jira id, e.g. 'DD-41656 - foo bar'>"`
+- **Bash (Jira id auto-detected from description, no flag needed)**: `.specify/extensions/git/scripts/bash/create-new-feature.sh --json --short-name "<short-name>" "<feature description starting with the Jira id, e.g. 'CRA-220 - foo bar'>"`
 - **Bash (Jira id explicit)**: `.specify/extensions/git/scripts/bash/create-new-feature.sh --json --jira-id "<JIRA-ID>" --short-name "<short-name>" "<feature description>"`
 - **Bash (no Jira id, sequential fallback)**: `.specify/extensions/git/scripts/bash/create-new-feature.sh --json --no-jira-id --short-name "<short-name>" "<feature description>"`
 - **Bash (timestamp)**: `.specify/extensions/git/scripts/bash/create-new-feature.sh --json --timestamp --no-jira-id --short-name "<short-name>" "<feature description>"`

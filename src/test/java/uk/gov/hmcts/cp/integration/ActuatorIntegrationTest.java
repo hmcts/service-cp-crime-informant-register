@@ -21,7 +21,7 @@ class ActuatorIntegrationTest {
 
     @Test
     void actuator_info_should_have_build_fields() throws Exception {
-        final String name = "service-hmcts-crime-springboot-template";
+        final String name = "service-cp-crime-informant-register";
         mockMvc.perform(get("/actuator/info"))
                 .andDo(print())
                 .andExpect(status().isOk())

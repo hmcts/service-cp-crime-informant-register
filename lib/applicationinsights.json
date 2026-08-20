@@ -1,7 +1,7 @@
 {
-  "connectionString": "${file:/mnt/secrets/PathFinder/app-insights-connection-string}",
+  "connectionString": "${APPLICATIONINSIGHTS_CONNECTION_STRING}",
   "role": {
-    "name": "PathFinder-api-service"
+    "name": "service-cp-crime-informant-register"
   },
   "sampling": {
     "overrides": [
