@@ -3,6 +3,8 @@ package uk.gov.hmcts.cp.informantregister.domain;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -41,6 +43,22 @@ class DistributionCommandParserTest {
 
     private static ContractViolation violationOf(final Throwable thrown) {
         return ((ContractValidationException) thrown).violation();
+    }
+
+    /**
+     * Every message and every {@code toString()} in the exception's whole cause chain.
+     *
+     * <p>Asserting on the outer message alone is not enough: a retained cause travels with the
+     * exception into the dead-letter description and the log index, and a parser's own message
+     * routinely quotes the input it choked on.
+     */
+    private static List<String> chainText(final Throwable thrown) {
+        final List<String> texts = new ArrayList<>();
+        for (Throwable current = thrown; current != null; current = current.getCause()) {
+            texts.add(String.valueOf(current.getMessage()));
+            texts.add(current.toString());
+        }
+        return texts;
     }
 
     @Nested
@@ -207,6 +225,79 @@ class DistributionCommandParserTest {
             assertThatThrownBy(() -> parser.parse(VALID_BODY.replace("\"RESULTS\"", "\"SJP\"")))
                     .isInstanceOf(ContractValidationException.class)
                     .hasMessageNotContaining("SJP");
+        }
+    }
+
+    @Nested
+    @DisplayName("no rejection leaks any part of the body")
+    class NoLeakage {
+
+        private void assertNothingInTheChainMentions(final String body, final String... forbidden) {
+            final Throwable thrown = org.assertj.core.api.Assertions.catchThrowable(() -> parser.parse(body));
+
+            assertThat(thrown).isInstanceOf(ContractValidationException.class);
+            assertThat(chainText(thrown))
+                    .as("the whole cause chain of %s", thrown)
+                    .allSatisfy(text -> assertThat(text).doesNotContain(forbidden));
+        }
+
+        @Test
+        void a_malformed_body_should_not_travel_with_the_parser_exception_that_read_it() {
+            final String body = "{\"source\": \"MARKER-c0ffee\", \"requestId\": ";
+
+            assertNothingInTheChainMentions(body, "MARKER-c0ffee");
+        }
+
+        @Test
+        void a_malformed_body_rejection_should_retain_no_cause_at_all() {
+            // The underlying parser exception is translated, not wrapped: its message is written by
+            // a library that quotes the source it choked on, and nothing downstream needs it.
+            assertThatThrownBy(() -> parser.parse("{\"source\": \"MARKER-c0ffee\", "))
+                    .isInstanceOf(ContractValidationException.class)
+                    .hasNoCause();
+        }
+
+        @Test
+        void an_impossible_date_should_not_travel_with_the_date_parser_exception() {
+            assertNothingInTheChainMentions(
+                    VALID_BODY.replace("2026-08-20\"", "2026-02-30\""), "2026-02-30");
+        }
+
+        @Test
+        void an_out_of_contract_instant_should_not_travel_with_the_time_parser_exception() {
+            assertNothingInTheChainMentions(
+                    VALID_BODY.replace("2026-08-20T09:00:00Z", "2026-08-20T09:00:00+01:00:30"),
+                    "+01:00:30", "2026-08-20T09:00:00+01:00:30");
+        }
+
+        @Test
+        void an_out_of_contract_identifier_should_not_be_quoted() {
+            assertNothingInTheChainMentions(
+                    VALID_BODY.replace("3f4a2b1c-5d6e-4f70-8912-a3b4c5d6e7f8", "MARKER-identifier"),
+                    "MARKER-identifier");
+        }
+
+        @Test
+        void a_value_outside_an_enumeration_should_not_be_quoted() {
+            assertNothingInTheChainMentions(
+                    VALID_BODY.replace("\"RESULTS\"", "\"MARKER-source\""), "MARKER-source");
+        }
+
+        @Test
+        void a_value_of_the_wrong_type_should_not_be_quoted() {
+            assertNothingInTheChainMentions(VALID_BODY.replace("\"RESULTS\"", "4242424242"), "4242424242");
+        }
+
+        @Test
+        void a_hostile_unknown_field_name_should_be_replaced_rather_than_echoed() {
+            final String withHostileField = VALID_BODY.replace(
+                    "  \"eventType\": \"Hearing_Resulted\"",
+                    "  \"eventType\": \"Hearing_Resulted\",\n  \"<script>MARKER</script>\": \"x\"");
+
+            assertNothingInTheChainMentions(withHostileField, "MARKER", "<script>");
+            assertThatThrownBy(() -> parser.parse(withHostileField))
+                    .isInstanceOf(ContractValidationException.class)
+                    .hasMessageContaining("<unprintable>");
         }
     }
 
