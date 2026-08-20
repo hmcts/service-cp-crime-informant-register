@@ -30,7 +30,7 @@ public record InformantRegisterProperties(
     /**
      * @param enabled master switch for starting the processor at all; false in the test profile
      */
-    public record Consumer(boolean enabled) {
+    public record Consumer(@DefaultValue("true") boolean enabled) {
     }
 
     /**
@@ -46,29 +46,31 @@ public record InformantRegisterProperties(
     public record Servicebus(
             String connectionString,
             String namespace,
-            String queueName,
-            int maxConcurrentCalls,
-            int maxDeliveryCount,
-            Duration maxAutoLockRenewDuration,
-            Duration healthStaleness) {
+            @DefaultValue("informantregister.requests") String queueName,
+            @DefaultValue("2") int maxConcurrentCalls,
+            @DefaultValue("5") int maxDeliveryCount,
+            @DefaultValue("5m") Duration maxAutoLockRenewDuration,
+            @DefaultValue("60s") Duration healthStaleness) {
     }
 
     /**
      * @param lease             claim expiry, written as {@code now() + lease}
      * @param processingDeadline enforced run bound, strictly shorter than the lease
      */
-    public record Claim(Duration lease, Duration processingDeadline) {
+    public record Claim(
+            @DefaultValue("5m") Duration lease,
+            @DefaultValue("4m") Duration processingDeadline) {
     }
 
     /**
      * @param probeInterval store-health probe interval, driving start and resume
      */
-    public record Store(Duration probeInterval) {
+    public record Store(@DefaultValue("10s") Duration probeInterval) {
     }
 
     /**
      * @param payloadFailureMode the simulated payload failure; test and local profiles only
      */
-    public record Stub(PayloadFailureMode payloadFailureMode) {
+    public record Stub(@DefaultValue("NONE") PayloadFailureMode payloadFailureMode) {
     }
 }

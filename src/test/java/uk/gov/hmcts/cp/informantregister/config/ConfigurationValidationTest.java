@@ -148,9 +148,12 @@ class ConfigurationValidationTest {
 
         @Test
         void a_deadline_shorter_than_the_lease_should_start() {
+            // The renewal is raised alongside the deadline so this case tests one rule only: at
+            // 4m59s the default 5m renewal would break the lock rule, which has its own cases below.
             runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
                     "informantregister.claim.lease=5m",
-                    "informantregister.claim.processing-deadline=PT4M59S").run(context ->
+                    "informantregister.claim.processing-deadline=PT4M59S",
+                    "informantregister.servicebus.max-auto-lock-renew-duration=PT5M29S").run(context ->
                             assertThat(context).hasNotFailed());
         }
     }
