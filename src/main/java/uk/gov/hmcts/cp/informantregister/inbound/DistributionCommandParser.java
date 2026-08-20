@@ -119,9 +119,10 @@ public class DistributionCommandParser {
         try {
             return objectMapper.readTree(body);
         } catch (JacksonException malformed) {
-            // The parser's own message quotes the offending body, so it is used as the cause for a
-            // stack trace and never as the reason that travels onward.
-            throw new ContractValidationException(ContractViolation.MALFORMED_JSON, null, malformed);
+            // Translated, not wrapped. The library's message is written to help a developer and may
+            // quote the bytes it choked on; this exception travels into a dead-letter description
+            // and a log index, so it carries the bounded reason and nothing else.
+            throw new ContractValidationException(ContractViolation.MALFORMED_JSON, null);
         }
     }
 

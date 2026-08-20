@@ -9,6 +9,11 @@ package uk.gov.hmcts.cp.informantregister.domain;
  * <p>The exception carries a bounded {@link ContractViolation} and, where one is known, the name of
  * the offending field. It never carries the field's value: the message is producer-supplied content
  * and this exception's text reaches the dead-letter description and the log index.
+ *
+ * <p>There is deliberately no constructor taking a cause. Underlying parser exceptions are
+ * translated rather than wrapped, because a library's message is written to help a developer and may
+ * quote the input it choked on — and a cause travels wherever the exception travels. Offering the
+ * constructor would make leaking the body the easy thing to do.
  */
 public class ContractValidationException extends RuntimeException {
 
@@ -19,14 +24,6 @@ public class ContractValidationException extends RuntimeException {
 
     public ContractValidationException(final ContractViolation violation, final String field) {
         super(violation + (field == null ? "" : " [" + field + "]"));
-        this.violationCode = violation;
-        this.fieldName = field;
-    }
-
-    public ContractValidationException(final ContractViolation violation,
-                                       final String field,
-                                       final Throwable cause) {
-        super(violation + (field == null ? "" : " [" + field + "]"), cause);
         this.violationCode = violation;
         this.fieldName = field;
     }
