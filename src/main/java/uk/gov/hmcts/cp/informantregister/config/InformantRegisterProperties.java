@@ -1,7 +1,6 @@
 package uk.gov.hmcts.cp.informantregister.config;
 
 import java.time.Duration;
-
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
@@ -28,12 +27,16 @@ public record InformantRegisterProperties(
         @DefaultValue Stub stub) {
 
     /**
+     * Master switch for the Service Bus consumer.
+     *
      * @param enabled master switch for starting the processor at all; false in the test profile
      */
     public record Consumer(@DefaultValue("true") boolean enabled) {
     }
 
     /**
+     * Connection, settlement and health settings for the inbound queue.
+     *
      * @param connectionString          local and CI only, emulator connection string
      * @param namespace                 deployed only, fully qualified namespace for workload identity
      * @param queueName                 the inbound queue
@@ -54,6 +57,8 @@ public record InformantRegisterProperties(
     }
 
     /**
+     * Claim timing: how long a claim lives and how long a run may take inside it.
+     *
      * @param lease             claim expiry, written as {@code now() + lease}
      * @param processingDeadline enforced run bound, strictly shorter than the lease
      */
@@ -63,12 +68,16 @@ public record InformantRegisterProperties(
     }
 
     /**
+     * Processed-log availability probing.
+     *
      * @param probeInterval store-health probe interval, driving start and resume
      */
     public record Store(@DefaultValue("10s") Duration probeInterval) {
     }
 
     /**
+     * Stub adapter behaviour, for the test and local profiles only.
+     *
      * @param payloadFailureMode the simulated payload failure; test and local profiles only
      */
     public record Stub(@DefaultValue("NONE") PayloadFailureMode payloadFailureMode) {

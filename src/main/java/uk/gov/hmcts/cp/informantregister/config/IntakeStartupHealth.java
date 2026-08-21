@@ -1,7 +1,6 @@
 package uk.gov.hmcts.cp.informantregister.config;
 
 import java.util.Optional;
-
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

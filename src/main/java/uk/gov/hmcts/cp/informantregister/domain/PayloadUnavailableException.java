@@ -18,6 +18,7 @@ public class PayloadUnavailableException extends RuntimeException {
 
     private final ReasonCode reasonCode;
 
+    /** Creates the failure carrying the reason the payload could not be fetched. */
     public PayloadUnavailableException(final ReasonCode reason) {
         super(reason.code());
         this.reasonCode = reason;

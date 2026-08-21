@@ -16,6 +16,8 @@ package uk.gov.hmcts.cp.informantregister.inbound;
 public interface StoreGate {
 
     /**
+     * Reports whether the processed log can be reached right now.
+     *
      * @return whether the processed log can be reached right now
      */
     boolean storeAvailable();

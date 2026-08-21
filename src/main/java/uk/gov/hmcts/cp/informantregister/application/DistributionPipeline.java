@@ -4,7 +4,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
@@ -68,6 +67,7 @@ public class DistributionPipeline {
     private final Clock clock;
     private final Duration processingDeadline;
 
+    /** Creates the pipeline over its ports; every dependency is an application-owned interface. */
     public DistributionPipeline(
             final IdempotencyGuard guard,
             final HearingPayloadSource payloadSource,

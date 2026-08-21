@@ -40,6 +40,7 @@ public class StubHearingPayloadSource implements HearingPayloadSource {
     private final PayloadFailureMode failureMode;
     private final JsonNode placeholder;
 
+    /** Reads the configured failure mode and pre-parses the placeholder payload. */
     public StubHearingPayloadSource(
             final InformantRegisterProperties properties, final ObjectMapper objectMapper) {
         this.failureMode = properties.stub().payloadFailureMode();

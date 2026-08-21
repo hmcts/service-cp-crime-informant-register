@@ -34,11 +34,14 @@ public class ProcessedLogProbe {
 
     private final JdbcClient jdbcClient;
 
+    /** Creates the probe over the processed log's connection. */
     public ProcessedLogProbe(final JdbcClient jdbcClient) {
         this.jdbcClient = jdbcClient;
     }
 
     /**
+     * Asks the processed log to answer a trivial query.
+     *
      * @return whether the processed log answered
      */
     public boolean available() {

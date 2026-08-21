@@ -21,6 +21,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.invocation.InvocationOnMock;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -213,50 +214,73 @@ class MessageAccountingIT {
     }
 
     /**
-     * <strong>Every</strong> outcome that currently describes a published message.
+     * What the two places an operator can look actually say about one message.
      *
-     * <p>Each of SC-001's five is evaluated on its own terms and none of them is skipped because an
-     * earlier one matched. That is the point: the criterion is not "a bucket can be found for every
-     * message" but "exactly one describes it". A chain of else-branches answers the first question
-     * and silently guarantees the second, so a message that was both completed and sitting on the
-     * dead-letter queue — a register somebody believes was sent, beside the same register parked as
-     * failed — would be reported as tidily accounted for.
+     * @param status  what the processed log records, if it records anything
+     * @param claimed whether a runner holds the request's claim
+     * @param parked  whether the message is on the dead-letter queue
+     * @param queued  whether the message is on the queue it arrived on
+     */
+    record Observed(Optional<RequestStatus> status, boolean claimed, boolean parked, boolean queued) {
+
+        boolean recorded(final RequestStatus expected) {
+            return status.filter(expected::equals).isPresent();
+        }
+
+        boolean nonTerminal() {
+            return recorded(RequestStatus.RECEIVED) || recorded(RequestStatus.RETRYING);
+        }
+
+        boolean unrecorded() {
+            return status.isEmpty();
+        }
+    }
+
+    /**
+     * <strong>Every</strong> outcome that currently describes a message, from all of the evidence.
      *
-     * <p>Read from the queue and the processed log alone, which are the two places an operator can
-     * look. The claim, not the queue, is what identifies a run in progress: a peek reports a locked
+     * <p>The record's state and the message's whereabouts are read once, separately, and then each
+     * of SC-001's five outcomes is evaluated against <em>all</em> of them. That is what makes the
+     * assertion below mean anything. An outcome stated only in terms of the record — "the log says
+     * COMPLETED, so it is completed" — cannot be contradicted by the queue, so a request recorded
+     * COMPLETED that also has a copy sitting on the dead-letter queue would be reported as tidily
+     * accounted for. That is two registers: one somebody believes was sent, and the same one parked
+     * as failed. Each outcome therefore names where the message must be as well as what the log must
+     * say, and a message whose evidence disagrees with itself satisfies none of them — an empty set,
+     * which fails as loudly as a set of two.
+     *
+     * <p>The claim, not the queue, is what identifies a run in progress: a peek reports a locked
      * message exactly as it reports a waiting one, because locking is not deletion, whereas a claim
      * is held only while a runner is working.
      */
-    private static Set<Outcome> outcomesFor(final Published message) {
-        final Optional<Row> record = row(message.requestId());
-        final Optional<RequestStatus> status =
-                record.map(found -> RequestStatus.valueOf(found.status()));
-        final boolean claimed = record.map(found -> found.claimOwner() != null).orElse(false);
-        final boolean parked = onDeadLetterQueue(message.messageId());
-        final boolean queued = onQueue(message.messageId());
-
+    static Set<Outcome> outcomesOf(final Observed observed) {
         final Set<Outcome> applicable = EnumSet.noneOf(Outcome.class);
-        if (status.filter(RequestStatus.COMPLETED::equals).isPresent()) {
+        if (observed.recorded(RequestStatus.COMPLETED) && !observed.parked() && !observed.queued()) {
             applicable.add(Outcome.COMPLETED);
         }
-        if (status.filter(RequestStatus.FAILED::equals).isPresent() && parked) {
+        if (observed.recorded(RequestStatus.FAILED) && observed.parked() && !observed.queued()) {
             applicable.add(Outcome.FAILED_AND_PARKED);
         }
-        if (record.isEmpty() && parked) {
+        if (observed.unrecorded() && observed.parked() && !observed.queued()) {
             applicable.add(Outcome.PARKED_AS_INVALID);
         }
-        if (nonTerminal(status) && claimed) {
+        if (observed.nonTerminal() && observed.claimed() && !observed.parked()) {
             applicable.add(Outcome.IN_FLIGHT);
         }
-        if (queued && !claimed) {
+        if (observed.queued() && !observed.claimed() && !observed.parked()
+                && (observed.unrecorded() || observed.nonTerminal())) {
             applicable.add(Outcome.QUEUED_OR_RETRYING);
         }
         return applicable;
     }
 
-    private static boolean nonTerminal(final Optional<RequestStatus> status) {
-        return status.filter(found ->
-                found == RequestStatus.RECEIVED || found == RequestStatus.RETRYING).isPresent();
+    private static Set<Outcome> outcomesFor(final Published message) {
+        final Optional<Row> record = row(message.requestId());
+        return outcomesOf(new Observed(
+                record.map(found -> RequestStatus.valueOf(found.status())),
+                record.map(found -> found.claimOwner() != null).orElse(false),
+                onDeadLetterQueue(message.messageId()),
+                onQueue(message.messageId())));
     }
 
     // --- the batch --------------------------------------------------------------------------
@@ -349,5 +373,74 @@ class MessageAccountingIT {
         assertThat(onDeadLetterQueue(inFlight.messageId()))
                 .as("a request that was merely slow is not a request that failed")
                 .isFalse();
+    }
+
+    /**
+     * The accounting itself, held to the property the batch above rests on.
+     *
+     * <p>The batch can only show that the five outcomes are reachable. Whether they are
+     * <em>exclusive</em> is a property of the rule, and the way to find out is to hand it evidence
+     * that contradicts itself — which a healthy system will not produce on demand, and which is
+     * exactly the shape of the incident somebody would eventually be asked to explain.
+     */
+    @Nested
+    @DisplayName("the accounting rule")
+    class TheAccountingRule {
+
+        @Test
+        @DisplayName("a completed request with a copy on the dead-letter queue is accounted for by nothing")
+        void should_refuse_to_account_for_a_completed_request_that_is_also_parked() {
+            assertThat(outcomesOf(new Observed(
+                    Optional.of(RequestStatus.COMPLETED), false, true, false)))
+                    .as("one register believed sent, and the same one parked as failed — the log "
+                            + "alone would call this completed, so the outcome must ask where the "
+                            + "message is as well")
+                    .isEmpty();
+        }
+
+        @Test
+        @DisplayName("a parked request still sitting on the queue it arrived on is accounted for by nothing")
+        void should_refuse_to_account_for_a_message_that_is_parked_and_still_queued() {
+            assertThat(outcomesOf(new Observed(
+                    Optional.of(RequestStatus.FAILED), false, true, true)))
+                    .as("parked, and still due to be delivered again by the queue it is on")
+                    .isEmpty();
+        }
+
+        @Test
+        @DisplayName("a request recorded failed but on no queue at all is accounted for by nothing")
+        void should_refuse_to_account_for_a_failed_request_that_was_never_parked() {
+            assertThat(outcomesOf(new Observed(
+                    Optional.of(RequestStatus.FAILED), false, false, false)))
+                    .as("recorded as parked, and nowhere to be found")
+                    .isEmpty();
+        }
+
+        @Test
+        @DisplayName("a message with no record and nowhere to be is accounted for by nothing")
+        void should_refuse_to_account_for_a_message_that_simply_vanished() {
+            assertThat(outcomesOf(new Observed(Optional.empty(), false, false, false)))
+                    .as("the silent loss the whole criterion exists to detect")
+                    .isEmpty();
+        }
+
+        @Test
+        @DisplayName("each of the five honest states is accounted for by exactly one outcome")
+        void should_account_for_every_consistent_state_exactly_once() {
+            assertThat(outcomesOf(new Observed(
+                    Optional.of(RequestStatus.COMPLETED), false, false, false)))
+                    .containsExactly(Outcome.COMPLETED);
+            assertThat(outcomesOf(new Observed(
+                    Optional.of(RequestStatus.FAILED), false, true, false)))
+                    .containsExactly(Outcome.FAILED_AND_PARKED);
+            assertThat(outcomesOf(new Observed(Optional.empty(), false, true, false)))
+                    .containsExactly(Outcome.PARKED_AS_INVALID);
+            assertThat(outcomesOf(new Observed(
+                    Optional.of(RequestStatus.RECEIVED), true, false, true)))
+                    .containsExactly(Outcome.IN_FLIGHT);
+            assertThat(outcomesOf(new Observed(
+                    Optional.of(RequestStatus.RETRYING), false, false, true)))
+                    .containsExactly(Outcome.QUEUED_OR_RETRYING);
+        }
     }
 }

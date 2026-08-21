@@ -1,7 +1,6 @@
 package uk.gov.hmcts.cp.informantregister.config;
 
 import java.time.Duration;
-
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -37,6 +36,7 @@ public class PropertiesValidator implements InitializingBean {
 
     private final InformantRegisterProperties properties;
 
+    /** Creates the validator over the bound properties. */
     public PropertiesValidator(final InformantRegisterProperties properties) {
         this.properties = properties;
     }

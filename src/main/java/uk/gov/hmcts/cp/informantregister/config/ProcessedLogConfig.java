@@ -45,6 +45,7 @@ public class ProcessedLogConfig {
         return new ProcessedLogProbe(jdbcClient);
     }
 
+    /** The {@code (source, requestId)} idempotency guard. */
     @Bean
     public IdempotencyGuard idempotencyGuard(
             final ProcessedRequestRepository repository, final ProcessingMetrics metrics) {

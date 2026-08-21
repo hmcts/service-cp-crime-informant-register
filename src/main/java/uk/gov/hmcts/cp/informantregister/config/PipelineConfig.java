@@ -1,7 +1,6 @@
 package uk.gov.hmcts.cp.informantregister.config;
 
 import java.time.Clock;
-
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -49,17 +48,20 @@ public class PipelineConfig {
         return new DistributionCommandParser(objectMapper);
     }
 
+    /** The payload-source port, stubbed until the Redis adapter story lands. */
     @Bean
     public HearingPayloadSource hearingPayloadSource(
             final InformantRegisterProperties properties, final ObjectMapper objectMapper) {
         return new StubHearingPayloadSource(properties, objectMapper);
     }
 
+    /** The submission port, stubbed until the Results adapter story lands. */
     @Bean
     public RegisterSubmissionClient registerSubmissionClient() {
         return new StubRegisterSubmissionClient();
     }
 
+    /** The use-case orchestrator, wired against ports only. */
     @Bean
     public DistributionPipeline distributionPipeline(
             final IdempotencyGuard guard,

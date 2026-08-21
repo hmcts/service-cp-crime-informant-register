@@ -19,6 +19,7 @@ public class SubmissionFailedException extends RuntimeException {
     private final FailureClassification failureClassification;
     private final ReasonCode reasonCode;
 
+    /** Creates the failure, classified at the throw site as transient or non-transient. */
     public SubmissionFailedException(
             final FailureClassification classification, final ReasonCode reason) {
         super(reason.code());

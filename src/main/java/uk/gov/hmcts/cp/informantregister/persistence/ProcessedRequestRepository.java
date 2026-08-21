@@ -6,7 +6,6 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
-
 import org.springframework.jdbc.core.simple.JdbcClient;
 import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
 import uk.gov.hmcts.cp.informantregister.domain.ProcessedRequestRecord;
@@ -147,6 +146,8 @@ public class ProcessedRequestRepository {
     private final Duration claimLease;
 
     /**
+     * Creates the repository over the processed log's connection.
+     *
      * @param jdbcClient the processed log's connection
      * @param claimLease {@code informantregister.claim.lease} — how long an acquired claim stays
      *                   live. Passed as the one value the statements bind rather than as the whole

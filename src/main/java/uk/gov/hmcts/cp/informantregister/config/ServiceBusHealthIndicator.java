@@ -1,5 +1,9 @@
 package uk.gov.hmcts.cp.informantregister.config;
 
+import com.azure.core.amqp.exception.AmqpErrorCondition;
+import com.azure.core.amqp.exception.AmqpException;
+import com.azure.messaging.servicebus.ServiceBusException;
+import com.azure.messaging.servicebus.ServiceBusFailureReason;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
@@ -8,13 +12,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
-
 import javax.net.ssl.SSLException;
-
-import com.azure.core.amqp.exception.AmqpErrorCondition;
-import com.azure.core.amqp.exception.AmqpException;
-import com.azure.messaging.servicebus.ServiceBusException;
-import com.azure.messaging.servicebus.ServiceBusFailureReason;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.health.contributor.Health;
@@ -135,6 +133,7 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
      */
     private final AtomicReference<Instant> intakeStartedAt = new AtomicReference<>();
 
+    /** Creates the indicator; {@code staleness} bounds how old a probe result may be. */
     public ServiceBusHealthIndicator(
             final Duration staleness, final ProcessingMetrics metrics, final Clock clock) {
         this.staleness = staleness;
@@ -216,7 +215,7 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
         return switch (failure) {
             case AmqpException amqp -> contains(MESSAGE_LEVEL_CONDITIONS, amqp.getErrorCondition());
             case ServiceBusException serviceBus ->
-                    contains(MESSAGE_LEVEL_REASONS, serviceBus.getReason());
+                contains(MESSAGE_LEVEL_REASONS, serviceBus.getReason());
             default -> false;
         };
     }

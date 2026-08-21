@@ -10,7 +10,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
-
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -93,6 +92,7 @@ public class DistributionCommandParser {
 
     private final ObjectMapper objectMapper;
 
+    /** Creates the parser over the service-wide {@code ObjectMapper}. */
     public DistributionCommandParser(final ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }

@@ -1,5 +1,6 @@
 package uk.gov.hmcts.cp.informantregister.inbound;
 
+import com.azure.messaging.servicebus.ServiceBusProcessorClient;
 import java.time.Duration;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -8,8 +9,6 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
-
-import com.azure.messaging.servicebus.ServiceBusProcessorClient;
 import org.flywaydb.core.Flyway;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -123,6 +122,7 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
      */
     private volatile boolean gatedStartCompleted;
 
+    /** Creates the controller that gates intake start on migrations and store availability. */
     public ConsumerLifecycleController(
             final ServiceBusProcessorClient processor,
             final ProcessedLogProbe storeProbe,

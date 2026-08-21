@@ -1,11 +1,10 @@
 package uk.gov.hmcts.cp.informantregister.inbound;
 
-import java.time.OffsetDateTime;
-import java.util.UUID;
-
 import com.azure.messaging.servicebus.ServiceBusReceivedMessage;
 import com.azure.messaging.servicebus.ServiceBusReceivedMessageContext;
 import com.azure.messaging.servicebus.models.DeadLetterOptions;
+import java.time.OffsetDateTime;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -72,6 +71,7 @@ public class InformantRegisterMessageListener {
     private final StoreGate storeGate;
     private final int maxDeliveryCount;
 
+    /** Creates the listener; the settlement decision stays here and nowhere else. */
     public InformantRegisterMessageListener(
             final DistributionCommandParser parser,
             final DistributionPipeline pipeline,

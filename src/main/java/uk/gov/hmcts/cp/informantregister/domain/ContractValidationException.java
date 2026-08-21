@@ -22,12 +22,14 @@ public class ContractValidationException extends RuntimeException {
     private final ContractViolation violationCode;
     private final String fieldName;
 
+    /** Creates the violation; {@code field} is null when no single field is at fault. */
     public ContractValidationException(final ContractViolation violation, final String field) {
         super(violation + (field == null ? "" : " [" + field + "]"));
         this.violationCode = violation;
         this.fieldName = field;
     }
 
+    /** The violated contract rule. */
     public ContractViolation violation() {
         return violationCode;
     }

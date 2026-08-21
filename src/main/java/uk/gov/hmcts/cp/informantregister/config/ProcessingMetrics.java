@@ -1,12 +1,11 @@
 package uk.gov.hmcts.cp.informantregister.config;
 
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BooleanSupplier;
-
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import org.springframework.stereotype.Component;
 import uk.gov.hmcts.cp.informantregister.domain.DeadLetterReason;
 import uk.gov.hmcts.cp.informantregister.domain.FailureClassification;
@@ -69,6 +68,7 @@ public class ProcessingMetrics {
     private final AtomicReference<BooleanSupplier> serviceBusState =
             new AtomicReference<>(() -> true);
 
+    /** Registers the service's gauges against the given registry. */
     public ProcessingMetrics(final MeterRegistry registry) {
         this.registry = registry;
 

@@ -3,7 +3,6 @@ package uk.gov.hmcts.cp.informantregister.application;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
@@ -51,6 +50,7 @@ public class IdempotencyGuard {
     private final ProcessedRequestRepository repository;
     private final ProcessingMetrics metrics;
 
+    /** Creates the guard over the processed-request log. */
     public IdempotencyGuard(
             final ProcessedRequestRepository repository,
             final ProcessingMetrics metrics) {

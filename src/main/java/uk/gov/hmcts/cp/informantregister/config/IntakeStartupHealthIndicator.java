@@ -1,7 +1,6 @@
 package uk.gov.hmcts.cp.informantregister.config;
 
 import java.util.Optional;
-
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import uk.gov.hmcts.cp.informantregister.inbound.ConsumerLifecycleController;
@@ -33,6 +32,7 @@ public class IntakeStartupHealthIndicator implements HealthIndicator {
 
     private final Optional<ConsumerLifecycleController> lifecycle;
 
+    /** Creates the indicator; an empty lifecycle means the consumer is disabled. */
     public IntakeStartupHealthIndicator(final Optional<ConsumerLifecycleController> lifecycle) {
         this.lifecycle = lifecycle;
     }

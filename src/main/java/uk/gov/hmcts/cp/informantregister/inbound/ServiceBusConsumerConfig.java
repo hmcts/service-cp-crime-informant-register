@@ -1,9 +1,5 @@
 package uk.gov.hmcts.cp.informantregister.inbound;
 
-import java.time.Clock;
-import java.time.Duration;
-import java.util.function.Supplier;
-
 import com.azure.core.amqp.AmqpRetryMode;
 import com.azure.core.amqp.AmqpRetryOptions;
 import com.azure.identity.DefaultAzureCredentialBuilder;
@@ -11,6 +7,9 @@ import com.azure.messaging.servicebus.ServiceBusClientBuilder;
 import com.azure.messaging.servicebus.ServiceBusErrorContext;
 import com.azure.messaging.servicebus.ServiceBusProcessorClient;
 import com.azure.messaging.servicebus.ServiceBusReceivedMessageContext;
+import java.time.Clock;
+import java.time.Duration;
+import java.util.function.Supplier;
 import org.flywaydb.core.Flyway;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,6 +80,7 @@ public class ServiceBusConsumerConfig {
                 properties.servicebus().healthStaleness(), metrics, clock);
     }
 
+    /** The inbound adapter: parse, dispatch to the pipeline, settle exactly once. */
     @Bean
     public InformantRegisterMessageListener informantRegisterMessageListener(
             final DistributionCommandParser parser,
