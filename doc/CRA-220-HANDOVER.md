@@ -173,7 +173,8 @@ detection.** For normal publishing it is exactly:
 ```
 
 Deterministic, so the broker collapses identical republishes of the same share before this service
-ever sees them (`doc/API_CONTRACTS.md`, "Message identity"). **A random or per-send id is not an
+ever sees them (`doc/API_CONTRACTS.md`, "Message properties (broker-level, part of the contract)"
+and the replay rule that follows it). **A random or per-send id is not an
 acceptable substitute**: every republish then looks like a new message, duplicate detection matches
 nothing, and the queue's whole first line of defence is gone — the idempotency guard would still
 hold, but it would be doing work the broker was configured to prevent.
