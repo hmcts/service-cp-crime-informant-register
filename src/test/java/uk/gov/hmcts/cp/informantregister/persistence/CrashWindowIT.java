@@ -31,7 +31,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CrashWindowIT {
 
     private static final Duration LEASE = Duration.ofMinutes(5);
-    private static final Duration ALREADY_EXPIRED = Duration.ZERO;
 
     private final DistributionCommand command = ProcessedLogTestSupport.command();
     private final IdempotencyGuard guard = ProcessedLogTestSupport.guard(LEASE);
@@ -49,10 +48,14 @@ class CrashWindowIT {
         return new DeliveryIdentity("msg-" + number, "runner-" + number + "/delivery-" + number);
     }
 
-    /** A run that started and never recorded anything, leaving a claim nobody will release. */
+    /**
+     * A run that started and never recorded anything, leaving a claim nobody will release — aged an
+     * hour into the past by the database's clock, which is what the next delivery finds.
+     */
     private RunClaim crashedRun(final int number) {
-        return runClaimOf(
-                ProcessedLogTestSupport.guard(ALREADY_EXPIRED).admit(command, delivery(number)));
+        final RunClaim claim = runClaimOf(guard.admit(command, delivery(number)));
+        ProcessedLogTestSupport.expireClaim(command.source(), command.requestId());
+        return claim;
     }
 
     @Test

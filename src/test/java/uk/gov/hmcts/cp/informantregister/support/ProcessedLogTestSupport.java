@@ -60,14 +60,41 @@ public final class ProcessedLogTestSupport {
 
     /**
      * A repository holding the claim lease a suite wants.
-     *
-     * <p>A lease of {@link Duration#ZERO} writes an expiry of {@code now()} — already in the past for
-     * every later statement, since each runs in its own transaction and {@code now()} advances. That
-     * is how the reclamation and stale-runner suites produce an expired claim deterministically,
-     * without sleeping and without touching a JVM clock.
      */
     public static ProcessedRequestRepository repository(final Duration lease) {
         return new ProcessedRequestRepository(jdbcClient(), lease);
+    }
+
+    /**
+     * Ages an existing claim until it is unambiguously past its expiry — what a crashed runner leaves
+     * behind — using the database's own clock and without sleeping.
+     *
+     * <p>An hour into the past rather than a lease of zero. Zero writes an expiry of {@code now()},
+     * and the reclaim requires {@code claim_expires_at < now()} strictly, so two transactions landing
+     * on the same microsecond would leave the claim un-reclaimable and the suite flaky for reasons
+     * that have nothing to do with the guard.
+     *
+     * <p>{@code updated_at} is deliberately left alone: this is a fixture ageing a claim, not the
+     * service recording a change.
+     *
+     * @throws IllegalStateException if there was no claim to age — a fixture that quietly does
+     *                               nothing would turn every test using it green for the wrong reason
+     */
+    public static void expireClaim(final String source, final UUID requestId) {
+        final int aged = jdbcClient()
+                .sql("""
+                        UPDATE processed_request
+                           SET claim_expires_at = now() - interval '1 hour'
+                         WHERE source = :source AND request_id = :requestId
+                           AND claim_owner IS NOT NULL
+                        """)
+                .param("source", source)
+                .param("requestId", requestId)
+                .update();
+        if (aged != 1) {
+            throw new IllegalStateException(
+                    "expected one live claim to age for " + source + "/" + requestId + ", aged " + aged);
+        }
     }
 
     public static IdempotencyGuard guard(final Duration lease, final ProcessingMetrics metrics) {

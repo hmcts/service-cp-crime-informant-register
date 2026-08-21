@@ -42,7 +42,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 class StaleRunnerRejectionIT {
 
     private static final Duration LEASE = Duration.ofMinutes(5);
-    private static final Duration ALREADY_EXPIRED = Duration.ZERO;
     private static final String COUNTER = "informantregister_stale_runner_rejections_total";
     private static final String CURRENT_OWNER = "runner-2/delivery-2";
 
@@ -69,8 +68,9 @@ class StaleRunnerRejectionIT {
         captured.start();
         guardLogger.addAppender(captured);
 
-        supersededClaim = runClaimOf(ProcessedLogTestSupport.guard(ALREADY_EXPIRED)
-                .admit(command, new DeliveryIdentity("msg-1", "runner-1/delivery-1")));
+        supersededClaim = runClaimOf(
+                guard.admit(command, new DeliveryIdentity("msg-1", "runner-1/delivery-1")));
+        ProcessedLogTestSupport.expireClaim(command.source(), command.requestId());
         currentClaim = runClaimOf(
                 guard.admit(command, new DeliveryIdentity("msg-2", CURRENT_OWNER)));
     }
@@ -153,8 +153,9 @@ class StaleRunnerRejectionIT {
     void a_stale_write_should_be_refused_even_when_the_owner_is_unchanged() {
         final DistributionCommand redelivered = ProcessedLogTestSupport.command();
         final String sameOwner = "runner-1/delivery-1";
-        final RunClaim lapsed = runClaimOf(ProcessedLogTestSupport.guard(ALREADY_EXPIRED)
-                .admit(redelivered, new DeliveryIdentity("msg-1", sameOwner)));
+        final RunClaim lapsed = runClaimOf(
+                guard.admit(redelivered, new DeliveryIdentity("msg-1", sameOwner)));
+        ProcessedLogTestSupport.expireClaim(redelivered.source(), redelivered.requestId());
         final RunClaim retaken = runClaimOf(
                 guard.admit(redelivered, new DeliveryIdentity("msg-1", sameOwner)));
         assertThat(retaken.owner()).isEqualTo(lapsed.owner());

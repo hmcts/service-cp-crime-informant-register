@@ -27,16 +27,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * A claim its runner never released is reclaimable, and reclaiming it is itself a race exactly one
  * delivery wins (spec FR-008, and the "crash after RECEIVED" edge case).
  *
- * <p>Expiry is produced by configuration, not by waiting: a guard built with a zero lease writes an
- * expiry of {@code now()}, which every later statement — each in its own transaction, each reading a
- * later {@code now()} — sees as past. That is what a crashed runner leaves behind, without a sleep and
- * without a JVM clock anywhere near the decision. The comparison stays where the data model puts it,
- * inside the conditional update, on the database's own clock.
+ * <p>Expiry is produced by ageing the claim an hour into the past with the database's own clock, not by
+ * waiting: that is what a crashed runner leaves behind, with no sleep and no JVM clock anywhere near
+ * the decision. The comparison stays where the data model puts it — inside the conditional update, on
+ * the database's clock.
  */
 class ClaimReclamationIT {
 
     private static final Duration LEASE = Duration.ofMinutes(5);
-    private static final Duration ALREADY_EXPIRED = Duration.ZERO;
     private static final int RACERS = 6;
 
     private final ExecutorService executor = Executors.newFixedThreadPool(RACERS);
@@ -57,10 +55,12 @@ class ClaimReclamationIT {
         return ((GuardDecision.Run) decision).claim();
     }
 
-    /** A runner that took the claim and never came back; its claim is already past its expiry. */
+    /** A runner that took the claim and never came back; its claim is aged past its expiry. */
     private RunClaim crashedRunner() {
-        return runClaimOf(ProcessedLogTestSupport.guard(ALREADY_EXPIRED)
-                .admit(command, new DeliveryIdentity("msg-1", "crashed-runner/delivery-1")));
+        final RunClaim claim = runClaimOf(
+                guard.admit(command, new DeliveryIdentity("msg-1", "crashed-runner/delivery-1")));
+        ProcessedLogTestSupport.expireClaim(command.source(), command.requestId());
+        return claim;
     }
 
     private List<GuardDecision> raceToReclaim() throws Exception {
@@ -111,6 +111,9 @@ class ClaimReclamationIT {
     void a_reclaim_should_leave_the_record_in_the_state_it_found_it() {
         final RunClaim crashed = crashedRunner();
         final Row before = row();
+        // Both timestamps come off the same row, so the fixture's claim is provably stale by the
+        // database's reckoning rather than by this JVM's.
+        assertThat(before.claimExpiresAt()).isBefore(before.createdAt());
 
         final RunClaim reclaimed = runClaimOf(guard.admit(
                 command, new DeliveryIdentity("msg-2", "runner-2/delivery-1")));
