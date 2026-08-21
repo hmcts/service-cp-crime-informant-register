@@ -3,6 +3,8 @@ package uk.gov.hmcts.cp.informantregister.inbound;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import com.azure.messaging.servicebus.ServiceBusProcessorClient;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -18,11 +20,14 @@ import uk.gov.hmcts.cp.informantregister.config.ServiceBusHealthIndicator;
 import uk.gov.hmcts.cp.informantregister.persistence.ProcessedLogProbe;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -152,5 +157,85 @@ class ConsumerLifecycleControllerTest {
         verify(flyway, never()).migrate();
         verify(processor, never()).start();
         assertThat(readinessStatus()).isEqualTo(Status.DOWN);
+    }
+
+    // --- shutdown ------------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("a start already under way is abandoned rather than completed once shutdown begins")
+    void should_not_start_consuming_after_shutdown_has_begun() throws Exception {
+        final CountDownLatch migrationEntered = new CountDownLatch(1);
+        final CountDownLatch releaseMigration = new CountDownLatch(1);
+        when(storeProbe.available()).thenReturn(true);
+        doAnswer(invocation -> {
+            migrationEntered.countDown();
+            releaseMigration.await(PATIENCE.toSeconds(), TimeUnit.SECONDS);
+            return null;
+        }).when(flyway).migrate();
+
+        controller.start();
+        assertThat(migrationEntered.await(PATIENCE.toSeconds(), TimeUnit.SECONDS))
+                .as("the start must genuinely be under way before the shutdown begins")
+                .isTrue();
+
+        // The context is closing while a migration is still running. The start must notice, because
+        // a processor started into a context that is tearing down consumes messages nothing is left
+        // to record — the beans it would need are already going away.
+        final Thread shuttingDown = new Thread(controller::stop, "shutdown");
+        shuttingDown.start();
+        // Released only once the shutdown has genuinely begun, so the migration finishes into a
+        // context that is already closing rather than into a race the test would sometimes win.
+        await().atMost(PATIENCE).until(() -> !controller.isRunning());
+        releaseMigration.countDown();
+        shuttingDown.join(PATIENCE.toMillis());
+
+        assertThat(shuttingDown.isAlive()).as("shutdown must not hang").isFalse();
+        verify(processor, never()).start();
+        assertThat(controller.intakeStarted()).isFalse();
+    }
+
+    @Test
+    @DisplayName("shutdown stops probing, and nothing starts intake afterwards")
+    void should_stop_probing_once_shutdown_has_begun() {
+        when(storeProbe.available()).thenReturn(false);
+        controller.start();
+        await().atMost(PATIENCE).untilAsserted(() -> verify(storeProbe, atLeast(2)).available());
+
+        controller.stop();
+        final int probesAtShutdown = mockingDetails(storeProbe).getInvocations().size();
+
+        // Held as a condition rather than checked once, so a schedule that was merely between ticks
+        // could not pass for a schedule that had stopped.
+        await().during(Duration.ofMillis(PROBE_INTERVAL.toMillis() * 20))
+                .atMost(PATIENCE)
+                .until(() -> mockingDetails(storeProbe).getInvocations().size() == probesAtShutdown);
+        verify(processor, never()).start();
+    }
+
+    @Test
+    @DisplayName("a suspension asked for after shutdown is a no-op, not an exception")
+    void should_ignore_a_suspension_requested_after_shutdown() {
+        when(storeProbe.available()).thenReturn(true);
+        controller.start();
+        await().atMost(PATIENCE).until(controller::intakeStarted);
+
+        controller.stop();
+
+        // The caller is a broker callback that has just met a dead store. It has a delivery to hand
+        // back and nothing useful to do with a failure from this call; throwing at it would replace
+        // a settled delivery with an unsettled one at the worst possible moment.
+        assertThatCode(controller::suspendIntake).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("shutdown stops a processor that was consuming")
+    void should_stop_intake_that_was_running_when_shutdown_began() {
+        when(storeProbe.available()).thenReturn(true);
+        controller.start();
+        await().atMost(PATIENCE).until(controller::intakeStarted);
+
+        controller.stop();
+
+        verify(processor).stop();
     }
 }

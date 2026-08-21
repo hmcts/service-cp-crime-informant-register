@@ -2,7 +2,9 @@ package uk.gov.hmcts.cp.informantregister.inbound;
 
 import java.time.Duration;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -33,6 +35,8 @@ import uk.gov.hmcts.cp.informantregister.persistence.ProcessedLogProbe;
  *   <li>{@code RUNNING} — the store answered, the migration ran, the processor is consuming.</li>
  *   <li>{@code SUSPENDED} — the store went away while we were running. Intake stopped; the probe
  *       keeps asking; the moment the store answers again we are back in {@code RUNNING}.</li>
+ *   <li>{@code STOPPING} and {@code STOPPED} — the context is closing. Terminal: nothing starts
+ *       intake from here, however far through a start it already was.</li>
  * </ul>
  *
  * <p>{@code AWAITING_STORE} is distinct from {@code SUSPENDED} on purpose. Both consume nothing, but
@@ -86,6 +90,18 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
     private volatile boolean active;
 
     /**
+     * Whether the processor is consuming, tracked apart from the state.
+     *
+     * <p>Because {@code state} moves to {@code STOPPING} before the shutdown reaches the processor,
+     * and "is it consuming" then has to be answered by something the shutdown has not already
+     * overwritten.
+     */
+    private volatile boolean processorRunning;
+
+    /** The probe's schedule, kept so shutdown can cancel it rather than merely outlive it. */
+    private volatile ScheduledFuture<?> probeSchedule;
+
+    /**
      * Latched once the gated start has completed, and never lowered again.
      *
      * <p>It answers "has this pod ever got as far as consuming", which is a readiness question. It
@@ -120,7 +136,16 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
         RUNNING,
 
         /** Stopped consuming because the store went away. */
-        SUSPENDED
+        SUSPENDED,
+
+        /**
+         * The context is closing. Terminal: nothing may start intake from here, however far
+         * through a start it already was.
+         */
+        STOPPING,
+
+        /** Closed. */
+        STOPPED
     }
 
     // --- lifecycle ---------------------------------------------------------------------------
@@ -133,23 +158,74 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
         active = true;
         LOG.info("Intake is gated on the processed log; probing every {} before consuming anything.",
                 probeInterval);
-        transitions.scheduleWithFixedDelay(
+        probeSchedule = transitions.scheduleWithFixedDelay(
                 this::probe, 0, probeInterval.toMillis(), TimeUnit.MILLISECONDS);
     }
 
     /**
-     * Stops probing and stops intake, in that order.
+     * Closes intake for good: no more probing, no more starting, and the processor stopped.
+     *
+     * <p>The order matters, and the first step is the one that is easy to leave out. The terminal
+     * state is published <strong>without taking the lock</strong>, because the thing most likely to
+     * be happening at this moment is a start — and a start holds the lock for as long as its
+     * migration runs. A shutdown that waited its turn would find the processor already started into
+     * a context that is tearing down, consuming messages that the beans needed to record them are
+     * no longer there to record. Publishing the state first lets that start see it and abandon
+     * itself.
+     *
+     * <p>Then the schedule is cancelled rather than merely left to expire, the transitions are
+     * drained, and the processor is stopped through the same serialised path everything else uses.
+     * The final call is a deliberate second attempt: if the drain timed out, or the queued task
+     * never ran, the processor must still be stopped, and doing it twice is a no-op.
      */
     @Override
     public void stop() {
+        // Terminal state first, then the lifecycle flag. Both are volatile, and this order means
+        // anything that observes the bean as no longer running also observes the state that tells
+        // it not to start anything.
+        state = State.STOPPING;
         active = false;
+        cancelProbeSchedule();
+        submitShutdown();
         transitions.shutdown();
         awaitTransitionsToFinish();
-        if (state == State.RUNNING) {
+        shutdownIntake();
+    }
+
+    private void cancelProbeSchedule() {
+        final ScheduledFuture<?> schedule = probeSchedule;
+        if (schedule != null) {
+            // Not interrupting: a probe part-way through a migration is left to finish, and it will
+            // find the terminal state before it starts anything.
+            schedule.cancel(false);
+        }
+    }
+
+    /**
+     * Puts the stop on the transition thread, so it is serialised with every other transition.
+     */
+    private void submitShutdown() {
+        try {
+            transitions.execute(this::shutdownIntake);
+        } catch (RejectedExecutionException alreadyClosing) {
+            LOG.debug("The transition thread was already closing; the stop runs inline instead.");
+        }
+    }
+
+    /**
+     * Stops the processor if it is consuming, and records that intake is closed. Idempotent.
+     */
+    private synchronized void shutdownIntake() {
+        if (processorRunning) {
             processor.stop();
-            state = State.SUSPENDED;
+            processorRunning = false;
             LOG.info("Intake stopped for shutdown. queue={}", processor.getQueueName());
         }
+        state = State.STOPPED;
+    }
+
+    private boolean closing() {
+        return state == State.STOPPING || state == State.STOPPED;
     }
 
     @Override
@@ -193,8 +269,16 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
      */
     @Override
     public void suspendIntake() {
-        if (active) {
+        try {
             transitions.execute(this::suspend);
+        } catch (RejectedExecutionException afterShutdown) {
+            // Asked for after the transition thread closed. There is nothing left to suspend, and
+            // the caller is a broker callback that has just met a dead store: it has a delivery to
+            // hand back and nothing useful to do with a failure from this call. Throwing at it
+            // would turn a settled delivery into an unsettled one at the worst possible moment.
+            // Checking a flag first would not do — the answer can change between the check and the
+            // submission, which is precisely the window this catch closes.
+            LOG.debug("Intake suspension requested after shutdown; there is nothing to suspend.");
         }
     }
 
@@ -215,7 +299,7 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
     // processor that refused to start — the answer is the same and the schedule must outlive it.
     private void probe() {
         try {
-            if (state != State.RUNNING && storeProbe.available()) {
+            if (state != State.RUNNING && !closing() && storeProbe.available()) {
                 resume();
             }
         } catch (RuntimeException failed) {
@@ -236,12 +320,21 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
      * already running does nothing.
      */
     private synchronized void resume() {
-        if (state == State.RUNNING) {
+        if (state == State.RUNNING || closing()) {
             return;
         }
         final State from = state;
         migrateOnce();
+        // Asked again, immediately before the one call that cannot be taken back. A migration can
+        // take a long time, and the context may have begun closing while it ran; starting a
+        // processor into a context that is tearing down means consuming messages the beans needed
+        // to record them are no longer there to record.
+        if (closing()) {
+            LOG.info("Intake is closing; the gated start was abandoned rather than completed.");
+            return;
+        }
         processor.start();
+        processorRunning = true;
         state = State.RUNNING;
         intakeStarted = true;
         metrics.intakeResumed();
@@ -271,6 +364,7 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
         LOG.warn("The processed log is unreachable; stopping intake so the delivery budget is not "
                 + "spent on an outage of ours. queue={}", processor.getQueueName());
         processor.stop();
+        processorRunning = false;
         state = State.SUSPENDED;
         metrics.intakeSuspended();
     }
