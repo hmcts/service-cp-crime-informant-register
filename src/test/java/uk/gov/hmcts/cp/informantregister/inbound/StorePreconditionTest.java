@@ -13,6 +13,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
@@ -140,5 +141,35 @@ class StorePreconditionTest {
                     .singleElement(as(InstanceOfAssertFactories.STRING))
                     .contains(STORE_UNAVAILABLE);
         }
+    }
+
+    /**
+     * The store answering with a complaint is the store <em>answering</em>. A constraint violation
+     * or a broken statement is a fault in one request's conversation with a perfectly reachable
+     * database; suspending the whole queue for it turns one poison message into an intake outage —
+     * and because the controller's probe would find the store healthy, into a suspend/resume cycle
+     * repeated on every redelivery. The delivery is still handed back, but the queue keeps moving.
+     */
+    @Test
+    @DisplayName("a statement fault on a reachable store hands the delivery back without stopping intake")
+    void should_not_suspend_intake_for_a_statement_fault_the_store_answered_with() {
+        final ServiceBusReceivedMessage message = message();
+        when(message.getBody()).thenReturn(BinaryData.fromString("{}"));
+        final ServiceBusReceivedMessageContext context =
+                mock(ServiceBusReceivedMessageContext.class);
+        when(context.getMessage()).thenReturn(message);
+
+        when(parser.parse(any(String.class))).thenReturn(ProcessedLogTestSupport.command());
+        when(pipeline.process(any(DistributionCommand.class), any(DeliveryIdentity.class)))
+                .thenThrow(new DataIntegrityViolationException("a constraint refused the row"));
+
+        listenerOver(openGate).onMessage(context);
+
+        assertThat(settlementsOn(context))
+                .as("handed back for redelivery, exactly once")
+                .containsExactly("abandon");
+        assertThat(openGate.suspensionsRequested())
+                .as("but the queue is not stopped: the store answered, so there is no outage")
+                .isZero();
     }
 }

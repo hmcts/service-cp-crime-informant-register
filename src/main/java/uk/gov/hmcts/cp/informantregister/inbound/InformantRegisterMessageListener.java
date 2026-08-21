@@ -8,7 +8,9 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
-import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.RecoverableDataAccessException;
+import org.springframework.dao.TransientDataAccessException;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
 import uk.gov.hmcts.cp.informantregister.config.ServiceBusHealthIndicator;
@@ -177,7 +179,15 @@ public class InformantRegisterMessageListener {
         GuardDecision decision;
         try {
             decision = examine(message);
-        } catch (DataAccessException storeGone) {
+        } catch (TransientDataAccessException | RecoverableDataAccessException
+                | DataAccessResourceFailureException storeGone) {
+            // The outage classes, and deliberately not the whole DataAccessException hierarchy.
+            // Spring's own transient/non-transient split is the wrong knife here: the exception a
+            // dead store actually produces — DataAccessResourceFailureException, connection
+            // acquisition included — sits on the non-transient side, while a constraint violation
+            // or a broken statement is the store *answering*, over a connection that plainly
+            // worked. Only the store-went-away classes may stop the queue; a per-statement fault
+            // is handed back below without turning one poison message into an intake outage.
             decision = storeDiedMidRun();
         } catch (RuntimeException unexpected) {
             decision = unexpectedFailure(unexpected);
