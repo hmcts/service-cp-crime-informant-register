@@ -169,6 +169,25 @@ class ExceptionalRouteSignalTest {
     }
 
     @Test
+    @DisplayName("a source the contract does not permit is not correlated on")
+    void should_ignore_a_source_value_outside_the_permitted_set() {
+        // The security point of the canonical-only rule, applied to the enumerated field: a
+        // producer-chosen string must not reach the log index by being called source.
+        final String hostile = validBody().replace("\"RESULTS\"", "\"EVIL-SOURCE\"");
+
+        try (CapturedLog log = CapturedLog.of(InformantRegisterMessageListener.class)) {
+            listener.onMessage(deliveryOf(hostile));
+
+            final List<ILoggingEvent> errors = errorsIn(log);
+            assertThat(errors).hasSize(1);
+            assertThat(errors.getFirst().getMDCPropertyMap())
+                    .as("the other identifiers still correlate; the rejected value stays out")
+                    .doesNotContainKey(SOURCE)
+                    .containsEntry(REQUEST_ID, requestId.toString());
+        }
+    }
+
+    @Test
     @DisplayName("a value that is not canonical is not correlated on")
     void should_ignore_an_identifier_that_is_not_the_shape_the_contract_requires() {
         final String hostile = validBody()

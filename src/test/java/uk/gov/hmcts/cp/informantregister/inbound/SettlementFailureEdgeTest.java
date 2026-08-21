@@ -60,10 +60,10 @@ import static org.mockito.Mockito.when;
  * the redelivery safe, so the right answer is to report the failure loudly and let the message come
  * round to a state machine that already knows the answer.
  *
- * <p><strong>A lost lock is not a settlement failure.</strong> Settling against a lock this service
- * no longer holds is a call that cannot succeed, so it is not made at all: the loss is logged,
- * counted under its own instrument, and recovery is left to the broker's redelivery. The record
- * decides what that redelivery does.
+ * <p><strong>A lost lock is not a settlement failure.</strong> The one attempt is always made — the
+ * broker is the authority on its own lock, never a local clock reading — and a refusal that names
+ * the lock is classified as loss: logged, counted under its own instrument, and recovery is left to
+ * the broker's redelivery. The record decides what that redelivery does.
  *
  * <p><strong>Only the call itself is the settlement.</strong> A fault in what follows a settlement —
  * the counter, the log line — is not the settlement failing, and reporting it as one would say a
@@ -496,6 +496,23 @@ class SettlementFailureEdgeTest {
             assertThat(settlementsOn(context))
                     .as("and no second settlement compensates for it")
                     .containsExactly("complete");
+        }
+
+        /** The classification lives in the shared guard, so every operation gets it — pinned. */
+        @Test
+        void should_classify_a_lock_lost_dead_letter_refusal_the_same_way() {
+            final ServiceBusReceivedMessageContext context = deliveryWithALiveLock();
+            pipelineDecides(new GuardDecision.DeadLetter(
+                    DeadLetterReason.EXHAUSTED, ReasonCode.DELIVERY_LIMIT_EXHAUSTED));
+            doThrow(lockLostRefusal()).when(context).deadLetter(any(DeadLetterOptions.class));
+
+            listener.onMessage(context);
+
+            assertThat(counter(ProcessingMetrics.LOCK_LOSS)).isEqualTo(1);
+            assertThat(counter(ProcessingMetrics.SETTLEMENT_FAILURES,
+                    ProcessingMetrics.OPERATION_TAG, SettlementOperation.DEADLETTER.label()))
+                    .isZero();
+            assertThat(settlementsOn(context)).containsExactly("deadLetter");
         }
 
         @Test

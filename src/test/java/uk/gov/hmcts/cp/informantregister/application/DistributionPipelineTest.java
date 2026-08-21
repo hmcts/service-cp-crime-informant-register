@@ -29,6 +29,7 @@ import uk.gov.hmcts.cp.informantregister.domain.RunClaim;
 import uk.gov.hmcts.cp.informantregister.domain.SubmissionFailedException;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -360,6 +361,25 @@ class DistributionPipelineTest {
 
             assertThat(counter(ProcessingMetrics.PROCESSING_FAILURES,
                     ProcessingMetrics.CLASSIFICATION_TAG, "transient")).isEqualTo(1.0);
+        }
+
+        /**
+         * The recovery path is a store write, and a store that dies inside it must not be dressed
+         * up as anything else: the failure escapes the catch block as itself, so the transport
+         * adapter's own store-outage handling — hand the delivery back, stop intake — takes over.
+         * A catch here that absorbed it would be the swallowed exception this service exists to
+         * remove, wearing a recovery's clothes.
+         */
+        @Test
+        void should_let_a_failure_of_the_recording_write_itself_escape() {
+            when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
+            when(payloadSource.fetch(command)).thenThrow(fault);
+            final IllegalStateException storeDied =
+                    new IllegalStateException("the store went away under the recording write");
+            when(guard.recordTransientFailure(claim, ReasonCode.UNEXPECTED_FAILURE))
+                    .thenThrow(storeDied);
+
+            assertThatThrownBy(() -> pipeline.process(command, delivery)).isSameAs(storeDied);
         }
     }
 
