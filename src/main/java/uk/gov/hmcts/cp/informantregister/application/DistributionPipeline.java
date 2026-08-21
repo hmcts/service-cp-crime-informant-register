@@ -44,11 +44,18 @@ import uk.gov.hmcts.cp.informantregister.domain.RunClaim;
  * out.
  *
  * <p>Every failure a run can meet this increment is transient — payload unavailability is transient
- * by construction, and a deadline is not a fault at all — so the failure path records RETRYING and
- * hands the delivery back. The classification is carried rather than assumed because it already
- * decides the metric label, and it becomes a branch the moment the submission port has authorities
- * to reject: a 4xx contract rejection is not worth a redelivery, and that branch belongs with the
- * story that can test it.
+ * by construction, and a deadline is not a fault at all — so no failure here is ever parked for
+ * being unretryable. What decides the outcome instead is whether the queue will deliver the message
+ * again: with deliveries remaining the failure is recorded RETRYING and the delivery is handed back;
+ * on the final permitted delivery the same failure is recorded FAILED, with the identity of the
+ * delivery that exhausted the budget, and the message is parked. The transport adapter reads that
+ * fact from the delivery and carries it in, because the processed log cannot know it — the budget
+ * belongs to the message, not to the request.
+ *
+ * <p>The classification is carried rather than assumed because it already decides the metric label,
+ * and it becomes a second branch the moment the submission port has authorities to reject: a 4xx
+ * contract rejection is not worth a redelivery whatever the delivery count says, and that branch
+ * belongs with the story that can test it.
  */
 public class DistributionPipeline {
 
