@@ -49,7 +49,16 @@ public enum ReasonCode {
     RECORD_ABSENT("RECORD_ABSENT"),
 
     /** A pipeline run failed in a way redelivery may fix. */
-    PIPELINE_TRANSIENT_FAILURE("PIPELINE_TRANSIENT_FAILURE");
+    PIPELINE_TRANSIENT_FAILURE("PIPELINE_TRANSIENT_FAILURE"),
+
+    /**
+     * A run reached its processing deadline and stopped itself.
+     *
+     * <p>Distinct from an ordinary transient failure on purpose: the run did not fail, it ran out of
+     * the time its claim guarantees it. A rise in this code means runs are approaching their leases,
+     * which is a capacity signal rather than a downstream one.
+     */
+    PROCESSING_DEADLINE_EXCEEDED("PROCESSING_DEADLINE_EXCEEDED");
 
     private final String storedCode;
 
