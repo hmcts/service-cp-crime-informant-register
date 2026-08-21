@@ -73,9 +73,9 @@ import static org.mockito.Mockito.when;
  */
 class TelemetryPrivacyTest {
 
-    /** The correlation set every processing line must carry (spec FR-012). */
+    /** The correlation set every processing line must carry (spec FR-012, technical-rules MDC). */
     private static final Set<String> CORRELATION =
-            Set.of("requestId", "hearingId", "hearingDay");
+            Set.of("source", "requestId", "hearingId", "hearingDay");
 
     private static final String PAYLOAD_MARKER = "PAYLOADMARKERZQX7";
     private static final String MESSAGE_ID_MARKER = "MESSAGEIDMARKERZQX7";
@@ -168,6 +168,8 @@ class TelemetryPrivacyTest {
                 .thenReturn(new GuardDecision.Run(claim));
         when(guard.recordCompletion(any(RunClaim.class), any(CompletionReason.class)))
                 .thenReturn(new GuardDecision.Complete(ReasonCode.RUN_COMPLETED));
+        when(guard.recordTransientFailure(any(RunClaim.class), any(ReasonCode.class)))
+                .thenReturn(new GuardDecision.Abandon(ReasonCode.UNEXPECTED_FAILURE));
 
         return new DistributionPipeline(
                 guard, payloads, mock(RegisterSubmissionClient.class),

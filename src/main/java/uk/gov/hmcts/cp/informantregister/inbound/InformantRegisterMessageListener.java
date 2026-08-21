@@ -56,6 +56,7 @@ public class InformantRegisterMessageListener {
 
     private static final Logger LOG = LoggerFactory.getLogger(InformantRegisterMessageListener.class);
 
+    private static final String SOURCE = "source";
     private static final String REQUEST_ID = "requestId";
     private static final String HEARING_ID = "hearingId";
     private static final String HEARING_DAY = "hearingDay";
@@ -235,6 +236,7 @@ public class InformantRegisterMessageListener {
      */
     private GuardDecision process(
             final DistributionCommand command, final ServiceBusReceivedMessage message) {
+        MDC.put(SOURCE, command.source());
         MDC.put(REQUEST_ID, command.requestId().toString());
         MDC.put(HEARING_ID, command.hearingId().toString());
         MDC.put(HEARING_DAY, command.hearingDay().toString());
@@ -305,6 +307,7 @@ public class InformantRegisterMessageListener {
      * believed.
      */
     private static void correlate(final DistributionCommandParser.Correlation correlation) {
+        putIfPresent(SOURCE, correlation.source());
         putIfPresent(REQUEST_ID, correlation.requestId());
         putIfPresent(HEARING_ID, correlation.hearingId());
         putIfPresent(HEARING_DAY, correlation.hearingDay());
@@ -513,6 +516,7 @@ public class InformantRegisterMessageListener {
     }
 
     private static void clearCorrelation() {
+        MDC.remove(SOURCE);
         MDC.remove(REQUEST_ID);
         MDC.remove(HEARING_ID);
         MDC.remove(HEARING_DAY);
