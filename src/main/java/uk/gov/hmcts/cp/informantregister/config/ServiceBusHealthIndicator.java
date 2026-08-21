@@ -58,7 +58,9 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
      * How deep to walk a cause chain before giving up.
      *
      * <p>Bounded because a cause chain is supplied by libraries, and a self-referential one would
-     * hang a health check — which is the one thing a health check may never do.
+     * otherwise hang a health check — which is the one thing a health check may never do. The bound
+     * is the whole defence: a chain that loops simply classifies the same fault a few times and
+     * stops, which needs no reference comparison to detect.
      */
     private static final int MAX_CAUSE_DEPTH = 10;
 
@@ -203,12 +205,15 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
      * answered says so. Any contact at all clears it permanently.
      */
     private boolean reachable(final Fault fault, final Instant traffic) {
-        if (fault != null) {
-            return (traffic != null && traffic.isAfter(fault.at()))
+        final boolean answered;
+        if (fault == null) {
+            answered = traffic != null
+                    || Duration.between(startedAt, clock.instant()).compareTo(staleness) <= 0;
+        } else {
+            answered = (traffic != null && traffic.isAfter(fault.at()))
                     || Duration.between(fault.at(), clock.instant()).compareTo(staleness) > 0;
         }
-        return traffic != null
-                || Duration.between(startedAt, clock.instant()).compareTo(staleness) <= 0;
+        return answered;
     }
 
     /**
@@ -221,15 +226,15 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
      * @return the condition's bounded name, or empty if this failure says nothing about reachability
      */
     private static Optional<String> connectionCondition(final Throwable failure) {
+        Optional<String> condition = Optional.empty();
         Throwable current = failure;
-        for (int depth = 0; current != null && depth < MAX_CAUSE_DEPTH; depth++) {
-            final Optional<String> condition = conditionOf(current);
-            if (condition.isPresent()) {
-                return condition;
-            }
-            current = current.getCause() == current ? null : current.getCause();
+        for (int depth = 0;
+             condition.isEmpty() && current != null && depth < MAX_CAUSE_DEPTH;
+             depth++) {
+            condition = conditionOf(current);
+            current = current.getCause();
         }
-        return Optional.empty();
+        return condition;
     }
 
     private static Optional<String> conditionOf(final Throwable failure) {
@@ -253,12 +258,15 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
      */
     private static Optional<String> amqpCondition(final AmqpException amqp) {
         final AmqpErrorCondition condition = amqp.getErrorCondition();
+        final Optional<String> named;
         if (condition == null) {
-            return Optional.of(AMQP_TRANSPORT);
+            named = Optional.of(AMQP_TRANSPORT);
+        } else {
+            named = MESSAGE_LEVEL_CONDITIONS.contains(condition)
+                    ? Optional.empty()
+                    : Optional.of(condition.name());
         }
-        return MESSAGE_LEVEL_CONDITIONS.contains(condition)
-                ? Optional.empty()
-                : Optional.of(condition.name());
+        return named;
     }
 
     private static Optional<String> serviceBusCondition(final ServiceBusException serviceBus) {
