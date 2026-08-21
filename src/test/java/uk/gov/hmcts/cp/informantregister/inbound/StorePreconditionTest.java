@@ -1,5 +1,6 @@
 package uk.gov.hmcts.cp.informantregister.inbound;
 
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -14,6 +15,9 @@ import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DeadlockLoserDataAccessException;
+import org.springframework.dao.QueryTimeoutException;
+import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
@@ -171,5 +175,59 @@ class StorePreconditionTest {
         assertThat(openGate.suspensionsRequested())
                 .as("but the queue is not stopped: the store answered, so there is no outage")
                 .isZero();
+    }
+
+    /** The other statement-fault shape the classification names: a statement the store refused. */
+    @Test
+    @DisplayName("a broken statement on a reachable store does not stop intake either")
+    void should_not_suspend_intake_for_a_statement_the_store_refused_to_parse() {
+        final StoreGateTestSupport.Recording gate = StoreGateTestSupport.open();
+
+        onMessageWith(gate, new BadSqlGrammarException(
+                "read", "SELECT broken", new SQLException("syntax error")));
+
+        assertThat(gate.suspensionsRequested()).isZero();
+    }
+
+    /**
+     * A deadlock is the store <em>answering</em> — two writers met on one row, and the loser's
+     * delivery simply comes round again. Suspending the whole queue for one contended row would be
+     * the statement-fault mistake wearing a transient exception type: {@code ConcurrencyFailure}
+     * extends {@code TransientDataAccessException}, so it has to be told apart explicitly.
+     */
+    @Test
+    @DisplayName("a lost deadlock race hands the delivery back without stopping intake")
+    void should_not_suspend_intake_for_a_concurrency_failure_the_store_answered_with() {
+        final StoreGateTestSupport.Recording gate = StoreGateTestSupport.open();
+
+        onMessageWith(gate, new DeadlockLoserDataAccessException(
+                "the claim insert lost a deadlock race", new SQLException("deadlock detected")));
+
+        assertThat(gate.suspensionsRequested()).isZero();
+    }
+
+    /** The transient outage class the suspension triple names, pinned so a narrowing is noticed. */
+    @Test
+    @DisplayName("a query timeout is an outage: the delivery goes back and intake stops")
+    void should_suspend_intake_for_a_query_timeout() {
+        final StoreGateTestSupport.Recording gate = StoreGateTestSupport.open();
+
+        onMessageWith(gate, new QueryTimeoutException("the store stopped answering mid-query"));
+
+        assertThat(gate.suspensionsRequested()).isEqualTo(1);
+    }
+
+    private void onMessageWith(final StoreGateTestSupport.Recording gate,
+                               final RuntimeException pipelineFault) {
+        final ServiceBusReceivedMessage message = message();
+        when(message.getBody()).thenReturn(BinaryData.fromString("{}"));
+        final ServiceBusReceivedMessageContext context =
+                mock(ServiceBusReceivedMessageContext.class);
+        when(context.getMessage()).thenReturn(message);
+        when(parser.parse(any(String.class))).thenReturn(ProcessedLogTestSupport.command());
+        when(pipeline.process(any(DistributionCommand.class), any(DeliveryIdentity.class)))
+                .thenThrow(pipelineFault);
+
+        listenerOver(gate).onMessage(context);
     }
 }

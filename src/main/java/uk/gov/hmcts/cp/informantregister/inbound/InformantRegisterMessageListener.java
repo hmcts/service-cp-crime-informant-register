@@ -11,6 +11,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.RecoverableDataAccessException;
 import org.springframework.dao.TransientDataAccessException;
@@ -190,6 +191,13 @@ public class InformantRegisterMessageListener {
         GuardDecision decision;
         try {
             decision = examine(message);
+        } catch (ConcurrencyFailureException contention) {
+            // Caught before the outage classes because it extends TransientDataAccessException
+            // and is the one transient kind that is not an outage: a deadlock or lock timeout is
+            // the store *answering* — two writers met on one row — and the loser's delivery simply
+            // comes round again. Suspending the whole queue for one contended row would stall
+            // every message behind it.
+            decision = unexpectedFailure(contention);
         } catch (TransientDataAccessException | RecoverableDataAccessException
                 | DataAccessResourceFailureException storeGone) {
             // The outage classes, and deliberately not the whole DataAccessException hierarchy.
