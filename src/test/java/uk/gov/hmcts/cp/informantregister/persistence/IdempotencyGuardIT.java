@@ -157,6 +157,12 @@ class IdempotencyGuardIT {
             assertThat(row.status()).isEqualTo("COMPLETED");
             assertThat(row.attempts()).isEqualTo(2);
             assertThat(row.claimOwner()).isNull();
+            assertThat(row.failureReason())
+                    .as("failure_reason describes the current status, and a completed request has "
+                            + "none: a COMPLETED row still carrying its old transient reason reads "
+                            + "as a contradiction to the support engineer the log exists for; the "
+                            + "retry history lives in the logs, as it does after a replay")
+                    .isNull();
         }
 
         @Test
