@@ -142,6 +142,35 @@ class StaleRunnerRejectionIT {
         assertThat(row().claimOwner()).isNull();
     }
 
+    /**
+     * Owner alone would not catch this. A delivery redelivered to the same instance carries the same
+     * owner identity, so if its claim lapsed and it reclaimed the request, the only thing separating
+     * the run that is now in flight from the run that was abandoned is the token minted at each
+     * acquisition — which is exactly what data-model invariant 7 says it is for.
+     */
+    @Test
+    @DisplayName("a claim retaken by the same runner is still a different claim")
+    void a_stale_write_should_be_refused_even_when_the_owner_is_unchanged() {
+        final DistributionCommand redelivered = ProcessedLogTestSupport.command();
+        final String sameOwner = "runner-1/delivery-1";
+        final RunClaim lapsed = runClaimOf(ProcessedLogTestSupport.guard(ALREADY_EXPIRED)
+                .admit(redelivered, new DeliveryIdentity("msg-1", sameOwner)));
+        final RunClaim retaken = runClaimOf(
+                guard.admit(redelivered, new DeliveryIdentity("msg-1", sameOwner)));
+        assertThat(retaken.owner()).isEqualTo(lapsed.owner());
+        assertThat(retaken.token()).isNotEqualTo(lapsed.token());
+
+        final GuardDecision decision = guard.recordCompletion(lapsed, CompletionReason.NO_AUTHORITIES);
+
+        assertThat(decision).isEqualTo(new GuardDecision.Abandon(ReasonCode.STALE_RUNNER));
+        assertThat(rejections()).isEqualTo(1);
+        final Row row =
+                ProcessedLogTestSupport.requireRow(redelivered.source(), redelivered.requestId());
+        assertThat(row.status()).isEqualTo("RECEIVED");
+        assertThat(row.claimToken()).isEqualTo(retaken.token());
+        assertThat(row.completionReason()).isNull();
+    }
+
     @Test
     @DisplayName("the superseded runner leaves the current claim exactly as it was")
     void a_rejected_write_should_not_disturb_the_current_claim() {
