@@ -15,6 +15,8 @@ import com.azure.core.amqp.exception.AmqpErrorCondition;
 import com.azure.core.amqp.exception.AmqpException;
 import com.azure.messaging.servicebus.ServiceBusException;
 import com.azure.messaging.servicebus.ServiceBusFailureReason;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
 
@@ -53,6 +55,8 @@ import org.springframework.boot.health.contributor.HealthIndicator;
  * authentication failure, whatever the credential layer felt like quoting.
  */
 public class ServiceBusHealthIndicator implements HealthIndicator {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ServiceBusHealthIndicator.class);
 
     /**
      * How deep to walk a cause chain before giving up.
@@ -132,8 +136,16 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
      *
      * @param failure what the processor reported
      */
-    public void recordProcessorError(final Throwable failure) {
-        recordFault(failure);
+    public void recordProcessorError(
+            final String errorSource, final String entityPath, final Throwable failure) {
+        final Optional<String> condition = connectionCondition(failure);
+        // Reported by what it is, never by what it said. A transport fault's message is written by
+        // the far end: it carries namespaces, entity paths, tracking ids and — on an authentication
+        // failure — whatever the credential layer felt like quoting. The type and the derived
+        // condition are this service's own vocabulary and are enough to act on.
+        LOG.error("Service Bus processor error. source={} entityPath={} type={} condition={}",
+                errorSource, entityPath, failure.getClass().getName(), condition.orElse(NONE));
+        condition.ifPresent(named -> lastFault.set(new Fault(named, clock.instant())));
     }
 
     /**
@@ -162,6 +174,8 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
         connectionCondition(failure)
                 .ifPresent(condition -> lastFault.set(new Fault(condition, clock.instant())));
     }
+
+
 
     /**
      * Records that the broker answered: a delivery arrived.

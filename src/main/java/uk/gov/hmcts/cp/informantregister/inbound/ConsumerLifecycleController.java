@@ -198,8 +198,12 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
                 resume();
             }
         } catch (RuntimeException failed) {
+            // Reported by type, not by text. What ends a start is routinely a driver or a
+            // migration exception, and those quote connection URLs, statements and, on a parse
+            // failure, the bytes they choked on. The type says what happened; the next probe says
+            // whether it is still happening.
             LOG.error("Intake could not be started; the next probe will try again. type={}",
-                    failed.getClass().getName(), failed);
+                    failed.getClass().getName());
         }
     }
 

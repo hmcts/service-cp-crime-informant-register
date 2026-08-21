@@ -54,12 +54,16 @@ public class DistributionCommandParser {
             "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     /**
-     * Bounds what an unknown field's name may look like before it is reported. The name comes from
-     * the producer, and it travels onward into a dead-letter description and a log index.
+     * What an unknown field is called when it is reported: this, and never the producer's own name.
+     *
+     * <p>Bounding the <em>shape</em> of the name was not enough. A name is chosen by the far end
+     * and travels into a dead-letter description and a log index verbatim, and a perfectly
+     * well-formed identifier can carry anything somebody wants carried there — a token, a
+     * defendant's surname, a payload fragment. Nothing is lost by refusing it: the reader needs to
+     * know that a field arrived which this service does not know about, and the producer's own
+     * release notes say which one. The failing body itself is on the dead-letter queue.
      */
-    private static final Pattern REPORTABLE_FIELD_NAME = Pattern.compile("^[A-Za-z0-9_.-]{1,64}$");
-
-    private static final String UNPRINTABLE_FIELD_NAME = "<unprintable>";
+    private static final String UNKNOWN_FIELD_PLACEHOLDER = "<unknown-field>";
 
     /**
      * RFC 3339 {@code full-date}, which is what draft-07's {@code date} format means.
@@ -129,13 +133,10 @@ public class DistributionCommandParser {
     private void rejectUnknownFields(final JsonNode root) {
         for (final String property : root.propertyNames()) {
             if (!DECLARED_FIELDS.contains(property)) {
-                throw new ContractValidationException(ContractViolation.UNKNOWN_FIELD, reportable(property));
+                throw new ContractValidationException(
+                        ContractViolation.UNKNOWN_FIELD, UNKNOWN_FIELD_PLACEHOLDER);
             }
         }
-    }
-
-    private static String reportable(final String fieldName) {
-        return REPORTABLE_FIELD_NAME.matcher(fieldName).matches() ? fieldName : UNPRINTABLE_FIELD_NAME;
     }
 
     /**

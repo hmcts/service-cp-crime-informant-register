@@ -216,9 +216,9 @@ public class ServiceBusConsumerConfig {
      */
     private static void reportProcessorError(
             final ServiceBusErrorContext error, final ServiceBusHealthIndicator health) {
-        LOG.error("Service Bus processor error. source={} entityPath={}",
-                error.getErrorSource(), error.getEntityPath(), error.getException());
-        health.recordProcessorError(error.getException());
+        health.recordProcessorError(
+                String.valueOf(error.getErrorSource()), error.getEntityPath(),
+                error.getException());
     }
 
     private static boolean hasText(final String value) {

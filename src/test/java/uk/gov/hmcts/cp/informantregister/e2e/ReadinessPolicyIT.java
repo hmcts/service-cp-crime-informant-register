@@ -78,6 +78,9 @@ class ReadinessPolicyIT {
     /** How much work is in flight when the broker is taken away. */
     private static final int BURST = 60;
 
+    private static final String SOURCE = "RECEIVE";
+    private static final String ENTITY_PATH = "informantregister.requests";
+
     private static String connectionString;
 
     @Autowired
@@ -207,7 +210,7 @@ class ReadinessPolicyIT {
         final AdjustableClock clock = AdjustableClock.startingAt(Instant.parse("2026-08-21T09:00:00Z"));
         final ServiceBusHealthIndicator indicator = indicatorOn(clock);
 
-        indicator.recordProcessorError(connectionFailure());
+        indicator.recordProcessorError(SOURCE, ENTITY_PATH, connectionFailure());
         assertThat(indicator.health().getStatus())
                 .as("a fresh, unresolved connection failure is an outage")
                 .isEqualTo(Status.DOWN);
@@ -229,7 +232,7 @@ class ReadinessPolicyIT {
         final AdjustableClock clock = AdjustableClock.startingAt(Instant.parse("2026-08-21T09:00:00Z"));
         final ServiceBusHealthIndicator indicator = indicatorOn(clock);
 
-        indicator.recordProcessorError(connectionFailure());
+        indicator.recordProcessorError(SOURCE, ENTITY_PATH, connectionFailure());
         clock.advance(Duration.ofSeconds(1));
         indicator.recordTraffic();
 
@@ -244,7 +247,8 @@ class ReadinessPolicyIT {
         final AdjustableClock clock = AdjustableClock.startingAt(Instant.parse("2026-08-21T09:00:00Z"));
         final ServiceBusHealthIndicator indicator = indicatorOn(clock);
 
-        indicator.recordProcessorError(new IllegalStateException("this service's own defect"));
+        indicator.recordProcessorError(
+                SOURCE, ENTITY_PATH, new IllegalStateException("this service's own defect"));
 
         assertThat(indicator.health().getStatus())
                 .as("only a connection-class failure means the queue is unreachable")

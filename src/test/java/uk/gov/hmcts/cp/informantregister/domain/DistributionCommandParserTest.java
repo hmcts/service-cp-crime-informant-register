@@ -156,8 +156,18 @@ class DistributionCommandParserTest {
                             assertThat(violationOf(thrown)).isEqualTo(ContractViolation.MISSING_FIELD));
         }
 
+        /**
+         * Deliberately <em>not</em> the producer's own name.
+         *
+         * <p>The name is chosen by the far end and this rejection travels into a dead-letter
+         * description and a log index verbatim. Bounding its shape was not enough: a perfectly
+         * well-formed identifier can carry a token, a surname or a payload fragment, and it would
+         * be written out because it looked like a field name. Nothing is lost — the reader needs to
+         * know that a field arrived which this service does not know about, the producer's release
+         * notes say which one, and the body itself is on the dead-letter queue.
+         */
         @Test
-        void parse_a_body_with_an_unknown_field_should_name_that_field() {
+        void parse_a_body_with_an_unknown_field_should_report_a_placeholder_and_not_the_name() {
             final String withExtra = VALID_BODY.replace(
                     "  \"eventType\": \"Hearing_Resulted\"",
                     "  \"eventType\": \"Hearing_Resulted\",\n  \"courtCentreId\": \"abc\"");
@@ -166,7 +176,9 @@ class DistributionCommandParserTest {
                     .isInstanceOf(ContractValidationException.class)
                     .satisfies(thrown -> {
                         assertThat(violationOf(thrown)).isEqualTo(ContractViolation.UNKNOWN_FIELD);
-                        assertThat(((ContractValidationException) thrown).field()).isEqualTo("courtCentreId");
+                        assertThat(((ContractValidationException) thrown).field())
+                                .isEqualTo("<unknown-field>")
+                                .doesNotContain("courtCentreId");
                     });
         }
 
@@ -290,6 +302,8 @@ class DistributionCommandParserTest {
 
         @Test
         void a_hostile_unknown_field_name_should_be_replaced_rather_than_echoed() {
+            // The placeholder is now unconditional rather than reserved for names that fail a shape
+            // check: a well-formed identifier is just as capable of carrying somebody else's text.
             final String withHostileField = VALID_BODY.replace(
                     "  \"eventType\": \"Hearing_Resulted\"",
                     "  \"eventType\": \"Hearing_Resulted\",\n  \"<script>MARKER</script>\": \"x\"");
@@ -297,7 +311,7 @@ class DistributionCommandParserTest {
             assertNothingInTheChainMentions(withHostileField, "MARKER", "<script>");
             assertThatThrownBy(() -> parser.parse(withHostileField))
                     .isInstanceOf(ContractValidationException.class)
-                    .hasMessageContaining("<unprintable>");
+                    .hasMessageContaining("<unknown-field>");
         }
     }
 

@@ -10,6 +10,9 @@ import java.util.UUID;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
+import com.azure.core.amqp.exception.AmqpErrorCondition;
+import com.azure.core.amqp.exception.AmqpErrorContext;
+import com.azure.core.amqp.exception.AmqpException;
 import com.azure.core.util.BinaryData;
 import com.azure.messaging.servicebus.ServiceBusReceivedMessage;
 import com.azure.messaging.servicebus.ServiceBusReceivedMessageContext;
@@ -36,6 +39,7 @@ import uk.gov.hmcts.cp.informantregister.support.StoreGateTestSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -74,6 +78,11 @@ class TelemetryPrivacyTest {
             Set.of("requestId", "hearingId", "hearingDay");
 
     private static final String PAYLOAD_MARKER = "PAYLOADMARKERZQX7";
+    private static final String MESSAGE_ID_MARKER = "MESSAGEIDMARKERZQX7";
+    private static final String FIELD_NAME_MARKER = "FIELDNAMEMARKERZQX7";
+    private static final String TRANSPORT_MARKER = "TRANSPORTMARKERZQX7";
+    private static final String SETTLEMENT_MARKER = "SETTLEMENTMARKERZQX7";
+    private static final String ADAPTER_MARKER = "ADAPTERMARKERZQX7";
     private static final String DEFENDANT_MARKER = "DEFENDANTMARKERZQX7";
     private static final String BODY_MARKER = "BODYMARKERZQX7";
     private static final String SECRET_MARKER = "SECRETMARKERZQX7";
@@ -121,9 +130,14 @@ class TelemetryPrivacyTest {
     }
 
     private static ServiceBusReceivedMessageContext deliveryOf(final String body) {
+        return deliveryOf(body, "RESULTS:" + UUID.randomUUID());
+    }
+
+    private static ServiceBusReceivedMessageContext deliveryOf(
+            final String body, final String messageId) {
         final ServiceBusReceivedMessage message = mock(ServiceBusReceivedMessage.class);
         when(message.getBody()).thenReturn(BinaryData.fromString(body));
-        when(message.getMessageId()).thenReturn("RESULTS:" + UUID.randomUUID());
+        when(message.getMessageId()).thenReturn(messageId);
         when(message.getLockToken()).thenReturn(UUID.randomUUID().toString());
         when(message.getDeliveryCount()).thenReturn(0L);
 
@@ -137,6 +151,16 @@ class TelemetryPrivacyTest {
      * The whole delivery path, with a guard that admits and records and ports that behave.
      */
     private InformantRegisterMessageListener listenerOver(final HearingPayloadSource payloads) {
+        return new InformantRegisterMessageListener(
+                new DistributionCommandParser(JacksonConfig.contractObjectMapper()),
+                pipelineOver(payloads),
+                new ProcessingMetrics(new SimpleMeterRegistry()),
+                QueueHealthTestSupport.unwatched(),
+                StoreGateTestSupport.open(),
+                MAX_DELIVERY_COUNT);
+    }
+
+    private DistributionPipeline pipelineOver(final HearingPayloadSource payloads) {
         final IdempotencyGuard guard = mock(IdempotencyGuard.class);
         final RunClaim claim = new RunClaim(
                 "RESULTS", requestId, "instance/lock", UUID.randomUUID(), "RESULTS:message");
@@ -145,17 +169,9 @@ class TelemetryPrivacyTest {
         when(guard.recordCompletion(any(RunClaim.class), any(CompletionReason.class)))
                 .thenReturn(new GuardDecision.Complete(ReasonCode.RUN_COMPLETED));
 
-        final DistributionPipeline pipeline = new DistributionPipeline(
+        return new DistributionPipeline(
                 guard, payloads, mock(RegisterSubmissionClient.class),
                 new ProcessingMetrics(new SimpleMeterRegistry()), Clock.systemUTC(), RUN_DEADLINE);
-
-        return new InformantRegisterMessageListener(
-                new DistributionCommandParser(JacksonConfig.contractObjectMapper()),
-                pipeline,
-                new ProcessingMetrics(new SimpleMeterRegistry()),
-                QueueHealthTestSupport.unwatched(),
-                StoreGateTestSupport.open(),
-                MAX_DELIVERY_COUNT);
     }
 
     private static List<ILoggingEvent> processingLines(final CapturedLog log) {
@@ -288,5 +304,124 @@ class TelemetryPrivacyTest {
         assertThat(logback)
                 .as("without the MDC provider the identifiers are put in place and then thrown away")
                 .contains("<mdc/>");
+    }
+
+    // --- everything the outside world chooses the text of -----------------------------------------
+
+    @Test
+    @DisplayName("a broker-chosen message identity is never written out")
+    void should_never_log_a_message_identity_the_producer_chose() {
+        final HearingPayloadSource payloads = mock(HearingPayloadSource.class);
+        when(payloads.fetch(any(DistributionCommand.class))).thenReturn(hearingPayload());
+
+        try (CapturedLog log = CapturedLog.everything()) {
+            // Two paths that used to quote it: a body that cannot validate, and a store that is
+            // not there to check the body against.
+            listenerOver(payloads).onMessage(deliveryOf("{ not json", "RESULTS:" + MESSAGE_ID_MARKER));
+            listenerWithNoStore(payloads)
+                    .onMessage(deliveryOf(validBody(), "RESULTS:" + MESSAGE_ID_MARKER));
+
+            assertThat(log.renderings())
+                    .as("the identity is the producer's text, and it lands in the log index verbatim")
+                    .noneMatch(line -> line.contains(MESSAGE_ID_MARKER));
+        }
+    }
+
+    @Test
+    @DisplayName("a producer-chosen field name is reported as a placeholder, never as itself")
+    void should_never_log_the_name_of_an_unknown_field() {
+        final HearingPayloadSource payloads = mock(HearingPayloadSource.class);
+        when(payloads.fetch(any(DistributionCommand.class))).thenReturn(hearingPayload());
+        final String unknownField = """
+                {
+                  "source": "RESULTS",
+                  "requestId": "%s",
+                  "hearingId": "%s",
+                  "hearingDay": "2026-08-21",
+                  "sharedTime": "2026-08-21T08:00:00Z",
+                  "eventType": "Hearing_Resulted",
+                  "%s": "anything"
+                }
+                """.formatted(requestId, hearingId, FIELD_NAME_MARKER);
+
+        try (CapturedLog log = CapturedLog.everything()) {
+            listenerOver(payloads).onMessage(deliveryOf(unknownField));
+
+            assertThat(log.renderings())
+                    .as("a name that looks harmless is still a name somebody else chose")
+                    .noneMatch(line -> line.contains(FIELD_NAME_MARKER));
+        }
+    }
+
+    @Test
+    @DisplayName("a transport fault is reported by its condition, never by its words")
+    void should_never_log_the_text_of_a_transport_failure() {
+        try (CapturedLog log = CapturedLog.everything()) {
+            queueHealth().recordProcessorError(
+                    "RECEIVE",
+                    "informantregister.requests",
+                    new AmqpException(true, AmqpErrorCondition.CONNECTION_FORCED,
+                            "the broker said " + TRANSPORT_MARKER,
+                            new AmqpErrorContext("sbemulatorns")));
+
+            assertThat(log.renderings())
+                    .as("a transport fault's message is written by the far end, not by us")
+                    .noneMatch(line -> line.contains(TRANSPORT_MARKER));
+        }
+    }
+
+    @Test
+    @DisplayName("a settlement the broker refuses is reported by its operation, never by its words")
+    void should_never_log_the_text_of_a_refused_settlement() {
+        final HearingPayloadSource payloads = mock(HearingPayloadSource.class);
+        when(payloads.fetch(any(DistributionCommand.class))).thenReturn(hearingPayload());
+
+        final ServiceBusReceivedMessageContext refusing = deliveryOf(validBody());
+        doThrow(new IllegalStateException("the broker said " + SETTLEMENT_MARKER))
+                .when(refusing).complete();
+
+        try (CapturedLog log = CapturedLog.everything()) {
+            listenerOver(payloads).onMessage(refusing);
+
+            assertThat(log.renderings())
+                    .noneMatch(line -> line.contains(SETTLEMENT_MARKER));
+        }
+    }
+
+    @Test
+    @DisplayName("an adapter that fails in a way nothing anticipated is reported by its type only")
+    void should_never_log_the_text_of_a_payload_adapter_failure() {
+        final HearingPayloadSource payloads = mock(HearingPayloadSource.class);
+        // The real adapter fetches a hearing payload over a cache client. An exception from one of
+        // those routinely quotes the key it was asked for and, on a parse failure, the bytes it
+        // choked on — which is the payload, arriving by the back door.
+        when(payloads.fetch(any(DistributionCommand.class)))
+                .thenThrow(new IllegalStateException("failed reading INT_" + ADAPTER_MARKER));
+
+        try (CapturedLog log = CapturedLog.everything()) {
+            listenerOver(payloads).onMessage(deliveryOf(validBody()));
+
+            assertThat(log.renderings())
+                    .noneMatch(line -> line.contains(ADAPTER_MARKER));
+        }
+    }
+
+    private static ServiceBusHealthIndicator queueHealth() {
+        return new ServiceBusHealthIndicator(
+                Duration.ofSeconds(60), new ProcessingMetrics(new SimpleMeterRegistry()),
+                Clock.systemUTC());
+    }
+
+    /**
+     * The same listener, over a store that is not there.
+     */
+    private InformantRegisterMessageListener listenerWithNoStore(final HearingPayloadSource payloads) {
+        return new InformantRegisterMessageListener(
+                new DistributionCommandParser(JacksonConfig.contractObjectMapper()),
+                pipelineOver(payloads),
+                new ProcessingMetrics(new SimpleMeterRegistry()),
+                QueueHealthTestSupport.unwatched(),
+                StoreGateTestSupport.closed(),
+                MAX_DELIVERY_COUNT);
     }
 }

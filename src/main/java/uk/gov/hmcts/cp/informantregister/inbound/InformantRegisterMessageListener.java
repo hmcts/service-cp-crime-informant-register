@@ -96,7 +96,7 @@ public class InformantRegisterMessageListener {
         try {
             settle(context, storeGate.storeAvailable()
                     ? decide(message)
-                    : storeUnavailable(message));
+                    : storeUnavailable());
         } finally {
             clearCorrelation();
         }
@@ -122,10 +122,10 @@ public class InformantRegisterMessageListener {
      * is all this service knows about it — the body was deliberately not read, so there is no
      * request id to correlate on yet, and there will be one when the delivery comes round again.
      */
-    private GuardDecision storeUnavailable(final ServiceBusReceivedMessage message) {
+    private GuardDecision storeUnavailable() {
         LOG.error("The processed log could not be reached, so the delivery was not examined; "
-                        + "returning it and asking for intake to stop. messageId={} reason={}",
-                message.getMessageId(), ReasonCode.STORE_UNAVAILABLE.code());
+                        + "returning it and asking for intake to stop. reason={}",
+                ReasonCode.STORE_UNAVAILABLE.code());
         return handBackAndSuspend();
     }
 
@@ -144,10 +144,10 @@ public class InformantRegisterMessageListener {
      * store is reached from more than one place inside a run and the answer is the same wherever it
      * was: the request may be perfectly good, and this service was not fit to judge it.
      */
-    private GuardDecision storeDiedMidRun(final ServiceBusReceivedMessage message) {
+    private GuardDecision storeDiedMidRun() {
         LOG.error("The processed log went away during the run, so nothing was recorded; returning "
-                        + "the delivery and asking for intake to stop. messageId={} reason={}",
-                message.getMessageId(), ReasonCode.STORE_UNAVAILABLE.code());
+                        + "the delivery and asking for intake to stop. reason={}",
+                ReasonCode.STORE_UNAVAILABLE.code());
         return handBackAndSuspend();
     }
 
@@ -178,9 +178,9 @@ public class InformantRegisterMessageListener {
         } catch (ContractValidationException invalid) {
             decision = contractInvalid(message, invalid);
         } catch (DataAccessException storeGone) {
-            decision = storeDiedMidRun(message);
+            decision = storeDiedMidRun();
         } catch (RuntimeException unexpected) {
-            decision = unexpectedFailure(message, unexpected);
+            decision = unexpectedFailure(unexpected);
         }
         return decision;
     }
@@ -219,9 +219,8 @@ public class InformantRegisterMessageListener {
      */
     private static GuardDecision contractInvalid(
             final ServiceBusReceivedMessage message, final ContractValidationException invalid) {
-        LOG.error("Message body failed contract validation; parking it. "
-                        + "messageId={} violation={} field={}",
-                message.getMessageId(), invalid.violation(), invalid.field());
+        LOG.error("Message body failed contract validation; parking it. violation={} field={}",
+                invalid.violation(), invalid.field());
         return new GuardDecision.DeadLetter(
                 DeadLetterReason.VALIDATION, ReasonCode.CONTRACT_VALIDATION_FAILED);
     }
@@ -234,10 +233,9 @@ public class InformantRegisterMessageListener {
      * definition <em>not</em> the message — it is this service or the infrastructure beneath it —
      * and an unanticipated fault with no diagnostics is the one that stays unfixed.
      */
-    private static GuardDecision unexpectedFailure(
-            final ServiceBusReceivedMessage message, final RuntimeException unexpected) {
-        LOG.error("Delivery failed unexpectedly; returning it for redelivery. messageId={} type={}",
-                message.getMessageId(), unexpected.getClass().getName(), unexpected);
+    private GuardDecision unexpectedFailure(final RuntimeException unexpected) {
+        LOG.error("Delivery failed unexpectedly; returning it for redelivery. type={} reason={}",
+                unexpected.getClass().getName(), ReasonCode.UNEXPECTED_FAILURE.code());
         return new GuardDecision.Abandon(ReasonCode.UNEXPECTED_FAILURE);
     }
 
@@ -256,8 +254,8 @@ public class InformantRegisterMessageListener {
             perform(context, decision);
         } else {
             LOG.error("The delivery lock was lost before settlement, so none was attempted; "
-                            + "recovery is the broker's redelivery. messageId={} decision={}",
-                    context.getMessage().getMessageId(), decision.getClass().getSimpleName());
+                            + "recovery is the broker's redelivery. decision={}",
+                    decision.getClass().getSimpleName());
             metrics.lockLost();
         }
     }
@@ -365,7 +363,7 @@ public class InformantRegisterMessageListener {
         } catch (RuntimeException refused) {
             LOG.error("The broker refused the settlement; no second settlement is attempted and the "
                             + "delivery will come round again. operation={} type={}",
-                    operation.label(), refused.getClass().getName(), refused);
+                    operation.label(), refused.getClass().getName());
             metrics.settlementFailed(operation);
             // The same call that failed is also the most recent thing this service knows about the
             // connection, and a refusal is the counterpart of the successful settlement the queue
