@@ -27,7 +27,7 @@
 | Outbound         | `POST add-informant-register` → `cpp-context-results` command API *(later story)* |
 | Database         | PostgreSQL — service-owned processed-log; **Flyway** migrations (never Liquibase) |
 | Testing          | JUnit 5 + Mockito + AssertJ; Testcontainers (`servicebus-emulator`, Postgres); WireMock |
-| Static analysis  | PMD (`.github/pmd-ruleset.xml`); Checkstyle not configured by the template |
+| Static analysis  | PMD (`.github/pmd-ruleset.xml`, explicit `pmdMain`); Checkstyle (`config/checkstyle/google_checks.xml`, in `check`) |
 | CI/CD            | GitHub Actions → ADO Pipeline 460 → `crmdvrepo01.azurecr.io`; deploy via Flux (`springboot-app` chart) |
 
 ## Constraints

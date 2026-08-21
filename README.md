@@ -39,12 +39,13 @@ rather than a system Gradle.
 ## Quickstart
 
 ```bash
-./gradlew build              # Compile + the full test suite (no static analysis)
+./gradlew build              # Compile + the full test suite + Checkstyle + the JaCoCo coverage gate
 ./gradlew test               # The whole suite: unit and *IT alike. There is no separate
                              # integrationTest task; the Testcontainers suites run here and
                              # need Docker only when those tests are in the selection
+./gradlew checkstyleMain     # Checkstyle (google_checks, maxWarnings 0); also runs in `check`/`build`
 ./gradlew pmdMain            # PMD static analysis — explicit only; `build` does not run it
-./gradlew jacocoTestReport   # Coverage report
+./gradlew jacocoTestReport   # Coverage report; jacocoTestCoverageVerification gates `check`
 ./gradlew bootRun            # Run locally on port 8082
 ```
 
@@ -60,7 +61,8 @@ connection string uses `UseDevelopmentEmulator=true`. `docker compose up app` ru
 its container against the same pair. Everything in the compose file is local-only: the credentials
 there are development defaults and must never be reused anywhere else.
 
-There is no Checkstyle in this build.
+Checkstyle runs against `config/checkstyle/google_checks.xml` with `maxWarnings = 0` as part of
+`check`, alongside a JaCoCo coverage gate (`jacocoTestCoverageVerification`).
 
 ## Documentation
 

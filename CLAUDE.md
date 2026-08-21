@@ -30,15 +30,15 @@ parity-harness presence, and the absence of REST after implementation.
 
 ## Build & Test
 ```bash
-./gradlew build              # Compile + the full test suite (no static analysis)
+./gradlew build              # Compile + the full test suite + Checkstyle + the JaCoCo coverage gate
 ./gradlew test               # The whole suite: unit and *IT alike — there is no separate
                              # integrationTest task; the Testcontainers suites run here and
                              # need Docker only when those tests are in the selection
+./gradlew checkstyleMain     # Checkstyle (google_checks, maxWarnings 0); also runs in `check`/`build`
 ./gradlew pmdMain            # PMD — explicit only; `build` does not run it (see gradle/pmd.gradle)
-./gradlew jacocoTestReport   # Coverage report
+./gradlew jacocoTestReport   # Coverage report; jacocoTestCoverageVerification gates `check`
 ./gradlew bootRun            # Run locally
 ```
-There is no Checkstyle in this build.
 
 ## Setup
 

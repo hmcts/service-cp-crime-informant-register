@@ -118,6 +118,7 @@ private RedisHearingPayloadAdapter adapter;
 - Test commands: `./gradlew test` runs the whole suite — unit, integration and `*IT` classes alike,
   since there is no separate `integrationTest` task; the Testcontainers suites run under `test` and
   need Docker only when those tests are in the selection. `./gradlew build` = compile + `test`; it
-  adds no static analysis. PMD is explicit: `./gradlew pmdMain` (an `onlyIf` in `gradle/pmd.gradle`
-  skips it unless it is named on the command line, and `pmdTest` is disabled). There is no
-  Checkstyle in this build.
+  runs Checkstyle (`config/checkstyle/google_checks.xml`, `maxWarnings = 0`, main sources only)
+  and the JaCoCo coverage gate (`jacocoTestCoverageVerification`, wired into `check`) but not PMD.
+  PMD is explicit: `./gradlew pmdMain` (an `onlyIf` in `gradle/pmd.gradle` skips it unless it is
+  named on the command line, and `pmdTest` is disabled).
