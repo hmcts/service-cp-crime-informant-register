@@ -1,8 +1,25 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.0.0 → 1.0.1
-Bump rationale: PATCH — a non-semantic coordinate correction in Principle IV.
+Version change: 1.0.1 → 1.0.2
+Bump rationale: PATCH — Principle VIII's static-analysis facts brought back in
+                line with reality after an explicit user decision (21 Aug 2026)
+                adopted Checkstyle and a JaCoCo coverage gate as part of the
+                CI-policy alignment with service-cp-crime-hearing-results-
+                validator. The principle's requirement — uniform estate
+                conventions, warnings never tolerated, narrow reasoned
+                suppressions — is unchanged; what changed is the tool set that
+                enforces it, and the build/merge checklist that names it.
+
+Modified principles (this amendment):
+  - VIII. Estate Conventions — static-analysis bullet rewritten (Checkstyle
+    google_checks maxWarnings 0 main-only in `check`; JaCoCo coverage
+    verification LINE ≥ 0.88 / BRANCH ≥ 0.85 with named exclusions, ratchet
+    semantics; PMD unchanged, still explicit-only). The "required to run
+    cleanly before merge" list updated to match: `build` now runs Checkstyle
+    and the coverage verification; PMD remains the one analysis it does not.
+
+Previous amendment (1.0.0 → 1.0.1): PATCH — a non-semantic coordinate correction in Principle IV.
                 Spring Boot 4.1 ships Jackson 3, whose tree model is
                 `tools.jackson.databind.JsonNode`; the principle previously
                 named the Jackson 2 class `com.fasterxml.jackson.databind.
@@ -21,6 +38,9 @@ Modified principles:
     principle text changed in this amendment.
 
 History:
+  - 1.0.2 (2026-08-21) Principle VIII static-analysis reality sync: Checkstyle
+    + coverage gate adopted by user decision; merge checklist updated.
+  - 1.0.1 (2026-08-20) Principle IV Jackson coordinates made version-neutral.
   - 1.0.0 (2026-08-20) Initial ratification. Every principle and section was
     new; there were no prior principles to remove or redefine.
 
@@ -291,11 +311,20 @@ to debug it; personal data in a log index is an incident.
 ### VIII. Estate Conventions (NON-NEGOTIABLE)
 
 - **Build**: Gradle (wrapper committed). Maven is forbidden.
-- **Static analysis**: the template's configuration is the baseline — PMD via
-  `.github/pmd-ruleset.xml` with `ignoreFailures = false`, run explicitly as
-  `./gradlew pmdMain` (an `onlyIf` keeps it out of `build`; `pmdTest` is
-  disabled). Checkstyle is **not** configured in this build. Warnings are not
-  tolerated as normal. Suppressions MUST be inline, narrow, and carry a reason.
+- **Static analysis**: PMD via `.github/pmd-ruleset.xml` with
+  `ignoreFailures = false`, run explicitly as `./gradlew pmdMain` (an `onlyIf`
+  keeps it out of `build`; `pmdTest` is disabled). **Checkstyle** (adopted
+  21 Aug 2026, reversing the earlier no-Checkstyle stance, by explicit user
+  decision as part of the CI-policy alignment with
+  `service-cp-crime-hearing-results-validator`): `google_checks` via
+  `config/checkstyle/google_checks.xml` and `gradle/checkstyle.gradle`,
+  `maxWarnings = 0`, main sources only (`checkstyleTest` disabled), wired into
+  `check` and therefore `build`. **Coverage gate**:
+  `jacocoTestCoverageVerification` in `check` — LINE ≥ 0.88, BRANCH ≥ 0.85,
+  excluding the application entry point and `config/**`; thresholds are a
+  ratchet copied from the validator and tuned deliberately, never loosened in
+  passing. Warnings are not tolerated as normal. Suppressions MUST be inline,
+  narrow, and carry a reason.
 - **Package root**: `uk.gov.hmcts.cp`; this service's code lives under
   `uk.gov.hmcts.cp.informantregister`.
 - **Commits**: Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`,
@@ -389,7 +418,9 @@ Principle V; the skeleton is still built test-first under Principle II.
   PASS / COMPLIANT. Exempt: markdown-only edits, whitespace/import-only edits,
   and `.claude/rules/*` or `CLAUDE.md` updates.
 - Required to run cleanly before merge:
-  - `./gradlew build` — compilation and the full test suite. It does **not** run static analysis.
+  - `./gradlew build` — compilation, the full test suite, **Checkstyle** and the
+    **JaCoCo coverage verification** (both run in `check`). PMD is the one
+    analysis `build` does not run.
   - `./gradlew test` — the whole suite; there is no separate `integrationTest` task, so the
     Testcontainers suites run here and need Docker only when those tests are in the selection.
   - `./gradlew pmdMain` — static analysis, failures not ignored. It must be named explicitly: an
@@ -437,4 +468,4 @@ retained as quick-reference material and MUST be kept in sync.
   merged without a register entry MUST be reverted or registered retrospectively
   with named approval.
 
-**Version**: 1.0.1 | **Ratified**: 2026-08-20 | **Last Amended**: 2026-08-20
+**Version**: 1.0.2 | **Ratified**: 2026-08-20 | **Last Amended**: 2026-08-21

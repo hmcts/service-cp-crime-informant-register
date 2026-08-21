@@ -80,7 +80,8 @@ no message field and no endpoint that triggers a failure.
 
 ```bash
 ./gradlew build              # compile + entire test suite (unit + *IT; Docker needed for the ITs)
-./gradlew pmdMain            # static analysis — explicit, not part of build
+./gradlew pmdMain            # PMD — explicit, not part of build (Checkstyle and the JaCoCo
+                             # coverage verification DO run inside build, via check)
 ./gradlew jacocoTestReport   # coverage report
 ```
 
