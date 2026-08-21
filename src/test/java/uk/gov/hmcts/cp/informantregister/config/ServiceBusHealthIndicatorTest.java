@@ -62,15 +62,15 @@ class ServiceBusHealthIndicatorTest {
         }
 
         @Test
-        void should_keep_the_benefit_of_the_doubt_while_the_startup_grace_lasts() {
+        void should_report_a_fresh_fault_at_once_with_no_startup_grace() {
             indicator.recordIntakeStarted();
             aConnectionFaultIsRecorded();
 
-            clock.advance(STALENESS.minusSeconds(1));
-
             assertThat(status())
-                    .as("an ordinary start may meet a blip; the grace window covers it")
-                    .isEqualTo(Status.UP);
+                    .as("grace is the benefit of the doubt for a silence that carries no evidence; "
+                            + "a recorded connection fault is evidence, and a wrong DOWN costs one "
+                            + "health cycle where a wrong UP hides the outage")
+                    .isEqualTo(Status.DOWN);
         }
 
         @Test

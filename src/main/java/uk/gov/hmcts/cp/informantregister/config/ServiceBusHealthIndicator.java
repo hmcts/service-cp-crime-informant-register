@@ -296,8 +296,10 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
      * a consumer that has <em>never once</em> been answered, the recorded fault is the last thing
      * the transport ever said, the SDK will not repeat it (see {@link #recordSettlementRefusal}),
      * and letting it quietly age into UP would hide a total outage behind the very rule meant to
-     * excuse a quiet night. Such a consumer keeps the same startup grace an unfaulted start gets,
-     * and after it says DOWN until first contact.
+     * excuse a quiet night. Such a consumer says DOWN until first contact — with no startup grace,
+     * because grace is the benefit of the doubt for a silence that carries no evidence, and a
+     * recorded connection fault is evidence. A wrong DOWN here costs one health cycle and is
+     * cleared by the first answer; a wrong UP hides the outage.
      *
      * <p>With no failure recorded, the question is whether this consumer has <em>ever</em> heard
      * from the broker. Not having heard lately is normal; not having heard at all is not, and it is
@@ -310,11 +312,10 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
         final boolean answered;
         if (fault == null) {
             answered = traffic != null || withinStartupGrace();
-        } else if (traffic == null) {
-            answered = withinStartupGrace();
         } else {
-            answered = traffic.isAfter(fault.at())
-                    || Duration.between(fault.at(), clock.instant()).compareTo(staleness) > 0;
+            answered = traffic != null
+                    && (traffic.isAfter(fault.at())
+                        || Duration.between(fault.at(), clock.instant()).compareTo(staleness) > 0);
         }
         return answered;
     }
