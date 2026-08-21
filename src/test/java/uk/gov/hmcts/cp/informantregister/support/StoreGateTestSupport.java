@@ -22,9 +22,13 @@ public final class StoreGateTestSupport {
     }
 
     /**
-     * A gate onto a store that answers.
+     * A gate onto a store that answers, remembering whether it was asked to stop intake.
+     *
+     * <p>It remembers even though most suites never look: a store that answers the precondition and
+     * then dies mid-run must still stop intake, and a gate that could not be asked would let that
+     * go untested.
      */
-    public static StoreGate open() {
+    public static Recording open() {
         return new Recording(true);
     }
 
