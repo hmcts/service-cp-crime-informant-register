@@ -121,14 +121,17 @@ public class DistributionPipeline {
         final List<AuthoritySubmission> submissions = List.of();
 
         final GuardDecision outcome;
-        if (clock.instant().isAfter(deadline)) {
-            outcome = failed(
-                    claim, FailureClassification.TRANSIENT, ReasonCode.PROCESSING_DEADLINE_EXCEEDED);
-        } else {
+        // Strictly before, so the deadline is a bound that is *reached* rather than passed: a run
+        // standing exactly on it has already used the time its claim guarantees and may not write a
+        // completion. `isAfter` on the other side of this branch would let that one instant through.
+        if (clock.instant().isBefore(deadline)) {
             for (final AuthoritySubmission submission : submissions) {
                 submissionClient.submit(submission);
             }
             outcome = completed(claim, submissions.size());
+        } else {
+            outcome = failed(
+                    claim, FailureClassification.TRANSIENT, ReasonCode.PROCESSING_DEADLINE_EXCEEDED);
         }
         return outcome;
     }

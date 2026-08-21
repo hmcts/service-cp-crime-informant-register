@@ -302,13 +302,22 @@ class DistributionPipelineTest {
         private final GuardDecision handedBack =
                 new GuardDecision.Abandon(ReasonCode.PROCESSING_DEADLINE_EXCEEDED);
 
-        private void theRunOverrunsItsDeadline() {
+        private void theRunOverrunsBy(final Duration overrun) {
             guardAdmitsTheDelivery();
-            // One minute past the four-minute deadline, and a full minute inside the five-minute
-            // lease: the run must stop itself here rather than be stopped by a reclaimer later.
-            clock.stepBy(Duration.ofMinutes(5));
+            clock.stepBy(PROCESSING_DEADLINE.plus(overrun));
             when(guard.recordTransientFailure(claim, ReasonCode.PROCESSING_DEADLINE_EXCEEDED))
                     .thenReturn(handedBack);
+        }
+
+        /**
+         * Thirty seconds past the four-minute deadline and thirty seconds short of the five-minute
+         * lease. The overrun is deliberately <em>inside</em> the lease: the property under test is
+         * that a run stops itself while its claim is still unambiguously its own, and an overrun
+         * that reached the lease would prove only that the guard rejects a superseded runner —
+         * which is a different mechanism, tested elsewhere.
+         */
+        private void theRunOverrunsItsDeadline() {
+            theRunOverrunsBy(Duration.ofSeconds(30));
         }
 
         @Test
@@ -338,6 +347,22 @@ class DistributionPipelineTest {
 
             assertThat(counter(ProcessingMetrics.PROCESSING_FAILURES,
                     ProcessingMetrics.CLASSIFICATION_TAG, "transient")).isEqualTo(1.0);
+        }
+
+        /**
+         * The boundary itself. The invariant is that a run aborts when the deadline is
+         * <em>reached</em>, not once it has been passed, so a run standing exactly on it has
+         * already run out of the time its claim guarantees and may not write a completion.
+         */
+        @Test
+        void should_abort_a_run_standing_exactly_on_its_deadline() {
+            theRunOverrunsBy(Duration.ZERO);
+
+            final GuardDecision decision = pipeline.process(command, delivery);
+
+            verify(guard).recordTransientFailure(claim, ReasonCode.PROCESSING_DEADLINE_EXCEEDED);
+            verify(guard, never()).recordCompletion(any(), any());
+            assertThat(decision).isEqualTo(handedBack);
         }
 
         @Test
