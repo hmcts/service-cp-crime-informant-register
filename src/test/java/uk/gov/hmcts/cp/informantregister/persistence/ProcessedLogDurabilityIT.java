@@ -2,6 +2,7 @@ package uk.gov.hmcts.cp.informantregister.persistence;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.time.Duration;
 
 import com.github.dockerjava.api.model.ExposedPort;
@@ -44,6 +45,9 @@ class ProcessedLogDurabilityIT {
     private static final Duration LEASE = Duration.ofMinutes(5);
     private static final String DATABASE = "informantregister";
     private static final int POSTGRES_PORT = 5432;
+
+    /** How long a restarted container is given to answer before the wait is reported as a failure. */
+    private static final Duration READY_BUDGET = Duration.ofMinutes(1);
 
     private static PostgreSQLContainer container;
     private static HikariDataSource dataSource;
@@ -102,16 +106,27 @@ class ProcessedLogDurabilityIT {
         closePool();
         container.getDockerClient().restartContainerCmd(container.getContainerId()).exec();
 
-        await().atMost(Duration.ofMinutes(1))
+        await().atMost(READY_BUDGET)
                 .pollInterval(Duration.ofMillis(250))
-                .ignoreExceptions()
-                .until(ProcessedLogDurabilityIT::storeAnswers);
+                .untilAsserted(ProcessedLogDurabilityIT::assertStoreAnswers);
         openPool();
     }
 
-    private static boolean storeAnswers() throws Exception {
+    /**
+     * One attempt at reaching the restarted database, as a retrying assertion.
+     *
+     * <p>The connection failure is wrapped and rethrown, never ignored: while the budget lasts it is
+     * the reason this attempt failed, and when the budget runs out it is the cause hanging off the
+     * timeout — which is the difference between "the store never came back" and a test that says only
+     * that it waited. Awaitility's blanket exception-ignoring would discard exactly the exception a
+     * reader needs (constitution Principle VI, which does not exempt tests).
+     */
+    private static void assertStoreAnswers() {
         try (Connection connection = DriverManager.getConnection(jdbcUrl(), DATABASE, DATABASE)) {
-            return connection.isValid(1);
+            assertThat(connection.isValid(1)).isTrue();
+        } catch (SQLException unreachable) {
+            throw new AssertionError(
+                    "the restarted store did not answer on " + jdbcUrl(), unreachable);
         }
     }
 
