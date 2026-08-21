@@ -63,6 +63,16 @@ public enum ReasonCode {
     PIPELINE_TRANSIENT_FAILURE("PIPELINE_TRANSIENT_FAILURE"),
 
     /**
+     * The processed log could not be reached, so the delivery was not examined at all.
+     *
+     * <p>Distinct from every other failure here because it says nothing about the message. The
+     * request may be perfectly good; the service simply was not fit to judge it, so the delivery is
+     * handed back and intake stops rather than the delivery budget being spent on an outage of
+     * ours (spec FR-015).
+     */
+    STORE_UNAVAILABLE("STORE_UNAVAILABLE"),
+
+    /**
      * A run reached its processing deadline and stopped itself.
      *
      * <p>Distinct from an ordinary transient failure on purpose: the run did not fail, it ran out of

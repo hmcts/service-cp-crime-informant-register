@@ -3,8 +3,11 @@ package uk.gov.hmcts.cp.informantregister.support;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.classic.spi.IThrowableProxy;
+import ch.qos.logback.classic.spi.ThrowableProxyUtil;
 import ch.qos.logback.core.AppenderBase;
 import org.slf4j.LoggerFactory;
 
@@ -37,10 +40,18 @@ public final class CapturedLog implements AutoCloseable {
 
     private final Logger logger;
     private final CollectingAppender appender;
+    private final boolean levelWasLowered;
+    private final Level levelToRestore;
 
-    private CapturedLog(final Logger logger, final CollectingAppender appender) {
+    private CapturedLog(
+            final Logger logger,
+            final CollectingAppender appender,
+            final boolean levelWasLowered,
+            final Level levelToRestore) {
         this.logger = logger;
         this.appender = appender;
+        this.levelWasLowered = levelWasLowered;
+        this.levelToRestore = levelToRestore;
     }
 
     /**
@@ -50,11 +61,43 @@ public final class CapturedLog implements AutoCloseable {
      * @return the capture, to be closed when the assertions are done
      */
     public static CapturedLog of(final Class<?> type) {
-        final Logger logger = (Logger) LoggerFactory.getLogger(type);
+        return attachTo((Logger) LoggerFactory.getLogger(type), false, null);
+    }
+
+    /**
+     * Starts capturing everything logged under the given logger name, descendants included.
+     *
+     * <p>For suites whose claim is about the service as a whole — "every failure path emits exactly
+     * one ERROR" is a statement about all of them at once, and naming the classes would quietly turn
+     * it into a statement about the ones somebody remembered. Attaching at the package keeps a new
+     * component inside the claim from the moment it is written.
+     *
+     * @param loggerName the logger to attach to, typically a package
+     */
+    public static CapturedLog of(final String loggerName) {
+        return attachTo((Logger) LoggerFactory.getLogger(loggerName), false, null);
+    }
+
+    /**
+     * Starts capturing everything <em>anything</em> logs, down to TRACE.
+     *
+     * <p>For the privacy suite, whose claim is about what is written at any level by any component —
+     * a claim a per-class capture cannot make, and one the deployed INFO threshold would hide rather
+     * than disprove. The root level is restored when the capture closes.
+     */
+    public static CapturedLog everything() {
+        final Logger root = (Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
+        final Level previous = root.getLevel();
+        root.setLevel(Level.TRACE);
+        return attachTo(root, true, previous);
+    }
+
+    private static CapturedLog attachTo(
+            final Logger logger, final boolean levelWasLowered, final Level levelToRestore) {
         final CollectingAppender appender = new CollectingAppender();
         appender.start();
         logger.addAppender(appender);
-        return new CapturedLog(logger, appender);
+        return new CapturedLog(logger, appender, levelWasLowered, levelToRestore);
     }
 
     /**
@@ -71,10 +114,34 @@ public final class CapturedLog implements AutoCloseable {
         return events().stream().map(ILoggingEvent::getFormattedMessage).toList();
     }
 
+    /**
+     * Everything each captured event would actually put in front of a reader: the formatted
+     * message and, where one was attached, the whole rendered exception.
+     *
+     * <p>The privacy claim is about what reaches a log index, and a stack trace reaches it exactly
+     * as the message does. An assertion that read only {@link #messages()} would miss the commonest
+     * way a payload fragment or a credential escapes — inside the text of an exception somebody
+     * else wrote.
+     */
+    public List<String> renderings() {
+        return events().stream().map(CapturedLog::render).toList();
+    }
+
+    private static String render(final ILoggingEvent event) {
+        final IThrowableProxy thrown = event.getThrowableProxy();
+        return thrown == null
+                ? event.getFormattedMessage()
+                : event.getFormattedMessage() + System.lineSeparator()
+                        + ThrowableProxyUtil.asString(thrown);
+    }
+
     @Override
     public void close() {
         logger.detachAppender(appender);
         appender.stop();
+        if (levelWasLowered) {
+            logger.setLevel(levelToRestore);
+        }
     }
 
     private static final class CollectingAppender extends AppenderBase<ILoggingEvent> {
