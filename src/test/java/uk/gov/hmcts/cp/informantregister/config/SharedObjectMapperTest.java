@@ -2,9 +2,9 @@ package uk.gov.hmcts.cp.informantregister.config;
 
 import java.math.BigDecimal;
 
-import jakarta.annotation.Resource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import tools.jackson.databind.JsonNode;
@@ -27,8 +27,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("the application's shared ObjectMapper")
 class SharedObjectMapperTest {
 
-    @Resource
-    private ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper;
+
+    // Constructor injection, in a test as in production: Principle V forbids field injection
+    // everywhere, and a test that takes its collaborator through the constructor is a test that
+    // could not accidentally run against a half-built context.
+    @Autowired
+    SharedObjectMapperTest(final ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     @Test
     void should_materialise_a_fractional_number_as_a_big_decimal() {
