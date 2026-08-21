@@ -1,7 +1,7 @@
 package uk.gov.hmcts.cp.integration;
 
-import jakarta.annotation.Resource;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.context.ActiveProfiles;
@@ -18,8 +18,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SuppressWarnings("PMD.UnitTestShouldIncludeAssert") // MockMvc andExpect() calls are assertions
 class ActuatorIntegrationTest {
 
-    @Resource
-    private MockMvc mockMvc;
+    private final MockMvc mockMvc;
+
+    @Autowired
+    ActuatorIntegrationTest(final MockMvc mockMvc) {
+        this.mockMvc = mockMvc;
+    }
 
     @Test
     void actuator_info_should_have_build_fields() throws Exception {
