@@ -9,6 +9,7 @@ import com.azure.messaging.servicebus.models.DeadLetterOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.dao.DataAccessException;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
 import uk.gov.hmcts.cp.informantregister.config.ServiceBusHealthIndicator;
@@ -125,6 +126,35 @@ public class InformantRegisterMessageListener {
         LOG.error("The processed log could not be reached, so the delivery was not examined; "
                         + "returning it and asking for intake to stop. messageId={} reason={}",
                 message.getMessageId(), ReasonCode.STORE_UNAVAILABLE.code());
+        return handBackAndSuspend();
+    }
+
+    /**
+     * The store answered the precondition and then went away underneath the run.
+     *
+     * <p>The precondition is a check, not a guarantee: a store can die in the moment between
+     * answering a probe and being asked to record something, and an outage that begins one
+     * millisecond later is the same outage. Without this branch it was reported as an unexpected
+     * fault and the delivery was handed back — correctly — but <strong>intake kept running</strong>,
+     * so the next delivery met the same dead store, and the next, until the broker's budget was
+     * spent and recoverable work was parked. That is the exact failure FR-015 exists to prevent,
+     * reached by the door nobody was watching.
+     *
+     * <p>It is told apart by the failure's own type rather than by where it was thrown, because the
+     * store is reached from more than one place inside a run and the answer is the same wherever it
+     * was: the request may be perfectly good, and this service was not fit to judge it.
+     */
+    private GuardDecision storeDiedMidRun(final ServiceBusReceivedMessage message) {
+        LOG.error("The processed log went away during the run, so nothing was recorded; returning "
+                        + "the delivery and asking for intake to stop. messageId={} reason={}",
+                message.getMessageId(), ReasonCode.STORE_UNAVAILABLE.code());
+        return handBackAndSuspend();
+    }
+
+    /**
+     * The two halves a store outage always costs: this delivery back, and intake stopped.
+     */
+    private GuardDecision handBackAndSuspend() {
         storeGate.suspendIntake();
         return new GuardDecision.Abandon(ReasonCode.STORE_UNAVAILABLE);
     }
@@ -147,6 +177,8 @@ public class InformantRegisterMessageListener {
             decision = process(parser.parse(message.getBody().toString()), message);
         } catch (ContractValidationException invalid) {
             decision = contractInvalid(message, invalid);
+        } catch (DataAccessException storeGone) {
+            decision = storeDiedMidRun(message);
         } catch (RuntimeException unexpected) {
             decision = unexpectedFailure(message, unexpected);
         }

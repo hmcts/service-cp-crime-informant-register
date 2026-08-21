@@ -4,17 +4,28 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import com.azure.core.util.BinaryData;
 import com.azure.messaging.servicebus.ServiceBusReceivedMessage;
 import com.azure.messaging.servicebus.ServiceBusReceivedMessageContext;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
+import uk.gov.hmcts.cp.informantregister.domain.DeliveryIdentity;
+import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
+import uk.gov.hmcts.cp.informantregister.support.CapturedLog;
+import uk.gov.hmcts.cp.informantregister.support.ProcessedLogTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.QueueHealthTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.StoreGateTestSupport;
 
+import static org.assertj.core.api.Assertions.as;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.never;
@@ -39,6 +50,8 @@ import static org.mockito.Mockito.when;
  */
 class StorePreconditionTest {
 
+    private static final String STORE_UNAVAILABLE = "STORE_UNAVAILABLE";
+
     /** Every settlement the SDK offers, so the count cannot be fooled by an overload. */
     private static final Set<String> SETTLEMENT_METHODS =
             Set.of("complete", "abandon", "deadLetter", "defer");
@@ -48,12 +61,16 @@ class StorePreconditionTest {
     private final DistributionCommandParser parser = mock(DistributionCommandParser.class);
     private final DistributionPipeline pipeline = mock(DistributionPipeline.class);
     private final ProcessingMetrics metrics = new ProcessingMetrics(new SimpleMeterRegistry());
-    private final StoreGateTestSupport.Recording gate = StoreGateTestSupport.closed();
+    private final StoreGateTestSupport.Recording closedGate = StoreGateTestSupport.closed();
+    private final StoreGateTestSupport.Recording openGate = StoreGateTestSupport.open();
 
-    private final InformantRegisterMessageListener listener =
-            new InformantRegisterMessageListener(
-                    parser, pipeline, metrics, QueueHealthTestSupport.unwatched(),
-                    gate, MAX_DELIVERY_COUNT);
+    private final InformantRegisterMessageListener listener = listenerOver(closedGate);
+
+    private InformantRegisterMessageListener listenerOver(final StoreGate gate) {
+        return new InformantRegisterMessageListener(
+                parser, pipeline, metrics, QueueHealthTestSupport.unwatched(),
+                gate, MAX_DELIVERY_COUNT);
+    }
 
     private static ServiceBusReceivedMessage message() {
         final ServiceBusReceivedMessage message = mock(ServiceBusReceivedMessage.class);
@@ -86,8 +103,42 @@ class StorePreconditionTest {
         assertThat(settlementsOn(context))
                 .as("handed back, exactly once, and never acknowledged or parked")
                 .containsExactly("abandon");
-        assertThat(gate.suspensionsRequested())
+        assertThat(closedGate.suspensionsRequested())
                 .as("and intake was asked to stop, because one delivery must not become five")
                 .isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("a store that dies after the precondition still stops intake")
+    void should_suspend_intake_when_the_store_fails_after_it_answered_the_precondition() {
+        final ServiceBusReceivedMessage message = message();
+        when(message.getBody()).thenReturn(BinaryData.fromString("{}"));
+        final ServiceBusReceivedMessageContext context =
+                mock(ServiceBusReceivedMessageContext.class);
+        when(context.getMessage()).thenReturn(message);
+
+        when(parser.parse(any(String.class))).thenReturn(ProcessedLogTestSupport.command());
+        when(pipeline.process(any(DistributionCommand.class), any(DeliveryIdentity.class)))
+                .thenThrow(new CannotGetJdbcConnectionException(
+                        "the pool could not hand out a connection"));
+
+        try (CapturedLog listenerLog = CapturedLog.of(InformantRegisterMessageListener.class)) {
+            listenerOver(openGate).onMessage(context);
+
+            assertThat(settlementsOn(context))
+                    .as("handed back — never parked, because the message was never the problem")
+                    .containsExactly("abandon");
+            assertThat(openGate.suspensionsRequested())
+                    .as("an outage discovered mid-run is the same outage, and costs the same one "
+                            + "delivery only if intake stops")
+                    .isEqualTo(1);
+            assertThat(listenerLog.events().stream()
+                    .filter(event -> Level.ERROR.equals(event.getLevel()))
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .toList())
+                    .as("reported once, under the bounded code a support tool reads")
+                    .singleElement(as(InstanceOfAssertFactories.STRING))
+                    .contains(STORE_UNAVAILABLE);
+        }
     }
 }
