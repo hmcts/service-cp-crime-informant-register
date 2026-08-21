@@ -30,7 +30,7 @@ public class SubmissionFailedException extends RuntimeException {
      * Whether a redelivery could change the outcome.
      */
     public FailureClassification classification() {
-        throw new UnsupportedOperationException("a submission failure carries its own classification");
+        return failureClassification;
     }
 
     /**

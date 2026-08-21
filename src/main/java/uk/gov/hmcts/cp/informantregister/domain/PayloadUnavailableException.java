@@ -27,7 +27,7 @@ public class PayloadUnavailableException extends RuntimeException {
      * Always {@link FailureClassification#TRANSIENT} — see the class comment.
      */
     public FailureClassification classification() {
-        throw new UnsupportedOperationException("payload unavailability is transient by construction");
+        return FailureClassification.TRANSIENT;
     }
 
     /**
