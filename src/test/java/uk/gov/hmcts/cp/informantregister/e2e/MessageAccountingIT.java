@@ -1,9 +1,11 @@
 package uk.gov.hmcts.cp.informantregister.e2e;
 
 import java.time.Duration;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -108,8 +110,7 @@ class MessageAccountingIT {
         FAILED_AND_PARKED,
         PARKED_AS_INVALID,
         IN_FLIGHT,
-        QUEUED_OR_RETRYING,
-        UNACCOUNTED
+        QUEUED_OR_RETRYING
     }
 
     /** One published message: what it was, where it went. */
@@ -212,29 +213,50 @@ class MessageAccountingIT {
     }
 
     /**
-     * Which bucket a published message is in, decided from the queue and the processed log alone —
-     * the two places an operator can look.
+     * <strong>Every</strong> outcome that currently describes a published message.
+     *
+     * <p>Each of SC-001's five is evaluated on its own terms and none of them is skipped because an
+     * earlier one matched. That is the point: the criterion is not "a bucket can be found for every
+     * message" but "exactly one describes it". A chain of else-branches answers the first question
+     * and silently guarantees the second, so a message that was both completed and sitting on the
+     * dead-letter queue — a register somebody believes was sent, beside the same register parked as
+     * failed — would be reported as tidily accounted for.
+     *
+     * <p>Read from the queue and the processed log alone, which are the two places an operator can
+     * look. The claim, not the queue, is what identifies a run in progress: a peek reports a locked
+     * message exactly as it reports a waiting one, because locking is not deletion, whereas a claim
+     * is held only while a runner is working.
      */
-    private static Outcome accountFor(final Published message) {
+    private static Set<Outcome> outcomesFor(final Published message) {
         final Optional<Row> record = row(message.requestId());
+        final Optional<RequestStatus> status =
+                record.map(found -> RequestStatus.valueOf(found.status()));
+        final boolean claimed = record.map(found -> found.claimOwner() != null).orElse(false);
         final boolean parked = onDeadLetterQueue(message.messageId());
         final boolean queued = onQueue(message.messageId());
 
-        if (record.isEmpty()) {
-            return parked ? Outcome.PARKED_AS_INVALID
-                    : queued ? Outcome.QUEUED_OR_RETRYING : Outcome.UNACCOUNTED;
+        final Set<Outcome> applicable = EnumSet.noneOf(Outcome.class);
+        if (status.filter(RequestStatus.COMPLETED::equals).isPresent()) {
+            applicable.add(Outcome.COMPLETED);
         }
-        final Row found = record.get();
-        return switch (RequestStatus.valueOf(found.status())) {
-            case COMPLETED -> queued || parked ? Outcome.UNACCOUNTED : Outcome.COMPLETED;
-            case FAILED -> parked ? Outcome.FAILED_AND_PARKED : Outcome.UNACCOUNTED;
-            // The claim decides, not the queue. A peek reports a locked message exactly as it
-            // reports a waiting one — locking is not deletion — so "is it on the queue" cannot tell
-            // a run in progress from a delivery nobody has taken. The claim can: it is held only
-            // while a runner is working.
-            case RECEIVED, RETRYING -> found.claimOwner() != null ? Outcome.IN_FLIGHT
-                    : queued ? Outcome.QUEUED_OR_RETRYING : Outcome.UNACCOUNTED;
-        };
+        if (status.filter(RequestStatus.FAILED::equals).isPresent() && parked) {
+            applicable.add(Outcome.FAILED_AND_PARKED);
+        }
+        if (record.isEmpty() && parked) {
+            applicable.add(Outcome.PARKED_AS_INVALID);
+        }
+        if (nonTerminal(status) && claimed) {
+            applicable.add(Outcome.IN_FLIGHT);
+        }
+        if (queued && !claimed) {
+            applicable.add(Outcome.QUEUED_OR_RETRYING);
+        }
+        return applicable;
+    }
+
+    private static boolean nonTerminal(final Optional<RequestStatus> status) {
+        return status.filter(found ->
+                found == RequestStatus.RECEIVED || found == RequestStatus.RETRYING).isPresent();
     }
 
     // --- the batch --------------------------------------------------------------------------
@@ -274,22 +296,40 @@ class MessageAccountingIT {
         await().atMost(SETTLED_WITHIN).pollInterval(POLL)
                 .until(() -> row(held).filter(found -> found.claimOwner() != null).isPresent());
 
-        final Map<String, Outcome> accounting = new LinkedHashMap<>();
-        for (final Published message :
-                List.of(valid, duplicate, contractInvalid, doomed, inFlight)) {
-            accounting.put(message.label(), accountFor(message));
+        final List<Published> batch = List.of(valid, duplicate, contractInvalid, doomed, inFlight);
+        final Map<String, Set<Outcome>> accounting = new LinkedHashMap<>();
+        for (final Published message : batch) {
+            accounting.put(message.label(), outcomesFor(message));
         }
 
+        // Exclusivity first, and about every message at once: none of them may be describable two
+        // ways, and none of them may be describable no way at all.
         assertThat(accounting)
-                .as("every message in the batch, in exactly one of SC-001's outcomes")
+                .as("exactly one outcome describes each message — not at least one, and not none")
+                .allSatisfy((label, outcomes) -> assertThat(outcomes)
+                        .as("%s was accounted for as %s", label, outcomes)
+                        .hasSize(1));
+
+        assertThat(accounting)
+                .as("and it is the outcome the message earned")
                 .containsExactlyInAnyOrderEntriesOf(Map.of(
-                        "valid", Outcome.COMPLETED,
+                        "valid", EnumSet.of(Outcome.COMPLETED),
                         // The duplicate is accounted for by the record it shares: acknowledged with
                         // no run, gone from the queue, and never parked.
-                        "duplicate", Outcome.COMPLETED,
-                        "contract-invalid", Outcome.PARKED_AS_INVALID,
-                        "failing", Outcome.FAILED_AND_PARKED,
-                        "in-flight", Outcome.IN_FLIGHT));
+                        "duplicate", EnumSet.of(Outcome.COMPLETED),
+                        "contract-invalid", EnumSet.of(Outcome.PARKED_AS_INVALID),
+                        "failing", EnumSet.of(Outcome.FAILED_AND_PARKED),
+                        "in-flight", EnumSet.of(Outcome.IN_FLIGHT)));
+
+        // A parked message is on the dead-letter queue and nowhere else. Left on both it would be
+        // delivered again by the queue it is still sitting on, so support would be looking at a
+        // parked copy of work that was quietly still running.
+        assertThat(onQueue(contractInvalid.messageId()))
+                .as("a message parked as contract-invalid has left the queue it arrived on")
+                .isFalse();
+        assertThat(onQueue(doomed.messageId()))
+                .as("and so has a message parked after exhausting its deliveries")
+                .isFalse();
 
         assertThat(row(completing).orElseThrow().attempts())
                 .as("one run for the request, however many deliveries it received")
