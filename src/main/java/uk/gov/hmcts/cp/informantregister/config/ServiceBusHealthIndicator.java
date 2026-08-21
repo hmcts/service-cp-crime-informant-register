@@ -95,8 +95,21 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
             ServiceBusFailureReason.MESSAGING_ENTITY_NOT_FOUND,
             ServiceBusFailureReason.MESSAGING_ENTITY_DISABLED);
 
+    /**
+     * Service Bus failure reasons that are about one message rather than about the connection.
+     */
+    private static final Set<ServiceBusFailureReason> MESSAGE_LEVEL_REASONS = Set.of(
+            ServiceBusFailureReason.MESSAGE_LOCK_LOST,
+            ServiceBusFailureReason.MESSAGE_NOT_FOUND,
+            ServiceBusFailureReason.MESSAGE_SIZE_EXCEEDED,
+            ServiceBusFailureReason.SESSION_LOCK_LOST,
+            ServiceBusFailureReason.SESSION_CANNOT_BE_LOCKED);
+
     /** What an AMQP fault with no condition of its own is called. */
     private static final String AMQP_TRANSPORT = "AMQP_TRANSPORT";
+
+    /** What a refusal the SDK described only in its own vocabulary is called. */
+    private static final String SETTLEMENT_REFUSED = "SETTLEMENT_REFUSED";
 
     /** What a bare network fault is called. */
     private static final String NETWORK = "NETWORK";
@@ -174,7 +187,42 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
      * @param refusal what the broker answered the settlement call with
      */
     public void recordSettlementRefusal(final Throwable refusal) {
-        recordFault(refusal);
+        // Classified the other way round from a processor error, and deliberately. A settlement is
+        // a round trip the broker was asked to complete and did not, so the presumption is that the
+        // transport is the problem — unless the fault is recognisably about this one message, which
+        // arrives over a connection that plainly worked. Reading it the other way does not survive
+        // contact with the SDK: a blocking settlement reports its failure wrapped in a Reactor
+        // exception whose cause chain routinely says nothing about AMQP at all, so a rule that
+        // waited to be told "connection" would wait for ever. A wrong DOWN costs one health cycle
+        // and is cleared by the next successful round trip; a wrong UP hides an outage.
+        if (!aboutThisMessage(refusal)) {
+            lastFault.set(new Fault(
+                    connectionCondition(refusal).orElse(SETTLEMENT_REFUSED), clock.instant()));
+        }
+    }
+
+    /**
+     * Whether a refusal is about the message rather than about the connection.
+     */
+    private static boolean aboutThisMessage(final Throwable refusal) {
+        Throwable current = refusal;
+        for (int depth = 0; current != null && depth < MAX_CAUSE_DEPTH; depth++) {
+            if (messageLevel(current)) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private static boolean messageLevel(final Throwable failure) {
+        return switch (failure) {
+            case AmqpException amqp ->
+                    MESSAGE_LEVEL_CONDITIONS.contains(amqp.getErrorCondition());
+            case ServiceBusException serviceBus ->
+                    MESSAGE_LEVEL_REASONS.contains(serviceBus.getReason());
+            default -> false;
+        };
     }
 
     private void recordFault(final Throwable failure) {

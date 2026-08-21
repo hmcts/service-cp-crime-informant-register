@@ -2,7 +2,6 @@ package uk.gov.hmcts.cp.informantregister.support;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.net.ServerSocket;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -13,12 +12,12 @@ import com.azure.messaging.servicebus.ServiceBusClientBuilder;
 import com.azure.messaging.servicebus.ServiceBusReceivedMessage;
 import com.azure.messaging.servicebus.ServiceBusReceiverClient;
 import com.azure.messaging.servicebus.models.SubQueue;
-import com.github.dockerjava.api.model.ExposedPort;
-import com.github.dockerjava.api.model.PortBinding;
-import com.github.dockerjava.api.model.Ports;
+import eu.rekawek.toxiproxy.Proxy;
+import eu.rekawek.toxiproxy.ToxiproxyClient;
 import org.testcontainers.azure.ServiceBusEmulatorContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.mssqlserver.MSSQLServerContainer;
+import org.testcontainers.toxiproxy.ToxiproxyContainer;
 import org.testcontainers.utility.MountableFile;
 
 import static org.awaitility.Awaitility.await;
@@ -56,17 +55,22 @@ public final class ServiceBusEmulatorTestSupport {
     /** The emulator's AMQP port inside the container. */
     private static final int AMQP_PORT = 5672;
 
+    /** What the emulator is called on the shared network, so the proxy can reach it. */
+    private static final String EMULATOR_ALIAS = "servicebus";
+
     /**
-     * The host port the emulator is pinned to.
+     * The proxy sitting between every client in this build and the broker.
      *
-     * <p>Pinned, rather than left to Docker, because the broker-outage suites take the broker away
-     * by stopping the container and bring it back by starting it again — and Docker assigns a fresh
-     * host port on every start of a dynamically published container. A moving endpoint would mean
-     * the connection string a running service holds pointed at nothing even after the broker
-     * returned, which is a different outage from the one spec SC-004 describes and would prove the
-     * wrong thing.
+     * <p>Everything connects through it — the service under test and the suites' own senders and
+     * receivers alike — so that an outage can be injected at the transport rather than staged by
+     * doing something violent to a container. The plan's test matrix names Toxiproxy as the
+     * recorded fallback for exactly this, and it is adopted here as that note.
      */
-    private static final int HOST_PORT = freeHostPort();
+    private static final String TOXIPROXY_IMAGE = "ghcr.io/shopify/toxiproxy:2.12.0";
+
+    private static final int TOXIPROXY_CONTROL_PORT = 8474;
+    private static final int TOXIPROXY_LISTEN_PORT = 8666;
+    private static final String PROXY_NAME = "servicebus";
 
     private static final Duration BROKER_RETURNS_WITHIN = Duration.ofSeconds(120);
 
@@ -84,10 +88,13 @@ public final class ServiceBusEmulatorTestSupport {
                     .withNetwork(NETWORK)
                     .withConfig(MountableFile.forHostPath(CONFIG_PATH))
                     .withMsSqlServerContainer(MSSQL)
-                    .withCreateContainerCmdModifier(command -> command.getHostConfig()
-                            .withPortBindings(new PortBinding(
-                                    Ports.Binding.bindPort(HOST_PORT),
-                                    new ExposedPort(AMQP_PORT))));
+                    .withNetworkAliases(EMULATOR_ALIAS);
+
+    private static final ToxiproxyContainer TOXIPROXY = new ToxiproxyContainer(TOXIPROXY_IMAGE)
+            .withNetwork(NETWORK)
+            .withExposedPorts(TOXIPROXY_CONTROL_PORT, TOXIPROXY_LISTEN_PORT);
+
+    private static Proxy brokerProxy;
 
     private ServiceBusEmulatorTestSupport() {
         // Static fixture holder.
@@ -97,73 +104,98 @@ public final class ServiceBusEmulatorTestSupport {
      * Returns the shared emulator, starting it and its companion if this is the first call.
      */
     public static synchronized ServiceBusEmulatorContainer container() {
-        // Started once per JVM and remembered, rather than asked whether it is running. A suite
-        // that has deliberately stopped the broker would otherwise see "not running" here and have
-        // Testcontainers build a second one underneath it, at a different endpoint, mid-outage.
+        // Started once per JVM and remembered, rather than asked whether it is running.
         if (!started) {
             MSSQL.start();
             EMULATOR.start();
+            TOXIPROXY.start();
+            brokerProxy = createProxy();
             started = true;
         }
         return EMULATOR;
+    }
+
+    private static Proxy createProxy() {
+        try {
+            return new ToxiproxyClient(TOXIPROXY.getHost(), TOXIPROXY.getControlPort())
+                    .createProxy(PROXY_NAME,
+                            "0.0.0.0:" + TOXIPROXY_LISTEN_PORT,
+                            EMULATOR_ALIAS + ':' + AMQP_PORT);
+        } catch (IOException unreachable) {
+            throw new UncheckedIOException("could not put a proxy in front of the broker", unreachable);
+        }
+    }
+
+    private static synchronized Proxy proxy() {
+        container();
+        return brokerProxy;
     }
 
     /**
      * The emulator connection string, ending {@code UseDevelopmentEmulator=true;}.
      */
     public static String connectionString() {
-        return container().getConnectionString();
+        container();
+        return "Endpoint=sb://" + TOXIPROXY.getHost() + ':'
+                + TOXIPROXY.getMappedPort(TOXIPROXY_LISTEN_PORT)
+                + ";SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;"
+                + "UseDevelopmentEmulator=true;";
     }
 
     /**
-     * Takes the broker away, the way a broker actually goes away.
+     * Takes the broker away, at the transport, in a way a test can time.
      *
-     * <p>The store-outage suites freeze Postgres, and that works because the driver notices a
-     * severed connection the next time it uses one. The broker does not behave like that: a frozen
-     * emulator leaves the AMQP connection open and silent, and an idle consumer — one with no
-     * message in flight — sits there indefinitely without ever being told anything is wrong. Five
-     * minutes of it were measured, and the client never reported a fault, which is not a defect:
-     * absence of traffic is not evidence of an outage, and research §8 says so deliberately.
+     * <p>The obvious ways do not work, and both of their failures are silent. <strong>Freezing</strong>
+     * the container leaves the AMQP connection open and mute: an idle consumer sits there
+     * indefinitely without being told anything is wrong — five minutes of it were measured, with no
+     * callback of any kind — which is not a defect, because absence of traffic is not evidence of an
+     * outage and research §8 says so deliberately. <strong>Stopping</strong> it does sever the
+     * connections, but only a settlement <em>already in progress</em> then fails; one started
+     * afterwards blocks, because the client is retrying a connection it cannot make. The window
+     * between those two is milliseconds wide, so a suite that published a message and stopped a
+     * container was betting on timing and could lose in either direction.
      *
-     * <p>So the container is stopped. Connections close, the consumer is told at once, and the
-     * scenario is the one operations staff meet — a broker that went away, not a broker that went
-     * quiet. The endpoint survives because the host port is pinned.
+     * <p>Disabling the proxy closes what is open and refuses what comes next, immediately and for
+     * as long as the test wants. A settlement started after the cut fails at once instead of
+     * hanging, so a suite can hold a delivery, cut the transport, and only then let the delivery
+     * finish — which is a sequence rather than a race. The plan's test matrix names Toxiproxy as the
+     * recorded fallback for exactly this situation; this is that note.
      */
     public static void disconnect() {
-        container().getDockerClient()
-                .stopContainerCmd(container().getContainerId())
-                .withTimeout(0)
-                .exec();
+        try {
+            proxy().disable();
+        } catch (IOException unreachable) {
+            throw new UncheckedIOException("could not cut the broker connection", unreachable);
+        }
     }
 
     /**
-     * Brings the broker back at the same endpoint, and waits until it is really answering.
+     * Puts the broker back, and waits until it is really answering.
      *
-     * <p>Waiting on a real round trip rather than on the container's state: "started" is when
-     * Docker has run the process, and the emulator spends several seconds after that reaching its
-     * own state store before it will accept an AMQP connection. A suite that began asserting in
-     * between would be measuring the emulator's start-up, not this service's recovery.
-     *
-     * <p>Restarting loses whatever was on the queue; the emulator has no restart persistence
-     * (research §10). Every suite that stops the broker publishes what it needs afterwards.
+     * <p>Waiting on a real round trip rather than on the proxy's own state: the proxy accepts
+     * connections again the instant it is enabled, and the emulator behind it is untouched, but the
+     * client has its own reconnection to complete and a suite that began asserting in between would
+     * be measuring nothing.
      */
     public static void reconnect() {
-        container().getDockerClient()
-                .startContainerCmd(container().getContainerId())
-                .exec();
+        try {
+            proxy().enable();
+        } catch (IOException unreachable) {
+            throw new UncheckedIOException("could not restore the broker connection", unreachable);
+        }
         await().atMost(BROKER_RETURNS_WITHIN)
                 .pollInterval(Duration.ofSeconds(1))
                 .untilAsserted(ServiceBusEmulatorTestSupport::assertBrokerAnswers);
     }
 
     /**
-     * Brings the broker back if a suite left it stopped, whether or not it did.
+     * Puts the broker back if a suite left it cut, whether or not it did.
      *
      * <p>Idempotent, because the outage suites restore from an {@code @AfterEach} so that a failing
      * assertion cannot leave the rest of the build without a broker.
      */
     public static void restore() {
-        if (!running()) {
+        if (!proxy().isEnabled()) {
             reconnect();
         }
     }
@@ -187,29 +219,9 @@ public final class ServiceBusEmulatorTestSupport {
                 .buildClient()) {
             receiver.peekMessage();
         } catch (RuntimeException unreachable) {
-            throw new AssertionError("the restarted broker did not answer", unreachable);
+            throw new AssertionError("the broker did not answer through the proxy", unreachable);
         }
     }
-
-    private static boolean running() {
-        return Boolean.TRUE.equals(container().getDockerClient()
-                .inspectContainerCmd(container().getContainerId())
-                .exec()
-                .getState()
-                .getRunning());
-    }
-
-    /**
-     * A host port nothing is using, claimed by opening and closing a socket on it.
-     */
-    private static int freeHostPort() {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            return socket.getLocalPort();
-        } catch (IOException unavailable) {
-            throw new UncheckedIOException("no free host port for the broker emulator", unavailable);
-        }
-    }
-
 
     /**
      * Looks for one message by its broker identity, on the queue or on its dead-letter queue.

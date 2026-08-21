@@ -3,8 +3,9 @@ package uk.gov.hmcts.cp.informantregister.e2e;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import com.azure.core.amqp.exception.AmqpErrorCondition;
 import com.azure.core.amqp.exception.AmqpErrorContext;
@@ -13,8 +14,10 @@ import com.azure.messaging.servicebus.ServiceBusErrorSource;
 import com.azure.messaging.servicebus.ServiceBusException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.invocation.InvocationOnMock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.health.actuate.endpoint.CompositeHealthDescriptor;
 import org.springframework.boot.health.actuate.endpoint.HealthEndpoint;
@@ -23,8 +26,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import tools.jackson.databind.JsonNode;
+import uk.gov.hmcts.cp.informantregister.application.HearingPayloadSource;
+import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
 import uk.gov.hmcts.cp.informantregister.config.ServiceBusHealthIndicator;
+import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
 import uk.gov.hmcts.cp.informantregister.support.AdjustableClock;
 import uk.gov.hmcts.cp.informantregister.support.PostgresTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ProcessedLogTestSupport;
@@ -33,6 +41,8 @@ import uk.gov.hmcts.cp.informantregister.support.ServiceTestSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 /**
  * The readiness policy, proven against both dependencies going away (spec FR-011, research §8).
@@ -76,16 +86,32 @@ class ReadinessPolicyIT {
     /** The default window, so the boundary asserted below is the one the service ships with. */
     private static final Duration STALENESS = Duration.ofSeconds(60);
 
-    /** How much work is in flight when the broker is taken away. */
-    private static final int BURST = 60;
+    /** So a failure is reported as a failure rather than as a hang. */
+    private static final Duration HELD_AT_MOST = Duration.ofMinutes(2);
+
+    /** Nothing that resembles hearing content: this increment handles no defendant data. */
+    private static final JsonNode PLACEHOLDER =
+            JacksonConfig.contractObjectMapper().readTree("{\"stub\":true}");
 
     private static final String SOURCE = "RECEIVE";
     private static final String ENTITY_PATH = "informantregister.requests";
 
     private static String connectionString;
 
+    @MockitoBean
+    private HearingPayloadSource payloadSource;
+
     @Autowired
     private HealthEndpoint healthEndpoint;
+
+    /** The request whose run is held open across the transport cut. */
+    private final UUID held = UUID.randomUUID();
+
+    /** Raised when that run has genuinely started. */
+    private final CountDownLatch inFlight = new CountDownLatch(1);
+
+    /** Lowered once the transport has been cut underneath it. */
+    private final CountDownLatch release = new CountDownLatch(1);
 
     @DynamicPropertySource
     static void wireTheContainers(final DynamicPropertyRegistry registry) {
@@ -105,10 +131,28 @@ class ReadinessPolicyIT {
         registry.add("spring.datasource.hikari.data-source-properties.socketTimeout", () -> "5");
     }
 
+    @BeforeEach
+    void holdOneRunOpen() {
+        when(payloadSource.fetch(any(DistributionCommand.class))).thenAnswer(this::payloadFor);
+    }
+
     @AfterEach
     void thawEverything() {
+        release.countDown();
         PostgresTestSupport.unpause();
         ServiceBusEmulatorTestSupport.restore();
+    }
+
+    /**
+     * The payload port. A neighbouring suite's message is handed the placeholder and passes through.
+     */
+    private JsonNode payloadFor(final InvocationOnMock invocation) throws InterruptedException {
+        final DistributionCommand command = invocation.getArgument(0);
+        if (held.equals(command.requestId())) {
+            inFlight.countDown();
+            release.await(HELD_AT_MOST.toSeconds(), TimeUnit.SECONDS);
+        }
+        return PLACEHOLDER;
     }
 
     // --- helpers ---------------------------------------------------------------------------
@@ -164,7 +208,11 @@ class ReadinessPolicyIT {
     @Test
     @DisplayName("a store outage takes readiness down, and readiness comes back with the store")
     void should_report_readiness_down_while_the_store_is_unreachable() {
-        assertThat(readinessStatus()).isEqualTo(Status.UP);
+        // Waited for rather than assumed: readiness now also covers this pod's own gated start, and
+        // the start is on a probe interval. A test that asserted UP the instant the context came up
+        // would be asserting that the start had already happened, which is a different claim.
+        await().atMost(OBSERVED_WITHIN).pollInterval(POLL)
+                .until(() -> Status.UP.equals(readinessStatus()));
 
         PostgresTestSupport.pause();
         await().atMost(OBSERVED_WITHIN).pollInterval(POLL)
@@ -177,20 +225,23 @@ class ReadinessPolicyIT {
 
     @Test
     @DisplayName("a queue outage leaves readiness up and shows itself in the broker component")
-    void should_keep_readiness_up_and_report_the_broker_down_during_a_queue_outage() {
-        // The outage is staged with work in hand, because that is the only kind the SDK reports.
-        // A processor with nothing to do treats a lost connection as retryable and rolls its
-        // message pump silently and indefinitely — measured at five minutes against a broker whose
-        // container had been stopped outright, with no callback of any kind. A settlement in
-        // progress when the connection dies fails at once and is evidence; one started afterwards
-        // blocks indefinitely and is not. The broker is therefore taken away in the middle of a
-        // burst of real work, which is what makes this a test rather than a race.
-        final List<UUID> burst = ServiceTestSupport.publishBurst(BURST);
-        await().atMost(OBSERVED_WITHIN).pollInterval(Duration.ofMillis(200)).until(() ->
-                ProcessedLogTestSupport.row(ProcessedLogTestSupport.SOURCE, burst.getFirst())
-                        .isPresent());
+    void should_keep_readiness_up_and_report_the_broker_down_during_a_queue_outage()
+            throws InterruptedException {
+        // The outage is staged with work in hand, because that is the only kind the SDK reports: a
+        // processor with nothing to do treats a lost connection as retryable and rolls its message
+        // pump silently, and five minutes against a broker that had been stopped outright produced
+        // no callback of any kind. The evidence research §8 is built on is a round trip that
+        // failed, so there has to be one.
+        //
+        // Cutting the transport through the proxy makes that a sequence rather than a race: hold a
+        // delivery, cut, then let it finish into a settlement that is refused at once.
+        ServiceTestSupport.publish(ServiceTestSupport.validBody(held, UUID.randomUUID()));
+        assertThat(inFlight.await(OBSERVED_WITHIN.toSeconds(), TimeUnit.SECONDS))
+                .as("the run must genuinely be in flight before the transport is cut")
+                .isTrue();
 
         ServiceBusEmulatorTestSupport.disconnect();
+        release.countDown();
         try {
             await().atMost(OBSERVED_WITHIN).pollInterval(POLL)
                     .until(() -> Status.DOWN.equals(brokerComponentStatus()));
@@ -338,5 +389,23 @@ class ReadinessPolicyIT {
         assertThat(scraped.find(ProcessingMetrics.SERVICEBUS_UP).gauge().value())
                 .as("the gauge and the component answer from the same live state")
                 .isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("a settlement refused about one message is not an outage of the queue")
+    void should_not_report_an_outage_for_a_refusal_that_was_about_the_message() {
+        final AdjustableClock clock = AdjustableClock.startingAt(Instant.parse("2026-08-21T09:00:00Z"));
+        final ServiceBusHealthIndicator indicator = indicatorOn(clock);
+        indicator.recordIntakeStarted();
+
+        // A lock that ran out is the delivery's own business, and it arrived over a connection that
+        // plainly worked. Counting it as an outage would put the broker on a dashboard every time a
+        // run took slightly too long.
+        indicator.recordSettlementRefusal(new ServiceBusException(
+                new AmqpException(true, AmqpErrorCondition.MESSAGE_LOCK_LOST,
+                        "the lock had already expired", new AmqpErrorContext("sbemulatorns")),
+                ServiceBusErrorSource.COMPLETE));
+
+        assertThat(indicator.health().getStatus()).isEqualTo(Status.UP);
     }
 }
