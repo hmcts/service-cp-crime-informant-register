@@ -175,9 +175,10 @@ public class ServiceBusConsumerConfig {
             final ProcessedLogProbe storeProbe,
             final ObjectProvider<Flyway> flyway,
             final ProcessingMetrics metrics,
+            final ServiceBusHealthIndicator health,
             final InformantRegisterProperties properties) {
         return new ConsumerLifecycleController(
-                processor, storeProbe, flyway::getIfAvailable, metrics,
+                processor, storeProbe, flyway::getIfAvailable, metrics, health,
                 properties.store().probeInterval());
     }
 

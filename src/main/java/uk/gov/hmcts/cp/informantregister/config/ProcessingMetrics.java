@@ -1,6 +1,8 @@
 package uk.gov.hmcts.cp.informantregister.config;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
@@ -54,8 +56,18 @@ public class ProcessingMetrics {
      */
     private final AtomicInteger intakeSuspendedState = new AtomicInteger(DOWN);
 
-    /** Up until an outage is observed — the honest starting position for a healthy pod. */
-    private final AtomicInteger serviceBusUpState = new AtomicInteger(UP);
+    /**
+     * How the Service Bus gauge answers, at the moment it is asked.
+     *
+     * <p>A supplier rather than a remembered number, because the state it reports is partly a
+     * function of time: an error goes stale, and a consumer that has never been answered stops
+     * being given the benefit of the doubt. A value written at the last state change would be
+     * whatever it was when something last happened, which for exactly those two transitions is the
+     * wrong answer for as long as nothing happens. Up until something says otherwise, which is the
+     * honest starting position for a healthy pod.
+     */
+    private final AtomicReference<BooleanSupplier> serviceBusState =
+            new AtomicReference<>(() -> true);
 
     public ProcessingMetrics(final MeterRegistry registry) {
         this.registry = registry;
@@ -63,7 +75,8 @@ public class ProcessingMetrics {
         Gauge.builder(INTAKE_SUSPENDED, intakeSuspendedState, AtomicInteger::get)
                 .description("1 while intake is suspended, 0 while it is running")
                 .register(registry);
-        Gauge.builder(SERVICEBUS_UP, serviceBusUpState, AtomicInteger::get)
+        Gauge.builder(SERVICEBUS_UP, serviceBusState,
+                        state -> state.get().getAsBoolean() ? UP : DOWN)
                 .description("1 while the Service Bus health component is up, 0 while it is down")
                 .register(registry);
     }
@@ -132,7 +145,20 @@ public class ProcessingMetrics {
      * Mirrors the Service Bus health component.
      */
     public void serviceBusUp(final boolean up) {
-        serviceBusUpState.set(up ? UP : DOWN);
+        serviceBusState.set(() -> up);
+    }
+
+    /**
+     * Points the Service Bus gauge at the component that knows the answer.
+     *
+     * <p>So that a scrape and a health check read the same live state rather than the same
+     * remembered one, whichever of them happens first and whether or not the other ever happens at
+     * all. A Prometheus scrape does not call the health endpoint on its way past.
+     *
+     * @param liveState answers, on demand, whether the broker is reachable
+     */
+    public void bindServiceBusUp(final BooleanSupplier liveState) {
+        serviceBusState.set(liveState);
     }
 
     private Counter counter(final String name) {

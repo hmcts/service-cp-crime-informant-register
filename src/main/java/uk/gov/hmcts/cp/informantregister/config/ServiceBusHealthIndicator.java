@@ -114,17 +114,24 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
     private final AtomicReference<Instant> lastTraffic = new AtomicReference<>();
 
     /**
-     * When this consumer started, so "we have never once heard from the broker" can be told apart
-     * from "we have not heard from it lately".
+     * When intake actually started, so "we have never once heard from the broker" can be told apart
+     * both from "we have not heard from it lately" and from "we have not asked it anything yet".
+     *
+     * <p>Null until the processor is running. A pod gated on its store can sit in that state for a
+     * long time, and a broker-DOWN alert raised because a <em>database</em> was down would send
+     * somebody to the wrong system entirely.
      */
-    private final Instant startedAt;
+    private final AtomicReference<Instant> intakeStartedAt = new AtomicReference<>();
 
     public ServiceBusHealthIndicator(
             final Duration staleness, final ProcessingMetrics metrics, final Clock clock) {
         this.staleness = staleness;
         this.metrics = metrics;
         this.clock = clock;
-        this.startedAt = clock.instant();
+        // The gauge asks this component the same question the health endpoint asks, at the moment
+        // it is asked. Prometheus does not call the health endpoint on its way past, and both
+        // answers move with time rather than only with events.
+        metrics.bindServiceBusUp(this::reachableNow);
     }
 
     /**
@@ -184,21 +191,45 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
         lastTraffic.set(clock.instant());
     }
 
+    /**
+     * Records that the broker accepted a settlement.
+     *
+     * <p>Traffic is traffic. Research §8 names "the last successful receive <em>or settlement</em>"
+     * for a reason: a consumer working steadily through a backlog it received before a blip is
+     * completing round trips constantly, and one that counted only receives would report an outage
+     * it is plainly not having.
+     */
+    public void recordSettlementAccepted() {
+        lastTraffic.set(clock.instant());
+    }
+
+    /**
+     * Records that intake has actually started, which is when this component starts having an
+     * opinion about a broker nobody has yet spoken to.
+     */
+    public void recordIntakeStarted() {
+        intakeStartedAt.compareAndSet(null, clock.instant());
+    }
+
+    /**
+     * Whether the broker is reachable, evaluated now.
+     */
+    public boolean reachableNow() {
+        return reachable(lastFault.get(), lastTraffic.get());
+    }
+
     @Override
     public Health health() {
         final Fault fault = lastFault.get();
         final Instant traffic = lastTraffic.get();
         final boolean up = reachable(fault, traffic);
 
-        // Set from the same evaluation that answers the probe, so the dashboard and the probe
-        // cannot disagree about what this component thinks.
-        metrics.serviceBusUp(up);
-
         return (up ? Health.up() : Health.down())
                 .withDetail("condition", fault == null ? NONE : fault.condition())
                 .withDetail("lastErrorAt", fault == null ? NONE : fault.at().toString())
                 .withDetail("lastTrafficAt", traffic == null ? NONE : traffic.toString())
                 .withDetail("stalenessWindow", staleness.toString())
+                .withDetail("intakeStartedAt", startedAtOrNone())
                 .build();
     }
 
@@ -221,13 +252,26 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
     private boolean reachable(final Fault fault, final Instant traffic) {
         final boolean answered;
         if (fault == null) {
-            answered = traffic != null
-                    || Duration.between(startedAt, clock.instant()).compareTo(staleness) <= 0;
+            answered = traffic != null || withinStartupGrace();
         } else {
             answered = (traffic != null && traffic.isAfter(fault.at()))
                     || Duration.between(fault.at(), clock.instant()).compareTo(staleness) > 0;
         }
         return answered;
+    }
+
+    /**
+     * Whether a consumer that has never been answered is still entitled to the benefit of the doubt.
+     *
+     * <p>Strictly inside the window, so a <em>completed</em> window reports the outage — the same
+     * boundary the fault rule uses from the other side, where a failure exactly as old as the
+     * window is not yet older than it. Both edges therefore report DOWN, which is the answer that
+     * costs an operator a look rather than a register.
+     */
+    private boolean withinStartupGrace() {
+        final Instant startedAt = intakeStartedAt.get();
+        return startedAt == null
+                || Duration.between(startedAt, clock.instant()).compareTo(staleness) < 0;
     }
 
     /**
@@ -288,6 +332,11 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
         return UNREACHABLE_REASONS.contains(reason)
                 ? Optional.of(reason.toString())
                 : Optional.empty();
+    }
+
+    private String startedAtOrNone() {
+        final Instant startedAt = intakeStartedAt.get();
+        return startedAt == null ? NONE : startedAt.toString();
     }
 
     /**

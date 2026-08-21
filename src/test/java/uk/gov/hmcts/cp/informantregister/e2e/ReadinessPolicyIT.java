@@ -254,4 +254,87 @@ class ReadinessPolicyIT {
                 .as("only a connection-class failure means the queue is unreachable")
                 .isEqualTo(Status.UP);
     }
+
+    @Test
+    @DisplayName("a consumer that has not started yet says nothing about a broker it has not used")
+    void should_not_report_an_outage_before_intake_has_started() {
+        final AdjustableClock clock = AdjustableClock.startingAt(Instant.parse("2026-08-21T09:00:00Z"));
+        final ServiceBusHealthIndicator indicator = indicatorOn(clock);
+
+        // A pod gated on its store can wait a long time. Nothing has been asked of the broker, so
+        // there is nothing to report about it — readiness already says this pod is not ready, and a
+        // broker-DOWN alert for a store outage would send somebody to the wrong system.
+        clock.advance(STALENESS.multipliedBy(10));
+
+        assertThat(indicator.health().getStatus())
+                .as("silence about a broker nobody has spoken to is not an outage")
+                .isEqualTo(Status.UP);
+    }
+
+    @Test
+    @DisplayName("a started consumer that has never once been answered says so, on the boundary")
+    void should_report_an_outage_when_a_started_consumer_has_never_heard_anything() {
+        final AdjustableClock clock = AdjustableClock.startingAt(Instant.parse("2026-08-21T09:00:00Z"));
+        final ServiceBusHealthIndicator indicator = indicatorOn(clock);
+
+        indicator.recordIntakeStarted();
+
+        clock.advance(STALENESS.minusMillis(1));
+        assertThat(indicator.health().getStatus())
+                .as("inside the grace an ordinary start is entitled to")
+                .isEqualTo(Status.UP);
+
+        clock.advance(Duration.ofMillis(1));
+        assertThat(indicator.health().getStatus())
+                .as("the window is complete: a consumer answered by nothing at all has a problem")
+                .isEqualTo(Status.DOWN);
+    }
+
+    @Test
+    @DisplayName("an unresolved error exactly on the staleness boundary is still an outage")
+    void should_still_report_an_error_that_is_exactly_as_old_as_the_window() {
+        final AdjustableClock clock = AdjustableClock.startingAt(Instant.parse("2026-08-21T09:00:00Z"));
+        final ServiceBusHealthIndicator indicator = indicatorOn(clock);
+
+        indicator.recordProcessorError(SOURCE, ENTITY_PATH, connectionFailure());
+        clock.advance(STALENESS);
+
+        assertThat(indicator.health().getStatus())
+                .as("older than the window is the rule; exactly the window is not older than it")
+                .isEqualTo(Status.DOWN);
+    }
+
+    @Test
+    @DisplayName("a settlement the broker accepted answers the error before it, as a receive would")
+    void should_treat_an_accepted_settlement_as_evidence_the_broker_is_there() {
+        final AdjustableClock clock = AdjustableClock.startingAt(Instant.parse("2026-08-21T09:00:00Z"));
+        final ServiceBusHealthIndicator indicator = indicatorOn(clock);
+
+        indicator.recordProcessorError(SOURCE, ENTITY_PATH, connectionFailure());
+        clock.advance(Duration.ofSeconds(1));
+        // A settlement the broker took is a round trip it completed. Counting only receives means a
+        // consumer working steadily through a backlog it received before the blip reports an outage
+        // it is plainly not having.
+        indicator.recordSettlementAccepted();
+
+        assertThat(indicator.health().getStatus()).isEqualTo(Status.UP);
+    }
+
+    @Test
+    @DisplayName("the gauge answers a scrape correctly without the health endpoint being asked first")
+    void should_expose_the_broker_gauge_to_a_scrape_that_never_calls_health() {
+        final AdjustableClock clock = AdjustableClock.startingAt(Instant.parse("2026-08-21T09:00:00Z"));
+        final SimpleMeterRegistry scraped = new SimpleMeterRegistry();
+        final ServiceBusHealthIndicator indicator =
+                new ServiceBusHealthIndicator(STALENESS, new ProcessingMetrics(scraped), clock);
+
+        indicator.recordProcessorError(SOURCE, ENTITY_PATH, connectionFailure());
+
+        // Deliberately no health() call. Prometheus does not visit the health endpoint on its way
+        // past, and a gauge that is only correct after somebody else has asked the same question is
+        // a dashboard that disagrees with the probe for as long as nobody probes.
+        assertThat(scraped.find(ProcessingMetrics.SERVICEBUS_UP).gauge().value())
+                .as("the gauge and the component answer from the same live state")
+                .isEqualTo(0);
+    }
 }

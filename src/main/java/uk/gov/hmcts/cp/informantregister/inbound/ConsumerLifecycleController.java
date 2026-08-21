@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
+import uk.gov.hmcts.cp.informantregister.config.ServiceBusHealthIndicator;
 import uk.gov.hmcts.cp.informantregister.persistence.ProcessedLogProbe;
 
 /**
@@ -67,6 +68,7 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
     private final ProcessedLogProbe storeProbe;
     private final Supplier<Flyway> flyway;
     private final ProcessingMetrics metrics;
+    private final ServiceBusHealthIndicator health;
     private final Duration probeInterval;
 
     /**
@@ -88,11 +90,13 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
             final ProcessedLogProbe storeProbe,
             final Supplier<Flyway> flyway,
             final ProcessingMetrics metrics,
+            final ServiceBusHealthIndicator health,
             final Duration probeInterval) {
         this.processor = processor;
         this.storeProbe = storeProbe;
         this.flyway = flyway;
         this.metrics = metrics;
+        this.health = health;
         this.probeInterval = probeInterval;
     }
 
@@ -223,6 +227,9 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
         processor.start();
         state = State.RUNNING;
         metrics.intakeResumed();
+        // From here on, silence from the broker means something. Before it, this pod had not asked
+        // the broker for anything and had no business reporting on it.
+        health.recordIntakeStarted();
         if (from == State.SUSPENDED) {
             LOG.info("The processed log answered; intake resumed. queue={}",
                     processor.getQueueName());

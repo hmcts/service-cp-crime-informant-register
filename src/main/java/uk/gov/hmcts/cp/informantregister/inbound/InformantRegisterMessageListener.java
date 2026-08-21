@@ -397,6 +397,10 @@ public class InformantRegisterMessageListener {
         try {
             brokerCall.run();
             settled = true;
+            // A settlement the broker took is a round trip it completed, which says as much about
+            // reachability as a receive does — and rather more when the consumer is working through
+            // a backlog it received before a blip.
+            health.recordSettlementAccepted();
         } catch (RuntimeException refused) {
             LOG.error("The broker refused the settlement; no second settlement is attempted and the "
                             + "delivery will come round again. operation={} type={}",
