@@ -238,4 +238,37 @@ class ConsumerLifecycleControllerTest {
 
         verify(processor).stop();
     }
+
+    @Test
+    @DisplayName("a shutdown arriving while the processor is starting still stops it")
+    void should_stop_a_processor_that_was_starting_when_shutdown_began() throws Exception {
+        final CountDownLatch startEntered = new CountDownLatch(1);
+        final CountDownLatch releaseStart = new CountDownLatch(1);
+        when(storeProbe.available()).thenReturn(true);
+        doAnswer(invocation -> {
+            startEntered.countDown();
+            releaseStart.await(PATIENCE.toSeconds(), TimeUnit.SECONDS);
+            return null;
+        }).when(processor).start();
+
+        controller.start();
+        assertThat(startEntered.await(PATIENCE.toSeconds(), TimeUnit.SECONDS))
+                .as("the processor must genuinely be starting before the shutdown begins")
+                .isTrue();
+
+        // The remaining window, once the move to RUNNING has closed the earlier one: the shutdown
+        // now lands *during* the call it could not prevent. It must find a processor to stop, which
+        // is why the intent to start is declared before the call rather than after it — set
+        // afterwards it would miss one that was half-way up and leave it consuming into a context
+        // that had closed.
+        final Thread shuttingDown = new Thread(controller::stop, "shutdown");
+        shuttingDown.start();
+        await().atMost(PATIENCE).until(() -> !controller.isRunning());
+        releaseStart.countDown();
+        shuttingDown.join(PATIENCE.toMillis());
+
+        assertThat(shuttingDown.isAlive()).as("shutdown must not hang").isFalse();
+        verify(processor).start();
+        verify(processor).stop();
+    }
 }

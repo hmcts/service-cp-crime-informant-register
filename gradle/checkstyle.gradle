@@ -1,0 +1,20 @@
+apply plugin: 'checkstyle'
+
+checkstyle {
+    toolVersion = '10.25.0'
+    configFile = rootProject.file('config/checkstyle/google_checks.xml')
+    ignoreFailures = false
+    maxWarnings = 0
+}
+
+
+tasks.named('checkstyleTest').configure {
+    enabled = false
+}
+
+tasks.withType(Checkstyle).configureEach {
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+}

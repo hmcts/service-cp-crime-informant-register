@@ -31,3 +31,42 @@ tasks.named('jacocoTestReport') {
     html.required.set(true)
   }
 }
+
+// Coverage ratchet: locks in current business-logic coverage so a PR cannot silently drop it.
+// The bootstrap class and config/** (no meaningful branching) are excluded so the gate reflects
+// logic coverage. Thresholds sit a few points below the current level to leave headroom; raise
+// them as coverage improves.
+tasks.named('jacocoTestCoverageVerification') {
+  dependsOn tasks.named('test')
+  executionData fileTree(
+    dir: layout.buildDirectory.dir("jacoco").get().asFile,
+    include: ["*.exec"]
+  )
+  classDirectories.setFrom(
+    files(sourceSets.main.output.collect {
+      fileTree(dir: it, exclude: [
+        'uk/gov/hmcts/cp/Application.class',
+        'uk/gov/hmcts/cp/informantregister/config/**'
+      ])
+    })
+  )
+  violationRules {
+    rule {
+      limit {
+        counter = 'LINE'
+        value = 'COVEREDRATIO'
+        minimum = 0.88
+      }
+      limit {
+        counter = 'BRANCH'
+        value = 'COVEREDRATIO'
+        minimum = 0.85
+      }
+    }
+  }
+}
+
+// Make the gate part of `check` (and therefore `build`).
+tasks.named('check') {
+  dependsOn tasks.named('jacocoTestCoverageVerification')
+}

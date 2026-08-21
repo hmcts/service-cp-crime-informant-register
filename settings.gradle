@@ -1,0 +1,3 @@
+// Explicit so the bootJar name (gradle/jar.gradle) and CI's app-jar upload path never depend on
+// the checkout directory name.
+rootProject.name = 'service-cp-crime-informant-register'

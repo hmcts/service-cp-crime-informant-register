@@ -18,6 +18,7 @@ apply {
   from("$rootDir/gradle/java.gradle")
   from("$rootDir/gradle/dependency.gradle")
   from("$rootDir/gradle/pmd.gradle")
+  from("$rootDir/gradle/checkstyle.gradle")
   from("$rootDir/gradle/test.gradle")
   from("$rootDir/gradle/jar.gradle")
 }

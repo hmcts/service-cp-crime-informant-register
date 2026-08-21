@@ -5,15 +5,69 @@ on:
     types: [published]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+# Note: unlike sibling services with a REST surface, there is no validate-api-spec-version
+# gate here — this service consumes no apiSpec artefact (message contracts only).
 jobs:
   ci-release:
+    # The called workflow's jobs are capped by these; Build-Docker pushes to ghcr.io
+    # with GITHUB_TOKEN so packages: write is required here.
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/ci-build-publish.yml
     secrets:
       AZURE_DEVOPS_ARTIFACT_USERNAME: ${{ secrets.AZURE_DEVOPS_ARTIFACT_USERNAME }}
       AZURE_DEVOPS_ARTIFACT_TOKEN: ${{ secrets.AZURE_DEVOPS_ARTIFACT_TOKEN }}
       HMCTS_ADO_PAT: ${{ secrets.HMCTS_CP_ADO_PAT }}
     with:
-      is_release: true
+      environment: dev
+      is_release: ${{ github.event_name == 'release' }}
       is_publish: true
       trigger_docker: true
       trigger_deploy: true
+
+  # Appends the container-image coordinates to the published release body once the
+  # build/publish has succeeded. The GHCR ref is the exact image this pipeline pushed;
+  # the ACR ref is the pattern that ADO pipeline 460 mirrors to (the final _ddmmyy date
+  # tag is applied downstream by ADO and may differ from the build date). Idempotent:
+  # the marker comment prevents duplicate blocks on workflow re-runs.
+  update-release-notes:
+    needs: [ci-release]
+    if: ${{ github.event_name == 'release' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Append image coordinates to release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          REPO_NAME="${REPO##*/}"
+          BUILD_DATE="$(date -u +%d%m%y)"
+          GHCR_REF="ghcr.io/${REPO}:${VERSION}"
+          ACR_REF="crmdvrepo01.azurecr.io/hmcts/${REPO_NAME}-service:${VERSION}_${BUILD_DATE}"
+          MARKER="<!-- image-coordinates -->"
+
+          BODY="$(gh release view "$TAG" --repo "$REPO" --json body -q .body)"
+          if printf '%s' "$BODY" | grep -qF "$MARKER"; then
+            echo "Image coordinates already present; skipping."
+            exit 0
+          fi
+
+          {
+            printf '%s\n' "$BODY"
+            printf '\n%s\n' "$MARKER"
+            printf '## Container image\n\n'
+            printf '**GHCR (built by this workflow):**\n`%s`\n\n' "$GHCR_REF"
+            printf '**ACR (mirrored by ADO pipeline 460):**\n`%s`\n\n' "$ACR_REF"
+            printf '> The ACR `_ddmmyy` date tag is applied by ADO pipeline 460 at mirror time and may differ from the build date above. Confirm the published tag with:\n'
+            printf '> `az acr repository show-tags -n crmdvrepo01 --repository hmcts/%s-service`\n' "$REPO_NAME"
+          } | gh release edit "$TAG" --repo "$REPO" --notes-file -
+          echo "Appended image coordinates to release $TAG."

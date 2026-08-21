@@ -10,6 +10,10 @@ on:
       HMCTS_ADO_PAT:
         required: true
     inputs:
+      environment:
+        required: true
+        type: string
+        default: dev
       is_release:
         required: false
         type: boolean
@@ -28,58 +32,79 @@ on:
 jobs:
   Artefact-Version:
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
     outputs:
-      artefact_version: ${{ inputs.is_release && steps.artefact.outputs.release_version || steps.artefact.outputs.draft_version }}
+      artefact_version: ${{ steps.version.outputs.artefact_version }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Generate Artefact Version
         id: artefact
-        uses: hmcts/artefact-version-action@v1
+        uses: hmcts/artefact-version-action@43882bf28ee97522e5547cc5e621b2f9e7521b44 # v1
         with:
           release: ${{ inputs.is_release }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Branch-aware version resolution. Release builds keep the action's tag-derived
+      # release_version. Non-release builds no longer use the tag-derived draft_version
+      # (which leaked the latest semver tag's label into every branch's image); instead:
+      #   team/** push -> <branch-name-without-team/>-<short-sha>
+      #   main / other -> <projectVersion from gradle.properties>-<short-sha>
+      - name: Resolve artefact version
+        id: version
+        env:
+          IS_RELEASE: ${{ inputs.is_release }}
+          REF_NAME: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ steps.artefact.outputs.release_version }}
+        run: |
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          if [ "$IS_RELEASE" = "true" ]; then
+            VERSION="$RELEASE_VERSION"
+          elif [[ "$REF_NAME" == team/* ]]; then
+            BRANCH="${REF_NAME#team/}"
+            BRANCH="${BRANCH//\//-}"
+            VERSION="${BRANCH}-${SHORT_SHA}"
+          else
+            PROJECT_VERSION="$(grep -E '^projectVersion=' gradle.properties | cut -d'=' -f2 | tr -d '[:space:]')"
+            VERSION="${PROJECT_VERSION}-${SHORT_SHA}"
+          fi
+          echo "Resolved artefact version: $VERSION"
+          echo "artefact_version=$VERSION" >> "$GITHUB_OUTPUT"
+
   Build:
     needs: [Artefact-Version]
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
     outputs:
       repo_name: ${{ steps.repo_vars.outputs.repo_name }}
       artefact_name: ${{ steps.repo_vars.outputs.artefact_name }}
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up JDK
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: 'temurin'
           java-version: '25'
 
-      - name: Gradle Build
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
+        with:
+          gradle-version: current
+
+      - name: Gradle Assemble
         env:
           ARTEFACT_VERSION: ${{ needs.Artefact-Version.outputs.artefact_version }}
         run: |
-          echo "Building with ARTEFACT_VERSION=$ARTEFACT_VERSION"
-          ./gradlew build -DARTEFACT_VERSION=$ARTEFACT_VERSION
-
-      # PMD is kept out of `build` by an onlyIf in gradle/pmd.gradle, so it must be named
-      # explicitly or it never runs in CI. Failures are not ignored.
-      - name: Static analysis
-        run: ./gradlew pmdMain
-
-      - name: Coverage report
-        run: ./gradlew jacocoTestReport
-
-      # Proves the packaged artefact starts and answers, which no JUnit suite can: the *IT suites
-      # run inside the build's JVM and would still pass if the image were unbuildable. The script is
-      # the same one developers run locally, so CI and the workstation cannot drift.
-      - name: Container smoke
-        run: ./scripts/container-smoke.sh
+          echo "Assembling JAR with ARTEFACT_VERSION=$ARTEFACT_VERSION"
+          ./gradlew assemble -DARTEFACT_VERSION=$ARTEFACT_VERSION
 
       - name: Extract repo name
         id: repo_vars
@@ -89,26 +114,88 @@ jobs:
           echo "artefact_name=${repo_name}-${{ needs.Artefact-Version.outputs.artefact_version }}" >> $GITHUB_OUTPUT
 
       - name: Upload JAR Artefact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: app-jar
           path: build/libs/${{ steps.repo_vars.outputs.artefact_name }}.jar
 
-  Provider-Deploy:
-    needs: [ Artefact-Version, Build ]
+  Test:
+    needs: [ Artefact-Version ]
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up JDK
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: 'temurin'
           java-version: '25'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6.3.0
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
+        with:
+          gradle-version: current
+
+      # pmdMain is named explicitly: gradle/pmd.gradle keeps PMD out of `check` unless asked for.
+      - name: Gradle Check (unit + integration tests, checkstyle, PMD, coverage gate)
+        env:
+          ARTEFACT_VERSION: ${{ needs.Artefact-Version.outputs.artefact_version }}
+        run: |
+          echo "Running checks with ARTEFACT_VERSION=$ARTEFACT_VERSION"
+          ./gradlew check pmdMain jacocoTestReport -DARTEFACT_VERSION=$ARTEFACT_VERSION
+
+      - name: Upload unit and integration test reports
+        if: always()
+        uses: ./.github/actions/upload-test-reports
+        with:
+          artifact_name: unit-integration-test-reports
+          path: |
+            build/reports/tests/test/
+            build/test-results/test/
+
+  # This service has no REST API, so there is no `api` docker-compose test task; the container
+  # smoke run is the packaged-artefact gate instead. It builds its own bootJar, so it only needs
+  # the Artefact-Version ordering, and it runs unconditionally so the Provider-Deploy `needs`
+  # chain never sees a skipped job.
+  Container-Smoke:
+    needs: [ Artefact-Version ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
+        with:
+          gradle-version: current
+
+      - name: Container smoke
+        run: ./scripts/container-smoke.sh
+
+  Provider-Deploy:
+    needs: [ Artefact-Version, Build, Test, Container-Smoke ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
         with:
           gradle-version: current
 
@@ -129,7 +216,7 @@ jobs:
           fi
 
           echo "Publishing artefact for version: $ARTEFACT_VERSION"
-          
+
           ./gradlew publish \
             -DARTEFACT_VERSION=$ARTEFACT_VERSION \
             -DGITHUB_REPOSITORY=${{ github.repository }} \
@@ -144,26 +231,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Download JAR Artefact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: app-jar
           path: build/libs
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Log in to GitHub Packages
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and Push Docker Image to GitHub
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           file: Dockerfile
@@ -171,19 +258,28 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:${{ needs.Artefact-Version.outputs.artefact_version }}
           build-args: |
-            BASE_IMAGE=eclipse-temurin:25
+            BASE_IMAGE=eclipse-temurin:25@sha256:201fbb8886b2d273218aa3a192f0afbf7b5ff65ee8cc6ef47f5dce2171f013ea
             JAR_FILENAME=${{ needs.Build.outputs.artefact_name }}.jar
 
+      - name: Run Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}:${{ needs.Artefact-Version.outputs.artefact_version }}
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+
   Deploy:
-    needs: [ Provider-Deploy, Build, Artefact-Version ]
-    if: ${{ inputs.trigger_deploy }}
+    needs: [ Provider-Deploy, Build, Artefact-Version, Build-Docker ]
+    if: ${{ inputs.trigger_deploy && (needs.Build-Docker.result == 'success' || needs.Build-Docker.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - name: Extract repo name
         run: echo "REPO_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
 
       - name: Trigger ADO pipeline
-        uses: hmcts/trigger-ado-pipeline@v2
+        uses: hmcts/trigger-ado-pipeline@5ded370558d366e7de23d69956a76e012220435d # v2
         with:
           pipeline_id: 460
           ado_pat: ${{ secrets.HMCTS_ADO_PAT }}
