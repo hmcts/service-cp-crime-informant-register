@@ -1,12 +1,9 @@
 package uk.gov.hmcts.cp.informantregister.e2e;
 
 import java.time.Duration;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import com.azure.core.util.BinaryData;
 import com.azure.messaging.servicebus.ServiceBusClientBuilder;
 import com.azure.messaging.servicebus.ServiceBusMessage;
@@ -16,7 +13,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.slf4j.LoggerFactory;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -25,6 +21,7 @@ import uk.gov.hmcts.cp.informantregister.adapter.stub.StubHearingPayloadSource;
 import uk.gov.hmcts.cp.informantregister.adapter.stub.StubRegisterSubmissionClient;
 import uk.gov.hmcts.cp.informantregister.domain.CompletionReason;
 import uk.gov.hmcts.cp.informantregister.domain.RequestStatus;
+import uk.gov.hmcts.cp.informantregister.support.CapturedLog;
 import uk.gov.hmcts.cp.informantregister.support.PostgresTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ProcessedLogTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ProcessedLogTestSupport.Row;
@@ -60,8 +57,8 @@ class WalkingSkeletonIT {
 
     private static String connectionString;
 
-    private ListAppender<ILoggingEvent> payloadStubLog;
-    private ListAppender<ILoggingEvent> submissionStubLog;
+    private CapturedLog payloadStubLog;
+    private CapturedLog submissionStubLog;
 
     private final UUID requestId = UUID.randomUUID();
     private final UUID hearingId = UUID.randomUUID();
@@ -77,29 +74,17 @@ class WalkingSkeletonIT {
 
     @BeforeEach
     void captureTheStubLogs() {
-        payloadStubLog = attachTo(StubHearingPayloadSource.class);
-        submissionStubLog = attachTo(StubRegisterSubmissionClient.class);
+        payloadStubLog = CapturedLog.of(StubHearingPayloadSource.class);
+        submissionStubLog = CapturedLog.of(StubRegisterSubmissionClient.class);
     }
 
     @AfterEach
     void releaseTheStubLogs() {
-        detachFrom(StubHearingPayloadSource.class, payloadStubLog);
-        detachFrom(StubRegisterSubmissionClient.class, submissionStubLog);
+        payloadStubLog.close();
+        submissionStubLog.close();
     }
 
     // --- helpers ---------------------------------------------------------------------------
-
-    private static ListAppender<ILoggingEvent> attachTo(final Class<?> type) {
-        final ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        ((ch.qos.logback.classic.Logger) LoggerFactory.getLogger(type)).addAppender(appender);
-        return appender;
-    }
-
-    private static void detachFrom(final Class<?> type, final ListAppender<ILoggingEvent> appender) {
-        ((ch.qos.logback.classic.Logger) LoggerFactory.getLogger(type)).detachAppender(appender);
-        appender.stop();
-    }
 
     private static ServiceBusClientBuilder clients() {
         return new ServiceBusClientBuilder().connectionString(connectionString);
@@ -145,10 +130,6 @@ class WalkingSkeletonIT {
         return ProcessedLogTestSupport.requireRow(ProcessedLogTestSupport.SOURCE, requestId);
     }
 
-    private static List<String> linesOf(final ListAppender<ILoggingEvent> appender) {
-        return appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
-    }
-
     // --- the walking skeleton --------------------------------------------------------------------
 
     @Test
@@ -166,10 +147,10 @@ class WalkingSkeletonIT {
         assertThat(processed.exhaustedMessageId()).isNull();
         assertThat(processed.claimOwner()).isNull();
 
-        assertThat(linesOf(payloadStubLog))
+        assertThat(payloadStubLog.messages())
                 .as("the payload port was reached, and said so")
                 .isNotEmpty();
-        assertThat(linesOf(submissionStubLog))
+        assertThat(submissionStubLog.messages())
                 .as("no authorities, so nothing to submit — the port exists and is never called")
                 .isEmpty();
 

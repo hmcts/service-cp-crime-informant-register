@@ -2,12 +2,9 @@ package uk.gov.hmcts.cp.informantregister.e2e;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import com.azure.core.util.BinaryData;
 import com.azure.messaging.servicebus.ServiceBusClientBuilder;
 import com.azure.messaging.servicebus.ServiceBusMessage;
@@ -17,13 +14,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.slf4j.LoggerFactory;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import uk.gov.hmcts.cp.informantregister.domain.RequestStatus;
 import uk.gov.hmcts.cp.informantregister.inbound.InformantRegisterMessageListener;
+import uk.gov.hmcts.cp.informantregister.support.CapturedLog;
 import uk.gov.hmcts.cp.informantregister.support.PostgresTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ProcessedLogTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ProcessedLogTestSupport.Row;
@@ -81,7 +78,7 @@ class DuplicateDetectionIT {
     /** The identity used for both sends — the whole point of the suite. */
     private final String messageId = "RESULTS:" + UUID.randomUUID();
 
-    private ListAppender<ILoggingEvent> deliveryLog;
+    private CapturedLog deliveryLog;
 
     @DynamicPropertySource
     static void wireTheContainers(final DynamicPropertyRegistry registry) {
@@ -94,27 +91,15 @@ class DuplicateDetectionIT {
 
     @BeforeEach
     void watchEveryDelivery() {
-        deliveryLog = attachTo(InformantRegisterMessageListener.class);
+        deliveryLog = CapturedLog.of(InformantRegisterMessageListener.class);
     }
 
     @AfterEach
     void releaseTheDeliveryLog() {
-        detachFrom(InformantRegisterMessageListener.class, deliveryLog);
+        deliveryLog.close();
     }
 
     // --- helpers ---------------------------------------------------------------------------
-
-    private static ListAppender<ILoggingEvent> attachTo(final Class<?> type) {
-        final ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        ((ch.qos.logback.classic.Logger) LoggerFactory.getLogger(type)).addAppender(appender);
-        return appender;
-    }
-
-    private static void detachFrom(final Class<?> type, final ListAppender<ILoggingEvent> appender) {
-        ((ch.qos.logback.classic.Logger) LoggerFactory.getLogger(type)).detachAppender(appender);
-        appender.stop();
-    }
 
     private String body() {
         return """
@@ -148,7 +133,7 @@ class DuplicateDetectionIT {
     }
 
     private int deliveriesSeen() {
-        return (int) List.copyOf(deliveryLog.list).stream()
+        return (int) deliveryLog.events().stream()
                 .filter(event -> requestId.toString().equals(event.getMDCPropertyMap().get("requestId")))
                 .filter(event -> event.getFormattedMessage().startsWith(DELIVERY_RECEIVED))
                 .count();

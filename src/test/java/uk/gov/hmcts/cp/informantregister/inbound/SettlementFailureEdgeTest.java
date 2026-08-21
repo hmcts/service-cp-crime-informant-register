@@ -7,7 +7,6 @@ import java.util.UUID;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import com.azure.core.amqp.exception.AmqpErrorContext;
 import com.azure.core.amqp.exception.AmqpException;
 import com.azure.core.util.BinaryData;
@@ -23,7 +22,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.slf4j.LoggerFactory;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
@@ -33,6 +31,7 @@ import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
 import uk.gov.hmcts.cp.informantregister.domain.GuardDecision;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.SettlementOperation;
+import uk.gov.hmcts.cp.informantregister.support.CapturedLog;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -92,27 +91,19 @@ class SettlementFailureEdgeTest {
     private final UUID requestId = UUID.randomUUID();
     private final UUID hearingId = UUID.randomUUID();
 
-    private ListAppender<ILoggingEvent> listenerLog;
+    private CapturedLog listenerLog;
 
     @BeforeEach
     void captureWhatTheListenerReports() {
-        listenerLog = new ListAppender<>();
-        listenerLog.start();
-        listenerLogger().addAppender(listenerLog);
+        listenerLog = CapturedLog.of(InformantRegisterMessageListener.class);
     }
 
     @AfterEach
     void releaseTheListenerLog() {
-        listenerLogger().detachAppender(listenerLog);
-        listenerLog.stop();
+        listenerLog.close();
     }
 
     // --- helpers ---------------------------------------------------------------------------
-
-    private static ch.qos.logback.classic.Logger listenerLogger() {
-        return (ch.qos.logback.classic.Logger)
-                LoggerFactory.getLogger(InformantRegisterMessageListener.class);
-    }
 
     private String validBody() {
         return """
@@ -176,7 +167,7 @@ class SettlementFailureEdgeTest {
     }
 
     private List<String> errorsReported() {
-        return List.copyOf(listenerLog.list).stream()
+        return listenerLog.events().stream()
                 .filter(event -> event.getLevel() == Level.ERROR)
                 .map(ILoggingEvent::getFormattedMessage)
                 .toList();

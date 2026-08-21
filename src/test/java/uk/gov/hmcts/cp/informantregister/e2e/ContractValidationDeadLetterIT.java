@@ -7,7 +7,6 @@ import java.util.stream.Stream;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import com.azure.core.util.BinaryData;
 import com.azure.messaging.servicebus.ServiceBusClientBuilder;
 import com.azure.messaging.servicebus.ServiceBusMessage;
@@ -21,7 +20,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
@@ -31,6 +29,7 @@ import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
 import uk.gov.hmcts.cp.informantregister.domain.DeadLetterReason;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.inbound.InformantRegisterMessageListener;
+import uk.gov.hmcts.cp.informantregister.support.CapturedLog;
 import uk.gov.hmcts.cp.informantregister.support.PostgresTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ProcessedLogTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ServiceBusEmulatorTestSupport;
@@ -83,7 +82,7 @@ class ContractValidationDeadLetterIT {
     @Autowired
     private MeterRegistry registry;
 
-    private ListAppender<ILoggingEvent> deliveryLog;
+    private CapturedLog deliveryLog;
 
     @DynamicPropertySource
     static void wireTheContainers(final DynamicPropertyRegistry registry) {
@@ -96,12 +95,12 @@ class ContractValidationDeadLetterIT {
 
     @BeforeEach
     void watchEveryDelivery() {
-        deliveryLog = attachTo(InformantRegisterMessageListener.class);
+        deliveryLog = CapturedLog.of(InformantRegisterMessageListener.class);
     }
 
     @AfterEach
     void releaseTheDeliveryLog() {
-        detachFrom(InformantRegisterMessageListener.class, deliveryLog);
+        deliveryLog.close();
     }
 
     // --- the corpus ------------------------------------------------------------------------
@@ -164,18 +163,6 @@ class ContractValidationDeadLetterIT {
 
     // --- helpers ---------------------------------------------------------------------------
 
-    private static ListAppender<ILoggingEvent> attachTo(final Class<?> type) {
-        final ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        ((ch.qos.logback.classic.Logger) LoggerFactory.getLogger(type)).addAppender(appender);
-        return appender;
-    }
-
-    private static void detachFrom(final Class<?> type, final ListAppender<ILoggingEvent> appender) {
-        ((ch.qos.logback.classic.Logger) LoggerFactory.getLogger(type)).detachAppender(appender);
-        appender.stop();
-    }
-
     private static String publish(final String body) {
         final String messageId = "RESULTS:" + UUID.randomUUID();
         try (ServiceBusSenderClient sender = new ServiceBusClientBuilder()
@@ -195,7 +182,7 @@ class ContractValidationDeadLetterIT {
      * broker identity in the line is what ties a report to a delivery.
      */
     private List<String> reportsFor(final String messageId) {
-        return List.copyOf(deliveryLog.list).stream()
+        return deliveryLog.events().stream()
                 .filter(event -> event.getLevel() == Level.ERROR)
                 .map(ILoggingEvent::getFormattedMessage)
                 .filter(line -> line.contains(messageId))

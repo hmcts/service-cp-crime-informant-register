@@ -7,8 +7,6 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import com.azure.core.util.BinaryData;
 import com.azure.messaging.servicebus.ServiceBusClientBuilder;
 import com.azure.messaging.servicebus.ServiceBusMessage;
@@ -22,7 +20,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.invocation.InvocationOnMock;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
@@ -42,6 +39,7 @@ import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.RequestOutcome;
 import uk.gov.hmcts.cp.informantregister.domain.RequestStatus;
 import uk.gov.hmcts.cp.informantregister.inbound.InformantRegisterMessageListener;
+import uk.gov.hmcts.cp.informantregister.support.CapturedLog;
 import uk.gov.hmcts.cp.informantregister.support.PostgresTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ProcessedLogTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ProcessedLogTestSupport.Row;
@@ -124,7 +122,7 @@ class DeliveryExhaustionIT {
     /** The processed-log row as each run of this request saw it at the moment it started. */
     private final List<Row> runStartedWith = new CopyOnWriteArrayList<>();
 
-    private ListAppender<ILoggingEvent> deliveryLog;
+    private CapturedLog deliveryLog;
 
     @DynamicPropertySource
     static void wireTheContainers(final DynamicPropertyRegistry registry) {
@@ -138,12 +136,12 @@ class DeliveryExhaustionIT {
     @BeforeEach
     void controlThePayloadPortAndWatchEveryDelivery() {
         when(payloadSource.fetch(any(DistributionCommand.class))).thenAnswer(this::payloadFor);
-        deliveryLog = attachTo(InformantRegisterMessageListener.class);
+        deliveryLog = CapturedLog.of(InformantRegisterMessageListener.class);
     }
 
     @AfterEach
     void releaseTheDeliveryLog() {
-        detachFrom(InformantRegisterMessageListener.class, deliveryLog);
+        deliveryLog.close();
     }
 
     // --- helpers ---------------------------------------------------------------------------
@@ -165,18 +163,6 @@ class DeliveryExhaustionIT {
             throw new PayloadUnavailableException(ReasonCode.PIPELINE_TRANSIENT_FAILURE);
         }
         return PLACEHOLDER;
-    }
-
-    private static ListAppender<ILoggingEvent> attachTo(final Class<?> type) {
-        final ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        ((ch.qos.logback.classic.Logger) LoggerFactory.getLogger(type)).addAppender(appender);
-        return appender;
-    }
-
-    private static void detachFrom(final Class<?> type, final ListAppender<ILoggingEvent> appender) {
-        ((ch.qos.logback.classic.Logger) LoggerFactory.getLogger(type)).detachAppender(appender);
-        appender.stop();
     }
 
     private String body() {
@@ -227,7 +213,7 @@ class DeliveryExhaustionIT {
      * would still be counted here, and this suite's claim is about the broker's budget.
      */
     private List<Long> deliveryCounts() {
-        return List.copyOf(deliveryLog.list).stream()
+        return deliveryLog.events().stream()
                 .filter(event -> requestId.toString().equals(event.getMDCPropertyMap().get("requestId")))
                 .filter(event -> event.getFormattedMessage().startsWith(DELIVERY_RECEIVED))
                 .map(event -> (Long) event.getArgumentArray()[2])
