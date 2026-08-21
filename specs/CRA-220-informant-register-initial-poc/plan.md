@@ -97,6 +97,7 @@ not here.
 | `spring.datasource.password` | `informantregister` | Local development credential only; deployed value comes from Key Vault via the CSI driver |
 | `spring.flyway.enabled` | `true` | Flyway bean configured; **migration is deferred** — a no-op `FlywayMigrationStrategy` keeps it off the context-refresh path, and the lifecycle controller runs `migrate()` on the first successful store probe, before the processor starts (research §7) |
 | `spring.datasource.hikari.initialization-fail-timeout` | `-1` | Lazy pool initialisation — no eager connection during context refresh, so the context starts with the store down (research §7) |
+| `spring.datasource.hikari.data-source-properties.socketTimeout` | `30` (seconds) | A store that dies without closing connections must not block the health probe indefinitely — without this, intake would never suspend on a silent store death (implementation finding, Batch E) |
 | `informantregister.servicebus.connection-string` | emulator string ending `UseDevelopmentEmulator=true;` | **Local/CI only** |
 | `informantregister.servicebus.namespace` | *(unset locally)* | **Deployed only** — fully qualified namespace for `DefaultAzureCredential` |
 | `informantregister.servicebus.queue-name` | `informantregister.requests` | Inbound queue |

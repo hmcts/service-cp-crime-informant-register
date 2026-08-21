@@ -171,6 +171,17 @@ Exact SQL for every guard statement is in `data-model.md` "Guard operations".
   than `informantregister.servicebus.health-staleness` (default 60s) with no traffic since reports
   UP, not DOWN — an idle queue produces no traffic, and absence of traffic is not an outage. Only a
   fresh, unresolved connection-class error is an outage.
+
+  **Measured amendment (implementation, Batch E)**: the two inputs above proved insufficient
+  against the real client — an idle `ServiceBusProcessorClient` whose broker disappears outright
+  emits **no `processError` at all** (a lost connection is treated as retryable and the receive
+  pump rolls silently; five minutes observed with no callback). Two additions, both passive:
+  3. a **refused settlement** is a fault input — the natural counterpart of input 2, which already
+     counts successful settlements as health;
+  4. a consumer that has **never once heard from the broker** reports DOWN after one staleness
+     window of grace — without this, "starts with the queue already down, reports DOWN" (spec
+     US4-3) is unsatisfiable, because a from-birth outage produces neither an error nor traffic.
+  The rejection of active probe messages stands; nothing here polls.
 - **Reconnection**: the SDK's `AmqpRetryOptions` are configured explicitly — exponential mode,
   `maxRetries` 5, `delay` 500ms, `maxDelay` 10s, `tryTimeout` 30s — so that once the queue is
   restored the client reconnects well inside the 60-second budget in spec SC-004 rather than sitting

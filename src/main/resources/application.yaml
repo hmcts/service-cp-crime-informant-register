@@ -15,6 +15,10 @@ spring:
       # starts even with the store down. It has to — actuator must be up to report readiness DOWN
       # honestly, and a pod that cannot start cannot tell anyone why (research §7).
       initialization-fail-timeout: -1
+      data-source-properties:
+        # A store that dies without closing its connections would otherwise block the health probe
+        # for ever, and intake would never suspend. Seconds, per the PostgreSQL JDBC driver.
+        socketTimeout: 30
 
   flyway:
     # The Flyway bean is configured here; when the migration runs is a separate decision. The
