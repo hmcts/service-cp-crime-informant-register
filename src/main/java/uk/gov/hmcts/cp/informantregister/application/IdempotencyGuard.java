@@ -80,7 +80,7 @@ public class IdempotencyGuard {
             final Optional<ProcessedRequestRecord> found =
                     repository.read(command.source(), command.requestId());
             decision = found
-                    .map(record -> branch(record, command, fingerprint, claim, delivery))
+                    .map(record -> branch(record, command, fingerprint, claim))
                     .orElseGet(() -> recordAbsent(command));
         }
         return decision;
@@ -139,7 +139,16 @@ public class IdempotencyGuard {
      * would replay when that delivery came back and re-park when the real one did.
      */
     public GuardDecision recordExhaustion(final RunClaim claim, final ReasonCode reason) {
-        throw new UnsupportedOperationException("the parked identity comes from the claim");
+        final GuardDecision decision;
+        if (repository.recordFailed(claim, reason.code())) {
+            LOG.info("Request parked after its final permitted delivery. source={} requestId={} reason={}",
+                    claim.source(), claim.requestId(), reason.code());
+            decision = new GuardDecision.DeadLetter(
+                    DeadLetterReason.EXHAUSTED, ReasonCode.DELIVERY_LIMIT_EXHAUSTED);
+        } else {
+            decision = rejectStaleRunner(claim);
+        }
+        return decision;
     }
 
     /**
@@ -149,12 +158,11 @@ public class IdempotencyGuard {
             final ProcessedRequestRecord record,
             final DistributionCommand command,
             final String fingerprint,
-            final RunClaim claim,
-            final DeliveryIdentity delivery) {
+            final RunClaim claim) {
 
         final GuardDecision decision;
         if (fingerprint.equals(record.fingerprint())) {
-            decision = byState(record, command, claim, delivery);
+            decision = byState(record, command, claim);
         } else {
             // The key has been reused for a different request. The record is not written to at all:
             // absorbing this delivery would silently drop one of the two requests.
@@ -171,8 +179,7 @@ public class IdempotencyGuard {
     private GuardDecision byState(
             final ProcessedRequestRecord record,
             final DistributionCommand command,
-            final RunClaim claim,
-            final DeliveryIdentity delivery) {
+            final RunClaim claim) {
 
         return switch (record.status()) {
             case COMPLETED -> {
@@ -180,7 +187,7 @@ public class IdempotencyGuard {
                         command.source(), command.requestId());
                 yield new GuardDecision.Complete(ReasonCode.ALREADY_COMPLETED);
             }
-            case FAILED -> replayOrPark(record, claim, delivery);
+            case FAILED -> replayOrPark(record, claim);
             case RECEIVED, RETRYING -> claimOrHandBack(claim);
         };
     }
@@ -193,16 +200,15 @@ public class IdempotencyGuard {
      */
     private GuardDecision replayOrPark(
             final ProcessedRequestRecord record,
-            final RunClaim claim,
-            final DeliveryIdentity delivery) {
+            final RunClaim claim) {
 
         final GuardDecision decision;
-        if (Objects.equals(record.exhaustedMessageId(), delivery.messageId())) {
+        if (Objects.equals(record.exhaustedMessageId(), claim.messageId())) {
             LOG.warn("Redelivery of the identity that exhausted the retries; re-parking. "
                     + "source={} requestId={}", claim.source(), claim.requestId());
             decision = new GuardDecision.DeadLetter(
                     DeadLetterReason.EXHAUSTED, ReasonCode.DELIVERY_LIMIT_EXHAUSTED);
-        } else if (repository.replayFailed(claim, delivery.messageId(), replayNote(record))) {
+        } else if (repository.replayFailed(claim, replayNote(record))) {
             LOG.info("Parked request replayed under a fresh identity. source={} requestId={}",
                     claim.source(), claim.requestId());
             decision = new GuardDecision.Run(claim);

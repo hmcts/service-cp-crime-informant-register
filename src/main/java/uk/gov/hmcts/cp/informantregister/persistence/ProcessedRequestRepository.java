@@ -246,35 +246,32 @@ public class ProcessedRequestRepository {
      * Statement 4 — park the request, recording the identity that exhausted the deliveries in the
      * same statement as the state, so a parked record can never exist without saying what parked it.
      *
+     * <p>The identity is the claim's own — the delivery that acquired it is by definition the one
+     * whose failure parks the request — so no caller can supply an unrelated one.
+     *
      * @return whether the write was admitted by the owner-and-token predicate
      */
-    public boolean recordFailed(
-            final RunClaim runClaim,
-            final String failureReason,
-            final String exhaustedMessageId) {
+    public boolean recordFailed(final RunClaim runClaim, final String failureReason) {
         return affected(outcome(RECORD_FAILED, runClaim)
                 .param(REASON, failureReason)
-                .param(MESSAGE_ID, exhaustedMessageId)
+                .param(MESSAGE_ID, runClaim.messageId())
                 .update());
     }
 
     /**
-     * Statement 5 — replay a parked request under a fresh message identity.
+     * Statement 5 — replay a parked request under a fresh message identity, the claim's own.
      *
      * @return whether the replay was admitted. False means the record moved between the read and this
      *         update; it never means the identity was the same one, which the read decides.
      */
-    public boolean replayFailed(
-            final RunClaim runClaim,
-            final String messageId,
-            final String auditNote) {
+    public boolean replayFailed(final RunClaim runClaim, final String auditNote) {
         return affected(jdbcClient.sql(REPLAY_FAILED)
                 .param(SOURCE, runClaim.source())
                 .param(REQUEST_ID, runClaim.requestId())
                 .param(OWNER, runClaim.owner())
                 .param(TOKEN, runClaim.token())
                 .param(LEASE_PARAM, lease())
-                .param(MESSAGE_ID, messageId)
+                .param(MESSAGE_ID, runClaim.messageId())
                 .param("note", auditNote)
                 .update());
     }

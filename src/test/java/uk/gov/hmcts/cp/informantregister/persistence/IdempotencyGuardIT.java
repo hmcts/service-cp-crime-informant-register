@@ -243,8 +243,7 @@ class IdempotencyGuardIT {
             // only ever be parked under the delivery that was actually running. Parked under some
             // other identity, the record would replay when that delivery came back and re-park when
             // the real one did — the two halves of FR-007 pointing at the wrong messages.
-            final RunClaim claim = admitted("msg-5");
-            guard.recordCompletion(claim, CompletionReason.NO_AUTHORITIES);
+            driveToRetrying("msg-1");
             final RunClaim second = admitted("msg-9");
 
             guard.recordExhaustion(second, ReasonCode.PIPELINE_TRANSIENT_FAILURE);
