@@ -24,33 +24,64 @@ created by this repository and must exist before a pod is scheduled.
 | Duplicate-detection history window | **PT5M or longer** | Wide enough to cover a publisher retry storm; the emulator config uses PT5M |
 | Lock duration | PT1M | The SDK renews up to `informantregister.servicebus.max-auto-lock-renew-duration` (5m), which is validated at startup to exceed the 4m processing deadline plus the 30s renewal margin |
 | Dead-lettering on message expiration | on | Expiry becomes a countable park rather than a silent drop |
-| Dead-letter queue | the queue's own DLQ | Contract-invalid bodies and exhausted requests land here. Nothing else reads it yet — see §6 |
+| Dead-letter queue | the queue's own DLQ | Contract-invalid bodies and exhausted requests land here. Nothing reads it yet — the replay tool is §5 |
 | Session support | **off** | The consumer is not session-aware |
 
-**Without it**: the pod starts, reports readiness `UP` (readiness gates on the store, never the
-broker — deliberately), reports the `servicebus` component `DOWN` after the 60-second staleness
-window, and consumes nothing. That is the designed failure: loud, and not a crash loop.
+**Without it**: the pod starts and reports readiness `UP` — readiness gates on `db` and
+`intakeStartup`, the store and this pod's own gated start, and **never** on the broker. It reports
+the `servicebus` component `DOWN` once the 60-second staleness window passes with nothing ever
+received, and consumes nothing. That is the designed failure: loud, and not a crash loop.
 
-## 2. Workload identity and Key Vault CSI — Platform
+## 2. Store, workload identity and Key Vault CSI — Platform
 
-Locally the broker is addressed with the emulator's development connection string. **Deployed
-environments must set `informantregister.servicebus.namespace` instead and leave the connection
-string unset** — exactly one of the two may be set and startup fails fast otherwise, which is the
-guard that stops a development credential reaching a real namespace.
+### 2a. Two broker settings, and the one that is easy to get wrong
 
-Needed:
+Locally the broker is addressed with the emulator's development connection string. A deployed
+environment addresses it by namespace instead — and **exactly one of the two may be set**, or
+startup fails fast. That guard is what stops a development credential reaching a real namespace, and
+it is also the trap:
 
-- a workload identity federated to the service account, with **Azure Service Bus Data Receiver** on
-  the queue (`DefaultAzureCredential` picks it up; there is no static key path in deployed config);
+```yaml
+# BOTH are required in a deployed environment. Setting only the namespace does NOT work.
+INFORMANTREGISTER_SERVICEBUS_NAMESPACE: "<name>.servicebus.windows.net"
+INFORMANTREGISTER_SERVICEBUS_CONNECTIONSTRING: ""     # explicit blank override — see below
+```
+
+`src/main/resources/application.yaml` **defaults the connection string** to the emulator's
+development value, so it is always present unless something overrides it. Setting the namespace
+alone therefore leaves *both* set, and the validator rejects the startup with
+"Set exactly one of … currently both are set". A **blank** value counts as unset — deliberately, so
+a deployment can override the key rather than having to delete it — which makes the empty string
+above the correct and only override. It is not optional and it is not a tidiness measure: without
+it, the pod does not start at all.
+
+### 2b. The processed-log database itself
+
+The database is **not** created by this repository, and the CSI mount only supplies credentials for
+something that must already exist. Provision, per environment:
+
+- a **PostgreSQL database** (locally `informantregister`) and a **role** for the service, with
+  `CONNECT` on the database and `USAGE` + `CREATE` on the schema it owns — the service migrates its
+  own schema with Flyway on the first successful store probe, so the role needs **DDL rights on its
+  own schema**, not merely DML;
+- ownership arranged so `V1__create_processed_log.sql` can create `processed_request` and
+  `processed_output` and the Flyway history table beside them;
+- backup and retention appropriate to a durable idempotency log — it is the record of what has and
+  has not been processed, so losing it means reprocessing.
+
+### 2c. Identity and secrets
+
+- a **workload identity** federated to the service account, with **Azure Service Bus Data Receiver**
+  on the queue (`DefaultAzureCredential` picks it up; there is no static key path in deployed
+  config);
 - Key Vault CSI mounts producing the datasource environment variables — `SPRING_DATASOURCE_URL`,
-  `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` — for the `processed_request`
-  database. The service migrates its own schema with Flyway on the first successful store probe, so
-  the credential needs DDL rights on its own schema;
+  `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` — pointing at the database from 2b;
 - `APPLICATIONINSIGHTS_CONNECTION_STRING` for the Java agent configured in `lib/`.
 
-**Without it**: the store credential is the one that matters — the pod comes up, reports readiness
-`DOWN` honestly, never starts intake, and never migrates. It will not consume a message it cannot
-record.
+**Without it**: two distinct failures, and they look nothing alike. Get the broker settings wrong and
+the **context does not start** — fail-fast, with the "currently both are set" message naming the
+cause. Get the store wrong and the pod comes up perfectly, reports readiness `DOWN` honestly, never
+starts intake and never migrates: it will not consume a message it cannot record.
 
 ## 3. Deployment wiring — Platform / Flux + ADO
 
@@ -73,9 +104,10 @@ record.
 
 ## 4. GitHub remote — team
 
-The repository has **no `origin`**: `git remote -v` is empty and all 100 commits are local. The
-repository name is still to be confirmed; the working directory name is
-`service-cp-crime-informant-register`.
+The repository has **no `origin`**: `git remote -v` is empty and every commit is local — **103** at
+the time of writing, of which 100 are Conventional Commits and three are the original scaffold and
+spec-kit bootstrap commits that predate the convention. The repository name is still to be
+confirmed; the working directory name is `service-cp-crime-informant-register`.
 
 On creation:
 
@@ -83,9 +115,13 @@ On creation:
   `.github/rulesets/` including its `DELETE_ME.md`;
 - confirm `@hmcts/results-validation-service-team` in `.github/CODEOWNERS` is the intended owning
   team for this service;
-- add the organisation secrets the workflows reference — `AZURE_DEVOPS_ARTIFACT_USERNAME`,
-  `AZURE_DEVOPS_ARTIFACT_TOKEN`, `HMCTS_ADO_PAT`, `HMCTS_CP_ADO_PAT`, `GITLEAKS_LICENSE`,
-  `HMCTS_CP_GITLEAKS_REGEX_INTERNAL_URL`.
+- provide the secrets the workflows consume — **`AZURE_DEVOPS_ARTIFACT_USERNAME`**,
+  **`AZURE_DEVOPS_ARTIFACT_TOKEN`**, **`HMCTS_CP_ADO_PAT`**, **`GITLEAKS_LICENSE`** and
+  **`HMCTS_CP_GITLEAKS_REGEX_INTERNAL_URL`**. Note that **`HMCTS_ADO_PAT` is not one of them**: it is
+  the *input name* `ci-build-publish.yml` declares for its ADO token, which `ci-draft.yml` and
+  `ci-released.yml` populate from `secrets.HMCTS_CP_ADO_PAT` as they call it. Creating a secret under
+  the alias would have no effect; creating `HMCTS_CP_ADO_PAT` is what makes the ADO pipeline trigger
+  work. `GITHUB_TOKEN` is supplied automatically and needs nothing.
 
 **Without it**: none of the CI gates have ever executed on a runner. Everything in this repository
 has been verified locally only.
@@ -127,18 +163,64 @@ false` — with:
 
 - `requestId` **deterministic** from `hearingId`, `hearingDay` and `sharedTime`, so a republish of
   the same share carries the same id and a genuine re-share produces a new one;
-- the broker `messageId` set, since duplicate detection and the `FAILED`-replay rule both read it;
 - `source: RESULTS` and `eventType: Hearing_Resulted` only — SJP stays in the NOWs function app.
+
+**The broker `messageId` is not free-form, and getting it wrong silently disables duplicate
+detection.** For normal publishing it is exactly:
+
+```text
+{source}:{requestId}          i.e.   RESULTS:{requestId}
+```
+
+Deterministic, so the broker collapses identical republishes of the same share before this service
+ever sees them (`doc/API_CONTRACTS.md`, "Message identity"). **A random or per-send id is not an
+acceptable substitute**: every republish then looks like a new message, duplicate detection matches
+nothing, and the queue's whole first line of defence is gone — the idempotency guard would still
+hold, but it would be doing work the broker was configured to prevent.
+
+Consequently, on the publisher side:
+
+- **a publish retry MUST reuse the same `messageId`.** A retry that mints a fresh one is
+  indistinguishable from a genuine resubmission and defeats the deduplication the retry was supposed
+  to be safe under;
+- **fresh message identities are reserved for support replay only.** A deliberate resubmission of a
+  parked request carries a new `messageId`, and that is precisely what flips a `FAILED` record back
+  to `RECEIVED` for reprocessing (spec FR-007). If ordinary publishing also used fresh ids, that
+  signal would mean nothing;
+- the publisher's identity needs **Azure Service Bus Data Sender** on `informantregister.requests`
+  — send authorisation is separate from this service's receive role and is the Results team's to
+  arrange;
+- **publishing must be durable and retried, not fire-and-forget.** A send that is dropped on a
+  transient broker fault is a register that never reaches this service and that nothing anywhere
+  records as missing — which is the exact silence the whole lift-and-shift exists to remove. It
+  belongs in the same transaction boundary or outbox as the resulting event that triggers it.
 
 Any change to that schema is a cross-team change and must be agreed with the Results team first.
 
 ## 7. Cutover, once the real adapters land
 
 Out of scope for CRA-220 — the submission and payload adapters are still stubs, so there is nothing
-to cut over to yet — but the shape is fixed and worth carrying forward: the switch from the Node.js
-function app is **exclusive, with no parallel running**, because both paths POST into the same
-`informant_register` table and running both would duplicate rows. Rollback is switching the
-consumer back to the function app.
+to cut over to yet — but the shape is fixed and worth carrying forward, because the two paths do
+**not** share a trigger and "switch the consumer back" is not a thing anyone can do. The legacy
+function app is triggered by **Event Grid**; this service consumes an **ASB queue** that the Results
+publisher fills. They are separate legs, so the switch is made at **two settings that move
+together**, and there is no parallel running: both paths POST into the same `informant_register`
+table, so running both duplicates rows.
+
+From `doc/TECHNICAL_DESIGN.md`, "Cutover and rollback":
+
+1. **Deploy** the service with the Results publisher toggle **off**; the function app untouched.
+   Nothing changes — the queue stays empty and this service consumes nothing.
+2. **Cutover, in one change window:** turn the publisher toggle **on** *and* disable the function
+   app's trigger (`AzureWebJobs.InformantRegisterEventGridTrigger.Disabled=true`). A few minutes'
+   overlap is harmless — a double-processed hearing is absorbed exactly like a re-share.
+3. **Verify:** the service consuming; rows appearing in `informant_register`; that evening's 19:00
+   CSV normal; the DLQ empty.
+4. **Rollback = reverse both settings.** Event Grid retains up to 24 hours of undelivered retries for
+   a disabled function, so the backlog redelivers itself once the trigger is re-enabled. No data
+   migration and no purge — the store and the generation leg are identical on both paths.
+5. The function app stays **deployed but disabled for at least two sprints**, then is deleted with
+   its Event Grid subscription. Do not delete it at cutover: it is the rollback.
 
 ---
 
@@ -205,10 +287,13 @@ it. Every row of the plan's test matrix, the test that proves it, and its result
 finished skeleton at T047 and every statement still holds. Nothing on it moved during
 implementation, which is the point of checking:
 
-- **Content quality** — the spec still names no language, framework or API; the queue mechanics it
-  does name (delivery limit, duplicate detection, DLQ, message identity) are the externally
-  observable contract of the service's trigger, which the checklist already records as a deliberate
-  boundary rather than an implementation leak.
+- **Content quality** — the spec still names no language, framework or internal design choice. It
+  does name two things deliberately, and the checklist's own "retained deliberate boundaries" note
+  qualifies both: the **queue's mechanics** (delivery limit, duplicate detection, DLQ, message
+  identity), which are the externally observable contract of the service's trigger; and, in FR-014,
+  the **operational endpoint family** — health, info, metrics, Prometheus — which is a surface
+  operators depend on rather than an internal decision. Neither is an implementation leak, and the
+  claim to check is the qualified one, not an unqualified "no APIs are named".
 - **Requirement completeness** — no `[NEEDS CLARIFICATION]` markers; FR-001…FR-018 and
   SC-001…SC-006 are unchanged since the Round 2 gate, and each is now discharged by a named test in
   Appendix A.
@@ -228,8 +313,41 @@ of any kind — and it is recorded in `research.md` where a reviewer of that dec
 
 Both `docker-compose.yml` and therefore `scripts/container-smoke.sh` bind Postgres to host port
 **5432**. On a developer machine already running the CPP development environment that port is taken
-by its own Postgres container, and the stack fails to start with `port is already allocated`. Start
-it under its own compose project name with the container's 5432 mapped to a spare host port —
-`COMPOSE_FILE` accepts a colon-separated override for the smoke script, which takes no arguments of
-its own — and adjust the datasource URL to match. Both files are correct as written for a clean
-machine and for the CI runner; this is a note for CPP developers, not a defect.
+by its own Postgres container, and the stack fails to start with `port is already allocated`. Both
+files are correct as written for a clean machine and for the CI runner; this is a note for CPP
+developers, not a defect.
+
+**A project name does not help.** `--project-name` isolates containers, networks and volumes; it
+does **not** isolate host ports, because the host has only one port 5432 however many projects want
+it. The mapping itself has to change.
+
+**Nor does an ordinary override file.** Compose **merges** sequences by appending, so an override
+that lists a different port mapping produces a service asking for *both* — and the run fails on 5432
+exactly as before. Either replace the list explicitly:
+
+```yaml
+# override.yml — `!override` replaces the sequence instead of appending to it
+services:
+  postgres:
+    ports: !override
+      - "55432:5432"
+```
+
+…or parameterise the mapping in `docker-compose.yml` itself, which is the tidier fix if this keeps
+biting:
+
+```yaml
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+```
+
+Then:
+
+- **`./gradlew bootRun`** runs on the **host**, so it is the one that needs the spare port —
+  point `SPRING_DATASOURCE_URL` at `jdbc:postgresql://localhost:55432/informantregister`.
+- **`./scripts/container-smoke.sh`** does not. The application container reaches the database over
+  the compose network as **`postgres:5432`**, which the host mapping does not touch; the only reason
+  the smoke run cares about the host port at all is that the bind fails and takes the whole stack
+  down with it. The script takes no arguments, so pass the override through the environment —
+  `COMPOSE_FILE="docker-compose.yml:override.yml" ./scripts/container-smoke.sh` — and change nothing
+  else.

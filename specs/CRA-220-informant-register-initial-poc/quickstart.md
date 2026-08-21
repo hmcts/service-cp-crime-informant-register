@@ -29,11 +29,12 @@ end-to-end:
 
 ```bash
 docker compose up -d postgres servicebus-emulator   # queue declared in docker/servicebus-emulator/config.json
-                                                    # host 5432 must be free — on a machine already
-                                                    # running the CPP dev-env Postgres, start this
-                                                    # stack under its own project name and map the
-                                                    # container's 5432 to a spare host port instead,
-                                                    # adjusting the datasource URL below to match
+                                                    # host 5432 must be free — if the CPP dev-env
+                                                    # Postgres already holds it, REPLACE the mapping
+                                                    # (`ports: !override` in an override file; plain
+                                                    # merging keeps both entries and still collides,
+                                                    # and a project name does not isolate host
+                                                    # ports) and point the URL below at the new one
 
 export SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/informantregister
 export SPRING_DATASOURCE_USERNAME=informantregister
@@ -62,7 +63,10 @@ no message field and no endpoint that triggers a failure.
 ### Health
 
 - **Readiness**: `http://localhost:8082/actuator/health/readiness` — this is the endpoint to check.
-  It gates on Postgres only.
+  It gates on **two** components, `db` and `intakeStartup`: the processed-log database answering,
+  **and** this pod's own gated start having actually completed. A database that replies is not the
+  same thing as a service in a position to use it — the deferred migration and the processor start
+  sit between them, and either can fail. The broker is deliberately in neither.
 - **Liveness**: `http://localhost:8082/actuator/health/liveness`.
 - The aggregate `http://localhost:8082/actuator/health` **may report `DOWN` because of the
   `servicebus` component** while readiness is `UP`. That is the designed behaviour (spec FR-011): a
@@ -82,9 +86,25 @@ no message field and no endpoint that triggers a failure.
 - Send a test message: any AMQP-capable client against the emulator connection string above; watch
   the service log for the stub port lines and query `processed_request` in the `informantregister`
   database.
-- Stop the broker (`docker compose stop servicebus-emulator`) and confirm readiness stays `UP` while
-  `informantregister_servicebus_up` reads `0`; start it again, send a message, and consumption
-  resumes with no restart (spec SC-004) — the gauge returns to `1` on the first delivery.
+- **Broker outage and recovery** (spec SC-004). Stop the broker with
+  `docker compose stop servicebus-emulator` and confirm **readiness stays `UP`** — that is the
+  behaviour worth checking, and it holds unconditionally. Start it again
+  (`docker compose start servicebus-emulator`), **send a message, and watch it be consumed with no
+  restart**. Sending is not optional garnish here: a delivery is the only positive evidence that the
+  client reconnected, and it is what returns `informantregister_servicebus_up` to `1`.
+
+  **Do not expect the gauge to drop to `0` simply because you stopped the broker.** The queue-health
+  signal is deliberately **passive** — nothing polls the broker, because a probe message would cost
+  a delivery every time it ran. It moves on three inputs only: a **refused settlement**, a
+  **qualifying processor error**, or the **never-answered grace expiry**. An *idle* consumer whose
+  broker disappears produces none of the first two: measured against this emulator in Batch E, a
+  `ServiceBusProcessorClient` treats a lost connection as retryable and rolls its receive pump
+  silently, emitting **no `processError` at all** — five minutes observed with no callback of any
+  kind, the first arriving only once the broker came back. So on an idle service the `0` you see
+  after stopping the broker is usually the grace rule expiring, not the stop being detected, and a
+  service that has been receiving traffic may sit at `1` for some time after the broker is gone.
+  This is a limit of what the client reports, not a gap in the indicator — and it is exactly why the
+  readiness group never contains the broker.
 - The emulator does not persist across restarts — queue state is empty after
   `docker compose restart servicebus-emulator`; that is an emulator limit, not a service behaviour.
 
