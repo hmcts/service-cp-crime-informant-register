@@ -127,12 +127,12 @@ public class ServiceBusConsumerConfig {
      * processor started while the context is still refreshing would be consuming against beans that
      * are not there yet.
      */
-    static final class ProcessorLifecycle implements SmartLifecycle {
+    private static final class ProcessorLifecycle implements SmartLifecycle {
 
         private final ServiceBusProcessorClient processor;
         private volatile boolean started;
 
-        ProcessorLifecycle(final ServiceBusProcessorClient processor) {
+        private ProcessorLifecycle(final ServiceBusProcessorClient processor) {
             this.processor = processor;
         }
 

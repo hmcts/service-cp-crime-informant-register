@@ -2,8 +2,68 @@ spring:
   application:
     name: service-cp-crime-informant-register
 
+  # The processed-log store. Every value here is a LOCAL development default matching the `postgres`
+  # service in docker-compose.yml; deployed environments override them from Key Vault through the
+  # Secrets Store CSI driver, which reaches these keys by the usual relaxed-binding environment
+  # variables (SPRING_DATASOURCE_URL and friends).
+  datasource:
+    url: jdbc:postgresql://localhost:5432/informantregister
+    username: informantregister
+    password: informantregister
+    hikari:
+      # Lazy pool initialisation: no connection is opened during context refresh, so the application
+      # starts even with the store down. It has to — actuator must be up to report readiness DOWN
+      # honestly, and a pod that cannot start cannot tell anyone why (research §7).
+      initialization-fail-timeout: -1
+
+  flyway:
+    # The Flyway bean is configured here; when the migration runs is a separate decision. The
+    # lifecycle controller takes it off the context-refresh path and runs it on the first successful
+    # store probe, before intake starts, so no message is ever consumed against an unmigrated schema.
+    enabled: true
+
 server:
   port: ${SERVER_PORT:8082}
+
+informantregister:
+  consumer:
+    # The master switch for intake. Off in the `test` profile, so context-load tests need no broker.
+    enabled: true
+
+  servicebus:
+    # LOCAL AND CI ONLY — the Service Bus emulator's well-known development string, which is why it
+    # ends UseDevelopmentEmulator=true. A deployed environment sets `namespace` instead and clears
+    # this; exactly one of the two may be set, and startup fails fast otherwise.
+    connection-string: "Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;"
+    # namespace: set in deployed environments only, for workload identity.
+    queue-name: informantregister.requests
+    # Two concurrent deliveries, matching the Durable Functions throttle this service replaces.
+    max-concurrent-calls: 2
+    # Mirrors the broker queue's own setting. Used to recognise the final permitted delivery, so it
+    # must be changed here and on the queue together.
+    max-delivery-count: 5
+    # Must be at least the processing deadline plus the fixed 30s renewal margin, so the broker lock
+    # always outlives a legitimate run. Validated at startup.
+    max-auto-lock-renew-duration: 5m
+    # An unresolved connection error older than this, with no traffic since, stops being reported as
+    # an outage: an idle queue produces no traffic, and absence of traffic is not a failure.
+    health-staleness: 60s
+
+  claim:
+    # How long an acquired claim stays live, written as now() + lease by the database.
+    lease: 5m
+    # The enforced bound on a run. Strictly shorter than the lease, so a slow runner stops itself
+    # before its claim can be reclaimed. Validated at startup.
+    processing-deadline: 4m
+
+  store:
+    # How often the store is probed, driving the gated start and the resume after an outage.
+    probe-interval: 10s
+
+  stub:
+    # NONE | TRANSIENT. Test and local profiles only: it is deliberately not a field in the message
+    # and not an HTTP endpoint, either of which would be a production fault-injection surface.
+    payload-failure-mode: NONE
 
 # Application Insights is configured by the Java agent (lib/applicationinsights.json).
 # The per-environment connection string is supplied as APPLICATIONINSIGHTS_CONNECTION_STRING,
@@ -13,12 +73,19 @@ management:
   endpoints:
     web:
       base-path: /actuator
+      # The whole HTTP surface of this service. There is no business API (spec FR-014).
       exposure:
-        include: health, info, prometheus
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       probes:
         enabled: true   # enables liveness / readiness groups
+      group:
+        readiness:
+          # The store gates readiness, because processing is unsafe without it. The `servicebus`
+          # indicator is deliberately absent: a broker blip must never roll the pods, and the service
+          # cannot heal the queue by restarting (spec FR-011).
+          include: db
 
 logging:
   level:
