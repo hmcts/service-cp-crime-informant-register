@@ -264,7 +264,11 @@ class MessageAccountingIT {
         if (observed.unrecorded() && observed.parked() && !observed.queued()) {
             applicable.add(Outcome.PARKED_AS_INVALID);
         }
-        if (observed.nonTerminal() && observed.claimed() && !observed.parked()) {
+        if (observed.nonTerminal() && observed.claimed() && observed.queued() && !observed.parked()) {
+            // Queue presence is required, not implied: a peek reports a locked message exactly as
+            // it reports a waiting one, so a genuinely in-flight delivery IS still visible on the
+            // queue. A claimed record whose message is on neither queue is a contradiction — the
+            // broker has lost what the log says is being worked on — and must account for nothing.
             applicable.add(Outcome.IN_FLIGHT);
         }
         if (observed.queued() && !observed.claimed() && !observed.parked()
@@ -413,6 +417,16 @@ class MessageAccountingIT {
             assertThat(outcomesOf(new Observed(
                     Optional.of(RequestStatus.FAILED), false, false, false)))
                     .as("recorded as parked, and nowhere to be found")
+                    .isEmpty();
+        }
+
+        @Test
+        @DisplayName("a claimed run whose message is on no queue at all is accounted for by nothing")
+        void should_refuse_to_account_for_a_claimed_run_whose_message_has_vanished() {
+            assertThat(outcomesOf(new Observed(
+                    Optional.of(RequestStatus.RECEIVED), true, false, false)))
+                    .as("the log says a runner is working on it, but the broker holds no copy "
+                            + "anywhere — in-flight must require the queue's evidence too")
                     .isEmpty();
         }
 
