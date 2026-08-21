@@ -3,6 +3,7 @@ package uk.gov.hmcts.cp.informantregister.e2e;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.UUID;
 
 import com.azure.core.amqp.exception.AmqpErrorCondition;
 import com.azure.core.amqp.exception.AmqpErrorContext;
@@ -26,6 +27,7 @@ import uk.gov.hmcts.cp.informantregister.config.ServiceBusHealthIndicator;
 import uk.gov.hmcts.cp.informantregister.support.AdjustableClock;
 import uk.gov.hmcts.cp.informantregister.support.PostgresTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ServiceBusEmulatorTestSupport;
+import uk.gov.hmcts.cp.informantregister.support.ServiceTestSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -65,7 +67,7 @@ class ReadinessPolicyIT {
     private static final String STORE_COMPONENT = "db";
     private static final String BROKER_COMPONENT = "servicebus";
 
-    private static final Duration OBSERVED_WITHIN = Duration.ofSeconds(90);
+    private static final Duration OBSERVED_WITHIN = Duration.ofSeconds(120);
     private static final Duration POLL = Duration.ofSeconds(1);
 
     /** The default window, so the boundary asserted below is the one the service ships with. */
@@ -94,7 +96,7 @@ class ReadinessPolicyIT {
     @AfterEach
     void thawEverything() {
         PostgresTestSupport.unpause();
-        ServiceBusEmulatorTestSupport.unpause();
+        ServiceBusEmulatorTestSupport.restore();
     }
 
     // --- helpers ---------------------------------------------------------------------------
@@ -163,7 +165,14 @@ class ReadinessPolicyIT {
     @Test
     @DisplayName("a queue outage leaves readiness up and shows itself in the broker component")
     void should_keep_readiness_up_and_report_the_broker_down_during_a_queue_outage() {
-        ServiceBusEmulatorTestSupport.pause();
+        // The outage is staged with work in hand, because that is the only kind the SDK reports.
+        // A processor with nothing to do treats a lost connection as retryable and rolls its
+        // message pump silently and indefinitely — measured at five minutes against a broker whose
+        // container had been stopped outright, with no callback of any kind. With a delivery in
+        // flight the settlement is refused, and a refusal is evidence. It is also the case that
+        // matters: an outage while there is nothing to do costs nothing.
+        ServiceTestSupport.publish(ServiceTestSupport.validBody(UUID.randomUUID(), UUID.randomUUID()));
+        ServiceBusEmulatorTestSupport.disconnect();
         try {
             await().atMost(OBSERVED_WITHIN).pollInterval(POLL)
                     .until(() -> Status.DOWN.equals(brokerComponentStatus()));
@@ -172,7 +181,7 @@ class ReadinessPolicyIT {
                     .as("a broker blip must never roll the pods")
                     .isEqualTo(Status.UP);
         } finally {
-            ServiceBusEmulatorTestSupport.unpause();
+            ServiceBusEmulatorTestSupport.restore();
         }
 
         await().atMost(OBSERVED_WITHIN).pollInterval(POLL)

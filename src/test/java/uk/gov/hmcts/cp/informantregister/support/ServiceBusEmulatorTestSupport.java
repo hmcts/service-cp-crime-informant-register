@@ -1,7 +1,11 @@
 package uk.gov.hmcts.cp.informantregister.support;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.net.ServerSocket;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -9,10 +13,15 @@ import com.azure.messaging.servicebus.ServiceBusClientBuilder;
 import com.azure.messaging.servicebus.ServiceBusReceivedMessage;
 import com.azure.messaging.servicebus.ServiceBusReceiverClient;
 import com.azure.messaging.servicebus.models.SubQueue;
+import com.github.dockerjava.api.model.ExposedPort;
+import com.github.dockerjava.api.model.PortBinding;
+import com.github.dockerjava.api.model.Ports;
 import org.testcontainers.azure.ServiceBusEmulatorContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.mssqlserver.MSSQLServerContainer;
 import org.testcontainers.utility.MountableFile;
+
+import static org.awaitility.Awaitility.await;
 
 /**
  * Shared Service Bus emulator fixture for the broker and end-to-end suites.
@@ -44,7 +53,26 @@ public final class ServiceBusEmulatorTestSupport {
     private static final Path CONFIG_PATH =
             Paths.get("docker", "servicebus-emulator", "config.json").toAbsolutePath();
 
+    /** The emulator's AMQP port inside the container. */
+    private static final int AMQP_PORT = 5672;
+
+    /**
+     * The host port the emulator is pinned to.
+     *
+     * <p>Pinned, rather than left to Docker, because the broker-outage suites take the broker away
+     * by stopping the container and bring it back by starting it again — and Docker assigns a fresh
+     * host port on every start of a dynamically published container. A moving endpoint would mean
+     * the connection string a running service holds pointed at nothing even after the broker
+     * returned, which is a different outage from the one spec SC-004 describes and would prove the
+     * wrong thing.
+     */
+    private static final int HOST_PORT = freeHostPort();
+
+    private static final Duration BROKER_RETURNS_WITHIN = Duration.ofSeconds(120);
+
     private static final Network NETWORK = Network.newNetwork();
+
+    private static boolean started;
 
     private static final MSSQLServerContainer MSSQL = new MSSQLServerContainer(MSSQL_IMAGE)
             .acceptLicense()
@@ -55,7 +83,11 @@ public final class ServiceBusEmulatorTestSupport {
                     .acceptLicense()
                     .withNetwork(NETWORK)
                     .withConfig(MountableFile.forHostPath(CONFIG_PATH))
-                    .withMsSqlServerContainer(MSSQL);
+                    .withMsSqlServerContainer(MSSQL)
+                    .withCreateContainerCmdModifier(command -> command.getHostConfig()
+                            .withPortBindings(new PortBinding(
+                                    Ports.Binding.bindPort(HOST_PORT),
+                                    new ExposedPort(AMQP_PORT))));
 
     private ServiceBusEmulatorTestSupport() {
         // Static fixture holder.
@@ -64,12 +96,14 @@ public final class ServiceBusEmulatorTestSupport {
     /**
      * Returns the shared emulator, starting it and its companion if this is the first call.
      */
-    public static ServiceBusEmulatorContainer container() {
-        if (!EMULATOR.isRunning()) {
-            if (!MSSQL.isRunning()) {
-                MSSQL.start();
-            }
+    public static synchronized ServiceBusEmulatorContainer container() {
+        // Started once per JVM and remembered, rather than asked whether it is running. A suite
+        // that has deliberately stopped the broker would otherwise see "not running" here and have
+        // Testcontainers build a second one underneath it, at a different endpoint, mid-outage.
+        if (!started) {
+            MSSQL.start();
             EMULATOR.start();
+            started = true;
         }
         return EMULATOR;
     }
@@ -82,42 +116,100 @@ public final class ServiceBusEmulatorTestSupport {
     }
 
     /**
-     * Freezes the broker, severing every open AMQP connection without losing the queue.
+     * Takes the broker away, the way a broker actually goes away.
      *
-     * <p>The same technique the store-outage suites use on Postgres, and for the same reason:
-     * stopping the container would change its mapped port, so every connection string a running
-     * context holds would be pointing at nothing even after the broker came back — which is a
-     * different outage from the one operations staff meet, and not the one spec SC-004 describes.
-     * A pause severs the connections and leaves the endpoint exactly where it was.
+     * <p>The store-outage suites freeze Postgres, and that works because the driver notices a
+     * severed connection the next time it uses one. The broker does not behave like that: a frozen
+     * emulator leaves the AMQP connection open and silent, and an idle consumer — one with no
+     * message in flight — sits there indefinitely without ever being told anything is wrong. Five
+     * minutes of it were measured, and the client never reported a fault, which is not a defect:
+     * absence of traffic is not evidence of an outage, and research §8 says so deliberately.
+     *
+     * <p>So the container is stopped. Connections close, the consumer is told at once, and the
+     * scenario is the one operations staff meet — a broker that went away, not a broker that went
+     * quiet. The endpoint survives because the host port is pinned.
      */
-    public static void pause() {
+    public static void disconnect() {
         container().getDockerClient()
-                .pauseContainerCmd(container().getContainerId())
+                .stopContainerCmd(container().getContainerId())
+                .withTimeout(0)
                 .exec();
     }
 
     /**
-     * Thaws a broker frozen by {@link #pause()}, whether or not it is frozen.
+     * Brings the broker back at the same endpoint, and waits until it is really answering.
      *
-     * <p>Idempotent for the same reason the store's helper is: an outage suite thaws from an
-     * {@code @AfterEach}, and Docker's 500 for "not paused" would replace the assertion the suite
-     * really failed on with a fixture error.
+     * <p>Waiting on a real round trip rather than on the container's state: "started" is when
+     * Docker has run the process, and the emulator spends several seconds after that reaching its
+     * own state store before it will accept an AMQP connection. A suite that began asserting in
+     * between would be measuring the emulator's start-up, not this service's recovery.
+     *
+     * <p>Restarting loses whatever was on the queue; the emulator has no restart persistence
+     * (research §10). Every suite that stops the broker publishes what it needs afterwards.
      */
-    public static void unpause() {
-        if (paused()) {
-            container().getDockerClient()
-                    .unpauseContainerCmd(container().getContainerId())
-                    .exec();
+    public static void reconnect() {
+        container().getDockerClient()
+                .startContainerCmd(container().getContainerId())
+                .exec();
+        await().atMost(BROKER_RETURNS_WITHIN)
+                .pollInterval(Duration.ofSeconds(1))
+                .untilAsserted(ServiceBusEmulatorTestSupport::assertBrokerAnswers);
+    }
+
+    /**
+     * Brings the broker back if a suite left it stopped, whether or not it did.
+     *
+     * <p>Idempotent, because the outage suites restore from an {@code @AfterEach} so that a failing
+     * assertion cannot leave the rest of the build without a broker.
+     */
+    public static void restore() {
+        if (!running()) {
+            reconnect();
         }
     }
 
-    private static boolean paused() {
+    /**
+     * One attempt at a real round trip, as a retrying assertion.
+     *
+     * <p>The failure is wrapped and rethrown rather than ignored: while the budget lasts it is why
+     * this attempt failed, and when the budget runs out it is the cause hanging off the timeout —
+     * the difference between "the broker never came back" and a fixture that says only that it
+     * waited (constitution Principle VI, which does not exempt tests).
+     */
+    @SuppressWarnings("PMD.AvoidCatchingGenericException")
+    // The SDK reports an unreachable broker as any of several types; what matters here is that the
+    // round trip did not happen, whichever type carried that news.
+    private static void assertBrokerAnswers() {
+        try (ServiceBusReceiverClient receiver = new ServiceBusClientBuilder()
+                .connectionString(connectionString())
+                .receiver()
+                .queueName(QUEUE_NAME)
+                .buildClient()) {
+            receiver.peekMessage();
+        } catch (RuntimeException unreachable) {
+            throw new AssertionError("the restarted broker did not answer", unreachable);
+        }
+    }
+
+    private static boolean running() {
         return Boolean.TRUE.equals(container().getDockerClient()
                 .inspectContainerCmd(container().getContainerId())
                 .exec()
                 .getState()
-                .getPaused());
+                .getRunning());
     }
+
+    /**
+     * A host port nothing is using, claimed by opening and closing a socket on it.
+     */
+    private static int freeHostPort() {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            return socket.getLocalPort();
+        } catch (IOException unavailable) {
+            throw new UncheckedIOException("no free host port for the broker emulator", unavailable);
+        }
+    }
+
 
     /**
      * Looks for one message by its broker identity, on the queue or on its dead-letter queue.

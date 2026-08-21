@@ -69,7 +69,7 @@ class StartupWithQueueDownIT {
 
     @AfterEach
     void thawTheBroker() {
-        ServiceBusEmulatorTestSupport.unpause();
+        ServiceBusEmulatorTestSupport.restore();
     }
 
     private static Status brokerStatus(final ConfigurableApplicationContext context) {
@@ -95,10 +95,15 @@ class StartupWithQueueDownIT {
         // Started first so the connection string is real, then frozen: the scenario is a broker
         // that exists and is not answering, not a broker that was never configured.
         ServiceBusEmulatorTestSupport.container();
-        ServiceBusEmulatorTestSupport.pause();
+        ServiceBusEmulatorTestSupport.disconnect();
 
         final ConfigurableApplicationContext context = assertDoesNotThrow(
-                () -> ServiceTestSupport.start(Map.of()),
+                // A short staleness window, because it is also the grace this consumer is given
+                // before "we have never once heard from the broker" becomes something worth
+                // reporting. The deployed minute would make the suite wait out a minute to observe
+                // a rule that does not depend on its length.
+                () -> ServiceTestSupport.start(
+                        Map.of("informantregister.servicebus.health-staleness", "5s")),
                 "context refresh must complete with the broker down: a pod that crash-loops "
                         + "reports nothing");
         try (context) {
@@ -113,7 +118,7 @@ class StartupWithQueueDownIT {
                     .as("the dashboard is told the same thing the health endpoint is")
                     .isEqualTo(0);
 
-            ServiceBusEmulatorTestSupport.unpause();
+            ServiceBusEmulatorTestSupport.restore();
 
             final String messageId =
                     ServiceTestSupport.publish(ServiceTestSupport.validBody(requestId, hearingId));

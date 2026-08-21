@@ -32,6 +32,7 @@ import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
 import uk.gov.hmcts.cp.informantregister.domain.GuardDecision;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.RunClaim;
+import uk.gov.hmcts.cp.informantregister.support.QueueHealthTestSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -93,7 +94,9 @@ class MessageListenerSettlementTest {
             new DistributionCommandParser(JacksonConfig.contractObjectMapper());
 
     private final InformantRegisterMessageListener listener =
-            new InformantRegisterMessageListener(parser, pipeline, metrics, MAX_DELIVERY_COUNT);
+            new InformantRegisterMessageListener(
+                    parser, pipeline, metrics,
+                    QueueHealthTestSupport.unwatched(), MAX_DELIVERY_COUNT);
 
     private final UUID requestId = UUID.randomUUID();
     private final UUID hearingId = UUID.randomUUID();
@@ -255,6 +258,7 @@ class MessageListenerSettlementTest {
                     new DistributionPipeline(guard, payloadSource, submissionClient, metrics,
                             Clock.systemUTC(), RUN_DEADLINE),
                     metrics,
+                    QueueHealthTestSupport.unwatched(),
                     MAX_DELIVERY_COUNT);
         }
 

@@ -65,7 +65,7 @@ class QueueOutageRecoveryIT {
 
     @AfterEach
     void thawTheBroker() {
-        ServiceBusEmulatorTestSupport.unpause();
+        ServiceBusEmulatorTestSupport.restore();
     }
 
     // --- helpers ---------------------------------------------------------------------------
@@ -97,9 +97,19 @@ class QueueOutageRecoveryIT {
     @DisplayName("the broker goes down and comes back; readiness never moves and consumption resumes")
     void should_report_the_outage_stay_ready_and_resume_consuming_when_the_queue_returns() {
         try (ConfigurableApplicationContext context = ServiceTestSupport.start(Map.of())) {
-            assertThat(brokerStatus(context)).isEqualTo(Status.UP);
+            assertThat(brokerStatus(context))
+                    .as("a consumer that has just started and met no trouble reports the broker up")
+                    .isEqualTo(Status.UP);
 
-            ServiceBusEmulatorTestSupport.pause();
+            // The outage is staged with work in hand, because that is the only kind the SDK
+            // reports. A processor with nothing to do treats a lost connection as retryable and
+            // rolls its message pump silently and indefinitely — measured at five minutes against a
+            // broker whose container had been stopped outright, with no callback of any kind. With
+            // a delivery in flight the settlement is refused, and a refusal is evidence. It is also
+            // the case that matters: an outage while there is nothing to do costs nothing.
+            ServiceTestSupport.publish(
+                    ServiceTestSupport.validBody(UUID.randomUUID(), UUID.randomUUID()));
+            ServiceBusEmulatorTestSupport.disconnect();
 
             await().atMost(OBSERVED_WITHIN).pollInterval(POLL)
                     .until(() -> Status.DOWN.equals(brokerStatus(context)));
@@ -110,7 +120,7 @@ class QueueOutageRecoveryIT {
                     .as("the gauge and the health component answer the same question")
                     .isEqualTo(0);
 
-            ServiceBusEmulatorTestSupport.unpause();
+            ServiceBusEmulatorTestSupport.restore();
 
             // Everything below is inside SC-004's sixty seconds, counted from here.
             final String messageId =

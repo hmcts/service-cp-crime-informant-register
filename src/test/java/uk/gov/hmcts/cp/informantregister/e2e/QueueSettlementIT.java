@@ -30,6 +30,7 @@ import uk.gov.hmcts.cp.informantregister.domain.GuardDecision;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.inbound.DistributionCommandParser;
 import uk.gov.hmcts.cp.informantregister.inbound.InformantRegisterMessageListener;
+import uk.gov.hmcts.cp.informantregister.support.QueueHealthTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ServiceBusEmulatorTestSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -73,6 +74,7 @@ class QueueSettlementIT {
             new DistributionCommandParser(JacksonConfig.contractObjectMapper()),
             pipeline,
             new ProcessingMetrics(new SimpleMeterRegistry()),
+            QueueHealthTestSupport.unwatched(),
             MAX_DELIVERY_COUNT);
 
     /** Every delivery this suite's processor saw, as (messageId, deliveryCount). */

@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
+import uk.gov.hmcts.cp.informantregister.config.ServiceBusHealthIndicator;
 import uk.gov.hmcts.cp.informantregister.domain.ContractValidationException;
 import uk.gov.hmcts.cp.informantregister.domain.DeadLetterReason;
 import uk.gov.hmcts.cp.informantregister.domain.DeliveryIdentity;
@@ -65,16 +66,19 @@ public class InformantRegisterMessageListener {
     private final DistributionCommandParser parser;
     private final DistributionPipeline pipeline;
     private final ProcessingMetrics metrics;
+    private final ServiceBusHealthIndicator health;
     private final int maxDeliveryCount;
 
     public InformantRegisterMessageListener(
             final DistributionCommandParser parser,
             final DistributionPipeline pipeline,
             final ProcessingMetrics metrics,
+            final ServiceBusHealthIndicator health,
             final int maxDeliveryCount) {
         this.parser = parser;
         this.pipeline = pipeline;
         this.metrics = metrics;
+        this.health = health;
         this.maxDeliveryCount = maxDeliveryCount;
     }
 
@@ -298,6 +302,11 @@ public class InformantRegisterMessageListener {
                             + "delivery will come round again. operation={} type={}",
                     operation.label(), refused.getClass().getName(), refused);
             metrics.settlementFailed(operation);
+            // The same call that failed is also the most recent thing this service knows about the
+            // connection, and a refusal is the counterpart of the successful settlement the queue
+            // health indicator already counts as evidence of reachability. Reported, not judged:
+            // the indicator decides whether this particular refusal means the broker is gone.
+            health.recordSettlementRefusal(refused);
         }
         return settled;
     }

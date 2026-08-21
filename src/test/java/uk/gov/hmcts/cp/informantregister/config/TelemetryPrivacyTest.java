@@ -31,6 +31,7 @@ import uk.gov.hmcts.cp.informantregister.inbound.DistributionCommandParser;
 import uk.gov.hmcts.cp.informantregister.inbound.InformantRegisterMessageListener;
 import uk.gov.hmcts.cp.informantregister.inbound.ServiceBusConsumerConfig;
 import uk.gov.hmcts.cp.informantregister.support.CapturedLog;
+import uk.gov.hmcts.cp.informantregister.support.QueueHealthTestSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -151,6 +152,7 @@ class TelemetryPrivacyTest {
                 new DistributionCommandParser(JacksonConfig.contractObjectMapper()),
                 pipeline,
                 new ProcessingMetrics(new SimpleMeterRegistry()),
+                QueueHealthTestSupport.unwatched(),
                 MAX_DELIVERY_COUNT);
     }
 
@@ -249,7 +251,11 @@ class TelemetryPrivacyTest {
             new ServiceBusConsumerConfig()
                     .informantRegisterProcessorClient(
                             properties,
-                            listenerOver(mock(HearingPayloadSource.class)))
+                            listenerOver(mock(HearingPayloadSource.class)),
+                            new ServiceBusHealthIndicator(
+                                    Duration.ofSeconds(60),
+                                    new ProcessingMetrics(new SimpleMeterRegistry()),
+                                    Clock.systemUTC()))
                     .close();
 
             assertThat(log.renderings())
