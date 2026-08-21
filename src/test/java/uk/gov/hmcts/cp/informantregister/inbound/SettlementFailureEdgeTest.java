@@ -7,6 +7,7 @@ import java.util.UUID;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
+import com.azure.core.amqp.exception.AmqpErrorCondition;
 import com.azure.core.amqp.exception.AmqpErrorContext;
 import com.azure.core.amqp.exception.AmqpException;
 import com.azure.core.util.BinaryData;
@@ -435,29 +436,42 @@ class SettlementFailureEdgeTest {
         }
     }
 
-    // --- the lock that was already gone -----------------------------------------------------------
+    // --- the lock the broker says is gone ---------------------------------------------------------
 
+    /**
+     * Lock loss is the broker's fact, learned from the refused settlement — never from comparing the
+     * broker's {@code lockedUntil} with a local clock, which is the multi-node skew the data model's
+     * single-time-authority rule exists to rule out. A skewed pod that trusted its own reading would
+     * skip settlements the broker was still willing to accept, completed work included.
+     */
     @Nested
-    @DisplayName("a delivery whose lock has already expired")
+    @DisplayName("a settlement the broker refuses because the lock has gone")
     class LockLost {
 
+        private ServiceBusException lockLostRefusal() {
+            return new ServiceBusException(
+                    new AmqpException(false, AmqpErrorCondition.MESSAGE_LOCK_LOST,
+                            "the lock supplied is no longer valid", new AmqpErrorContext("localhost")),
+                    ServiceBusErrorSource.COMPLETE);
+        }
+
         @Test
-        void should_not_attempt_a_settlement_it_cannot_make() {
+        void should_attempt_the_settlement_even_when_the_local_reading_says_the_lock_expired() {
             final ServiceBusReceivedMessageContext context = deliveryWhoseLockHasGone();
             pipelineDecides(new GuardDecision.Complete(ReasonCode.RUN_COMPLETED));
 
             listener.onMessage(context);
 
             assertThat(settlementsOn(context))
-                    .as("recovery is the broker's redelivery, not a call that cannot succeed")
-                    .isEmpty();
-            verify(context, never()).complete();
+                    .as("the broker is the authority on its own lock; the local reading is not")
+                    .containsExactly("complete");
         }
 
         @Test
-        void should_report_it_once_and_count_it_under_its_own_instrument() {
-            final ServiceBusReceivedMessageContext context = deliveryWhoseLockHasGone();
+        void should_report_a_lock_lost_refusal_once_and_count_it_under_its_own_instrument() {
+            final ServiceBusReceivedMessageContext context = deliveryWithALiveLock();
             pipelineDecides(new GuardDecision.Complete(ReasonCode.RUN_COMPLETED));
+            doThrow(lockLostRefusal()).when(context).complete();
 
             listener.onMessage(context);
 
@@ -469,15 +483,34 @@ class SettlementFailureEdgeTest {
 
         @Test
         void should_not_count_a_lost_lock_as_a_settlement_failure() {
-            final ServiceBusReceivedMessageContext context = deliveryWhoseLockHasGone();
+            final ServiceBusReceivedMessageContext context = deliveryWithALiveLock();
             pipelineDecides(new GuardDecision.Complete(ReasonCode.RUN_COMPLETED));
+            doThrow(lockLostRefusal()).when(context).complete();
 
             listener.onMessage(context);
 
             assertThat(counter(ProcessingMetrics.SETTLEMENT_FAILURES,
                     ProcessingMetrics.OPERATION_TAG, SettlementOperation.COMPLETE.label()))
-                    .as("no settlement was attempted, so none of them failed")
+                    .as("the lock was lost; the settlement machinery did not fail")
                     .isZero();
+            assertThat(settlementsOn(context))
+                    .as("and no second settlement compensates for it")
+                    .containsExactly("complete");
+        }
+
+        @Test
+        void should_not_record_a_transport_fault_for_a_refusal_about_one_message() {
+            final ServiceBusHealthIndicator health = mock(ServiceBusHealthIndicator.class);
+            final InformantRegisterMessageListener watched = new InformantRegisterMessageListener(
+                    parser, pipeline, metrics, health,
+                    StoreGateTestSupport.open(), MAX_DELIVERY_COUNT);
+            final ServiceBusReceivedMessageContext context = deliveryWithALiveLock();
+            pipelineDecides(new GuardDecision.Complete(ReasonCode.RUN_COMPLETED));
+            doThrow(lockLostRefusal()).when(context).complete();
+
+            watched.onMessage(context);
+
+            verify(health, never()).recordSettlementRefusal(any(Throwable.class));
         }
     }
 }
