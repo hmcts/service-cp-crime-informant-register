@@ -27,6 +27,13 @@ spring:
       - org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration
 
 management:
+  otlp:
+    metrics:
+      export:
+        # No collector is listening during a test, and the exporter's shutdown attempt writes a
+        # connection warning into every suite's output. Turning it off here keeps the test log
+        # readable; the deployed configuration is untouched.
+        enabled: false
   endpoint:
     health:
       group:
