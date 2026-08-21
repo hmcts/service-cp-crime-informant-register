@@ -214,67 +214,89 @@ public class InformantRegisterMessageListener {
     private void perform(
             final ServiceBusReceivedMessageContext context, final GuardDecision decision) {
         switch (decision) {
-            case GuardDecision.Complete acknowledged ->
-                    attempt(SettlementOperation.COMPLETE, () -> {
-                        context.complete();
-                        LOG.info("Delivery acknowledged. reason={}", acknowledged.reason().code());
-                    });
-            case GuardDecision.Abandon handedBack ->
-                    attempt(SettlementOperation.ABANDON, () -> {
-                        context.abandon();
-                        LOG.info("Delivery returned for redelivery. reason={}",
-                                handedBack.reason().code());
-                    });
-            case GuardDecision.DeadLetter parked ->
-                    attempt(SettlementOperation.DEADLETTER, () -> {
-                        context.deadLetter(new DeadLetterOptions()
-                                .setDeadLetterReason(parked.reason().label())
-                                .setDeadLetterErrorDescription(parked.detail().code()));
-                        // Counted after the call, so the counter records dead-letters that happened
-                        // rather than dead-letters that were intended.
-                        metrics.deadLettered(parked.reason());
-                        LOG.warn("Delivery parked on the dead-letter queue. reason={} detail={}",
-                                parked.reason().label(), parked.detail().code());
-                    });
+            case GuardDecision.Complete acknowledged -> {
+                if (accepted(SettlementOperation.COMPLETE, context::complete)) {
+                    LOG.info("Delivery acknowledged. reason={}", acknowledged.reason().code());
+                }
+            }
+            case GuardDecision.Abandon handedBack -> {
+                if (accepted(SettlementOperation.ABANDON, context::abandon)) {
+                    LOG.info("Delivery returned for redelivery. reason={}",
+                            handedBack.reason().code());
+                }
+            }
+            case GuardDecision.DeadLetter parked -> {
+                if (accepted(SettlementOperation.DEADLETTER,
+                        () -> context.deadLetter(optionsFor(parked)))) {
+                    // Counted after the call was accepted, so the counter records dead-letters that
+                    // happened rather than dead-letters that were intended.
+                    metrics.deadLettered(parked.reason());
+                    LOG.warn("Delivery parked on the dead-letter queue. reason={} detail={}",
+                            parked.reason().label(), parked.detail().code());
+                }
+            }
             // The pipeline always brings a run back to the guard, so a run reaching settlement is a
             // defect in this service rather than anything the broker can produce. It is still
             // settled, and settled the only way that loses nothing: the claim expires and the next
             // delivery reclaims it.
-            case GuardDecision.Run unfinished ->
-                    attempt(SettlementOperation.ABANDON, () -> {
-                        context.abandon();
-                        LOG.error("A run decision reached settlement; the delivery was returned. "
-                                        + "source={} requestId={}",
-                                unfinished.claim().source(), unfinished.claim().requestId());
-                    });
+            case GuardDecision.Run unfinished -> {
+                if (accepted(SettlementOperation.ABANDON, context::abandon)) {
+                    LOG.error("A run decision reached settlement; the delivery was returned. "
+                                    + "source={} requestId={}",
+                            unfinished.claim().source(), unfinished.claim().requestId());
+                }
+            }
         }
     }
 
+    private static DeadLetterOptions optionsFor(final GuardDecision.DeadLetter parked) {
+        return new DeadLetterOptions()
+                .setDeadLetterReason(parked.reason().label())
+                .setDeadLetterErrorDescription(parked.detail().code());
+    }
+
     /**
-     * One settlement call, and what happens when the broker refuses it.
+     * One settlement call — and nothing else inside the guard around it.
      *
-     * <p>The refusal is reported and counted, and that is all. It is deliberately <strong>not</strong>
-     * followed by a settlement of another kind: handing a delivery back because acknowledging it
-     * failed would either double-settle a lock this service still holds, or succeed — turning work
-     * that <em>is</em> durably recorded into a redelivery that runs again. The outcome was written
-     * before the settlement was attempted, so the redelivery meets a record that already knows the
-     * answer: a completed request is acknowledged without a run, and a parked one is parked again
-     * (spec FR-016, FR-007).
+     * <p>The boundary is exactly the broker call, and the answer is whether the broker took it. What
+     * follows a settlement — the line that records it, the counter that counts it — runs
+     * <em>outside</em>, because a fault there is not this call's failure and must not be dressed up
+     * as one. A wider boundary would report an unreachable meter registry as "the broker refused the
+     * settlement", add a reading to the settlement-failure series that never happened, and leave a
+     * message that <em>is</em> parked looking unparked — while the real fault disappeared behind
+     * somebody else's name. Such a failure is therefore allowed to propagate: the delivery is already
+     * settled, so nothing is at risk, and the processor's error handler reports it as what it is
+     * rather than this method reporting it as what it is not (constitution Principle VI — surfaced,
+     * never swallowed).
+     *
+     * <p>A refusal by the broker is reported and counted, and that is all. It is deliberately
+     * <strong>not</strong> followed by a settlement of another kind: handing a delivery back because
+     * acknowledging it failed would either double-settle a lock this service still holds, or
+     * succeed — turning work that <em>is</em> durably recorded into a redelivery that runs again. The
+     * outcome was written before the settlement was attempted, so the redelivery meets a record that
+     * already knows the answer: a completed request is acknowledged without a run, and a parked one
+     * is parked again (spec FR-016, FR-007).
+     *
+     * @param operation  which settlement is being attempted, for the counter
+     * @param brokerCall the settlement call, and only the settlement call
+     * @return whether the broker accepted it
      */
     @SuppressWarnings("PMD.AvoidCatchingGenericException")
     // The SDK reports a refused settlement as a ServiceBusException, but the failure that matters
     // here is "the call did not happen", whatever type carried that news. A narrower catch would let
-    // an unanticipated one escape into the processor's error handler, where there is no delivery to
-    // account for and no instrument that describes what went wrong.
-    private void attempt(final SettlementOperation operation, final Runnable settlement) {
+    // an unanticipated one escape with the delivery unaccounted for and no instrument describing it.
+    private boolean accepted(final SettlementOperation operation, final Runnable brokerCall) {
+        boolean settled = false;
         try {
-            settlement.run();
+            brokerCall.run();
+            settled = true;
         } catch (RuntimeException refused) {
             LOG.error("The broker refused the settlement; no second settlement is attempted and the "
                             + "delivery will come round again. operation={} type={}",
                     operation.label(), refused.getClass().getName(), refused);
             metrics.settlementFailed(operation);
         }
+        return settled;
     }
 
     /**

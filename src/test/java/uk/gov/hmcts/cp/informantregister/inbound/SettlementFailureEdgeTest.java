@@ -34,6 +34,7 @@ import uk.gov.hmcts.cp.informantregister.domain.SettlementOperation;
 import uk.gov.hmcts.cp.informantregister.support.CapturedLog;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -46,7 +47,7 @@ import static org.mockito.Mockito.when;
  * What happens when the settlement itself is the thing that fails — spec FR-016.
  *
  * <p>Everywhere else the settlement is the last thing that can go wrong; here it is the thing that
- * has gone wrong. Two properties have to hold whatever the broker does.
+ * has gone wrong. Three properties have to hold whatever the broker does.
  *
  * <p><strong>One attempt stays one attempt.</strong> A settlement that throws must not be followed
  * by a second settlement of another kind. Handing a delivery back because acknowledging it failed
@@ -59,6 +60,10 @@ import static org.mockito.Mockito.when;
  * no longer holds is a call that cannot succeed, so it is not made at all: the loss is logged,
  * counted under its own instrument, and recovery is left to the broker's redelivery. The record
  * decides what that redelivery does.
+ *
+ * <p><strong>Only the call itself is the settlement.</strong> A fault in what follows a settlement —
+ * the counter, the log line — is not the settlement failing, and reporting it as one would say a
+ * parked message was never parked. It is allowed to surface as itself.
  *
  * <p>What this suite does <em>not</em> assert is that the record stays COMPLETED or FAILED — that is
  * the guard's property, proven against a real store in {@code IdempotencyGuardIT} and
@@ -305,6 +310,80 @@ class SettlementFailureEdgeTest {
                     .isEqualTo(1);
             assertThat(errorsReported()).hasSize(1);
             assertThat(settlementsOn(context)).containsExactly("abandon");
+        }
+    }
+
+    // --- the failure that happened after the broker agreed ----------------------------------------
+
+    /**
+     * The settlement boundary must not be wider than the settlement.
+     *
+     * <p>Recording the dead-letter and writing the log line happen after the broker has accepted the
+     * call. If they sit inside the same guard as the call itself, a failure in either is reported as
+     * "the broker refused the settlement" and counted against a settlement that in fact succeeded —
+     * three wrongs at once: a message that <em>is</em> parked looks unparked, the settlement-failure
+     * series gains a reading that never happened, and the real fault (an unreachable meter registry,
+     * say) is swallowed behind somebody else's name.
+     */
+    @Nested
+    @DisplayName("telemetry that fails after the broker has accepted the settlement")
+    class TelemetryFailsAfterTheSettlement {
+
+        private final ProcessingMetrics unreachable = mock(ProcessingMetrics.class);
+
+        private final InformantRegisterMessageListener listenerWithFailingTelemetry =
+                new InformantRegisterMessageListener(
+                        parser, pipeline, unreachable, MAX_DELIVERY_COUNT);
+
+        private ServiceBusReceivedMessageContext aParkingWhoseCounterIsGone() {
+            final ServiceBusReceivedMessageContext context = deliveryWithALiveLock();
+            pipelineDecides(new GuardDecision.DeadLetter(
+                    DeadLetterReason.EXHAUSTED, ReasonCode.DELIVERY_LIMIT_EXHAUSTED));
+            doThrow(new IllegalStateException("the meter registry is gone"))
+                    .when(unreachable).deadLettered(DeadLetterReason.EXHAUSTED);
+            return context;
+        }
+
+        @Test
+        void should_let_the_real_failure_surface_rather_than_disguise_it() {
+            final ServiceBusReceivedMessageContext context = aParkingWhoseCounterIsGone();
+
+            assertThatThrownBy(() -> listenerWithFailingTelemetry.onMessage(context))
+                    .as("the delivery is parked, so there is nothing left to lose by saying what "
+                            + "actually broke")
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        void should_not_count_a_settlement_the_broker_accepted_as_a_settlement_failure() {
+            final ServiceBusReceivedMessageContext context = aParkingWhoseCounterIsGone();
+
+            try {
+                listenerWithFailingTelemetry.onMessage(context);
+            } catch (IllegalStateException expected) {
+                // The subject of the next assertion, not of this one.
+            }
+
+            verify(context).deadLetter(any(DeadLetterOptions.class));
+            verify(unreachable, never()).settlementFailed(any(SettlementOperation.class));
+        }
+
+        @Test
+        void should_not_report_the_broker_as_having_refused_a_call_it_accepted() {
+            final ServiceBusReceivedMessageContext context = aParkingWhoseCounterIsGone();
+
+            try {
+                listenerWithFailingTelemetry.onMessage(context);
+            } catch (IllegalStateException expected) {
+                // As above.
+            }
+
+            assertThat(errorsReported())
+                    .as("no refusal was reported, because none happened")
+                    .isEmpty();
+            assertThat(settlementsOn(context))
+                    .as("and the delivery really was parked, exactly once")
+                    .containsExactly("deadLetter");
         }
     }
 
