@@ -77,8 +77,7 @@ class IdempotencyGuardIT {
 
     /** Drives the record to FAILED under the given exhausting identity. */
     private void driveToFailed(final String messageId) {
-        guard.recordExhaustion(
-                admitted(messageId), ReasonCode.PIPELINE_TRANSIENT_FAILURE, delivery(messageId));
+        guard.recordExhaustion(admitted(messageId), ReasonCode.PIPELINE_TRANSIENT_FAILURE);
     }
 
     // --- (none) -> RECEIVED ------------------------------------------------------------------
@@ -222,8 +221,8 @@ class IdempotencyGuardIT {
         void should_park_the_request_with_the_exhausting_identity_and_ask_for_dead_lettering() {
             final RunClaim claim = admitted("msg-5");
 
-            final GuardDecision decision = guard.recordExhaustion(
-                    claim, ReasonCode.PIPELINE_TRANSIENT_FAILURE, delivery("msg-5"));
+            final GuardDecision decision =
+                    guard.recordExhaustion(claim, ReasonCode.PIPELINE_TRANSIENT_FAILURE);
 
             assertThat(decision).isEqualTo(new GuardDecision.DeadLetter(
                     DeadLetterReason.EXHAUSTED, ReasonCode.DELIVERY_LIMIT_EXHAUSTED));
@@ -236,6 +235,21 @@ class IdempotencyGuardIT {
             assertThat(row.claimOwner()).isNull();
             assertThat(row.claimToken()).isNull();
             assertThat(row.claimExpiresAt()).isNull();
+        }
+
+        @Test
+        void should_park_the_delivery_that_was_running_rather_than_any_other() {
+            // The claim carries the identity of the delivery that acquired it, so the request can
+            // only ever be parked under the delivery that was actually running. Parked under some
+            // other identity, the record would replay when that delivery came back and re-park when
+            // the real one did — the two halves of FR-007 pointing at the wrong messages.
+            final RunClaim claim = admitted("msg-5");
+            guard.recordCompletion(claim, CompletionReason.NO_AUTHORITIES);
+            final RunClaim second = admitted("msg-9");
+
+            guard.recordExhaustion(second, ReasonCode.PIPELINE_TRANSIENT_FAILURE);
+
+            assertThat(row().exhaustedMessageId()).isEqualTo(second.messageId()).isEqualTo("msg-9");
         }
 
         @Test

@@ -99,10 +99,8 @@ class StaleRunnerRejectionIT {
             case COMPLETION -> guard.recordCompletion(claim, CompletionReason.NO_AUTHORITIES);
             case TRANSIENT_FAILURE ->
                     guard.recordTransientFailure(claim, ReasonCode.PIPELINE_TRANSIENT_FAILURE);
-            case EXHAUSTION -> guard.recordExhaustion(
-                    claim,
-                    ReasonCode.PIPELINE_TRANSIENT_FAILURE,
-                    new DeliveryIdentity("msg-1", supersededClaim.owner()));
+            case EXHAUSTION ->
+                    guard.recordExhaustion(claim, ReasonCode.PIPELINE_TRANSIENT_FAILURE);
         };
     }
 

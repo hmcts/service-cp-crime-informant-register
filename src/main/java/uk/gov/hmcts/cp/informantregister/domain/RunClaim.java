@@ -18,10 +18,16 @@ import java.util.UUID;
  * {@code claim_expires_at} against {@code now()} inside the conditional update — never by comparing a
  * JVM clock reading against a stored timestamp (data-model invariant 9).
  *
+ * <p>The delivery's message identity travels with the claim rather than being handed separately to
+ * the write that parks a request. The identity recorded as having exhausted the retries has to be the
+ * delivery that was running, and carrying it here makes any other identity unrepresentable instead of
+ * merely wrong.
+ *
  * @param source    the record's key, part 1
  * @param requestId the record's key, part 2
  * @param owner     the runner identity stamped in {@code claim_owner}
  * @param token     the token minted for this acquisition
+ * @param messageId the broker identity of the delivery that acquired this claim
  */
-public record RunClaim(String source, UUID requestId, String owner, UUID token) {
+public record RunClaim(String source, UUID requestId, String owner, UUID token, String messageId) {
 }

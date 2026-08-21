@@ -69,8 +69,7 @@ class FailedReplayIT {
         }
         guard.recordExhaustion(
                 runClaimOf(guard.admit(command, delivery(PERMITTED_DELIVERIES))),
-                ReasonCode.PIPELINE_TRANSIENT_FAILURE,
-                delivery(PERMITTED_DELIVERIES));
+                ReasonCode.PIPELINE_TRANSIENT_FAILURE);
     }
 
     @Test
