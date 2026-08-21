@@ -11,6 +11,7 @@ import org.slf4j.MDC;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
 import uk.gov.hmcts.cp.informantregister.domain.ContractValidationException;
+import uk.gov.hmcts.cp.informantregister.domain.DeadLetterReason;
 import uk.gov.hmcts.cp.informantregister.domain.DeliveryIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
 import uk.gov.hmcts.cp.informantregister.domain.GuardDecision;
@@ -97,7 +98,8 @@ public class InformantRegisterMessageListener {
     // Deliberate, and narrow: this is the boundary that owns the delivery's settlement. An exception
     // escaping here would leave the message locked with no settlement attempt — the silent loss the
     // whole design exists to prevent — so the catch is total and each branch still logs at ERROR and
-    // hands the delivery back. It is a catch-and-settle, not a catch-and-ignore.
+    // names a settlement: the body that can never be valid is parked, and the fault nothing
+    // anticipated is handed back. It is a catch-and-settle, not a catch-and-ignore.
     private GuardDecision decide(final ServiceBusReceivedMessage message) {
         GuardDecision decision;
         try {
@@ -125,19 +127,30 @@ public class InformantRegisterMessageListener {
     }
 
     /**
-     * A body that can never be valid.
+     * A body that can never be valid, parked at once (spec FR-003).
      *
-     * <p><strong>Interim behaviour.</strong> The agreed end state (spec FR-003) is an immediate
-     * dead-letter with a bounded reason and no processed-request row, and it arrives with the
-     * contract-validation story. Until then the delivery is handed back: it is the only settlement
-     * that cannot be wrong, since the delivery budget parks the message anyway, whereas
-     * acknowledging it would discard a message nobody has looked at.
+     * <p>Retrying is pointless — no redelivery turns an unknown field into a known one — and it is
+     * destructive, because the delivery budget is spent on the impossible and the message ends up on
+     * the dead-letter queue under the broker's own rule, with nothing recorded about what was wrong
+     * with it. Parking it here spends no attempt and puts this service's reason on the message, which
+     * is what support reads.
+     *
+     * <p>The state machine is never entered, so no processed-request row is written. A body this
+     * service could not read may not carry a usable key at all, and a row keyed on a value the parser
+     * rejected would be a record of something that never happened. The delivery is accounted for by
+     * its dead-letter entry, this ERROR line and the validation counter instead.
+     *
+     * <p>What travels with the message is the bounded reason and nothing else. The violation and the
+     * offending field name are diagnostics for the log, where a reader can correlate them with the
+     * producer's own release; the dead-letter description a support tool reads carries only the code.
      */
     private static GuardDecision contractInvalid(
             final ServiceBusReceivedMessage message, final ContractValidationException invalid) {
-        LOG.error("Message body failed contract validation. messageId={} violation={} field={}",
+        LOG.error("Message body failed contract validation; parking it. "
+                        + "messageId={} violation={} field={}",
                 message.getMessageId(), invalid.violation(), invalid.field());
-        return new GuardDecision.Abandon(ReasonCode.CONTRACT_VALIDATION_FAILED);
+        return new GuardDecision.DeadLetter(
+                DeadLetterReason.VALIDATION, ReasonCode.CONTRACT_VALIDATION_FAILED);
     }
 
     /**
