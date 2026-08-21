@@ -122,7 +122,16 @@ public final class ProcessedLogTestSupport {
      * Reads a row back in full, or reports its absence.
      */
     public static Optional<Row> row(final String source, final UUID requestId) {
-        return jdbcClient()
+        return row(jdbcClient(), source, requestId);
+    }
+
+    /**
+     * The same read against a caller-supplied connection — for the durability suite, which owns its
+     * own container and rebuilds its pool underneath itself.
+     */
+    public static Optional<Row> row(
+            final JdbcClient client, final String source, final UUID requestId) {
+        return client
                 .sql("""
                         SELECT source, request_id, hearing_id, hearing_day, shared_time, event_type,
                                request_fingerprint, status, attempts, completion_reason, failure_reason,
@@ -159,7 +168,15 @@ public final class ProcessedLogTestSupport {
      * The row, insisting it exists — the ordinary case in a suite that has just written one.
      */
     public static Row requireRow(final String source, final UUID requestId) {
-        return row(source, requestId).orElseThrow(() ->
+        return requireRow(jdbcClient(), source, requestId);
+    }
+
+    /**
+     * The row, insisting it exists, against a caller-supplied connection.
+     */
+    public static Row requireRow(
+            final JdbcClient client, final String source, final UUID requestId) {
+        return row(client, source, requestId).orElseThrow(() ->
                 new IllegalStateException("no processed_request row for " + source + "/" + requestId));
     }
 
