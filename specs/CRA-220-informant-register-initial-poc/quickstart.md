@@ -29,6 +29,11 @@ end-to-end:
 
 ```bash
 docker compose up -d postgres servicebus-emulator   # queue declared in docker/servicebus-emulator/config.json
+                                                    # host 5432 must be free — on a machine already
+                                                    # running the CPP dev-env Postgres, start this
+                                                    # stack under its own project name and map the
+                                                    # container's 5432 to a spare host port instead,
+                                                    # adjusting the datasource URL below to match
 
 export SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/informantregister
 export SPRING_DATASOURCE_USERNAME=informantregister
@@ -61,8 +66,15 @@ no message field and no endpoint that triggers a failure.
 - **Liveness**: `http://localhost:8082/actuator/health/liveness`.
 - The aggregate `http://localhost:8082/actuator/health` **may report `DOWN` because of the
   `servicebus` component** while readiness is `UP`. That is the designed behaviour (spec FR-011): a
-  broker outage must never roll the pods. Judge the service by `/actuator/health/readiness`; read
-  the `servicebus` component for queue state.
+  broker outage must never roll the pods. Judge the service by `/actuator/health/readiness`.
+- Health **details are not exposed over HTTP** (`show-details` is left at its default, `never`), so
+  the aggregate answers with a status and no component breakdown. Read the queue state from the
+  `informantregister_servicebus_up` gauge on `/actuator/prometheus` instead — it is set from the
+  same evaluation as the health component, so the two cannot disagree.
+- A consumer that has **never** received a delivery reports the `servicebus` component `DOWN` once
+  `informantregister.servicebus.health-staleness` (60s) has passed since intake started, whether or
+  not the broker is reachable — "never once answered" is deliberately not the same as "idle". Send a
+  message and it returns `UP`.
 - Metrics: `http://localhost:8082/actuator/prometheus`.
 
 ### Poking at it
@@ -71,8 +83,8 @@ no message field and no endpoint that triggers a failure.
   the service log for the stub port lines and query `processed_request` in the `informantregister`
   database.
 - Stop the broker (`docker compose stop servicebus-emulator`) and confirm readiness stays `UP` while
-  the `servicebus` health component reports `DOWN`; start it again and consumption resumes within
-  60 seconds with no restart (spec SC-004).
+  `informantregister_servicebus_up` reads `0`; start it again, send a message, and consumption
+  resumes with no restart (spec SC-004) — the gauge returns to `1` on the first delivery.
 - The emulator does not persist across restarts — queue state is empty after
   `docker compose restart servicebus-emulator`; that is an emulator limit, not a service behaviour.
 
