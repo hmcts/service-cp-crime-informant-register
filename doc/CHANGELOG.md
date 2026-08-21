@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- 2026-08-21 — **Post-review hardening of the walking skeleton** (whole-`src/` review, findings
+  independently re-verified before fixing):
+  - an unexpected exception inside an admitted run is now recorded through the guard (RETRYING, or
+    FAILED + dead-letter on the final permitted delivery) instead of escaping with the run claim
+    still live and letting the broker park the message with no record behind it;
+  - lock loss is learned from the broker's refusal of the one settlement attempt and counted under
+    the lock-loss instrument, replacing the local-clock `lockedUntil` pre-check that skew could
+    turn into skipped settlements;
+  - only store-outage exception classes suspend intake; a constraint violation or broken statement
+    hands its delivery back without stopping the queue;
+  - a consumer the broker has never answered no longer ages its startup fault into a healthy
+    reading: it keeps one startup grace window and then reports DOWN until first contact;
+  - `source` joins `requestId`/`hearingId`/`hearingDay` in the MDC on every message, including the
+    contract-invalid path (canonical values only);
+  - completing a previously retried request clears `failure_reason`, so a COMPLETED row never
+    carries a stale failure (data model updated to state the semantic);
+  - the workflow message-contract gate text now matches the closed contract the schema declares —
+    unknown extra fields dead-letter; they were never tolerated.
+
 ### Added
 - 2026-08-20 — Repository scaffolded from `hmcts/service-hmcts-crime-springboot-template`
   (Spring Boot 4.1, Java 25, Gradle, package root `uk.gov.hmcts.cp`).
