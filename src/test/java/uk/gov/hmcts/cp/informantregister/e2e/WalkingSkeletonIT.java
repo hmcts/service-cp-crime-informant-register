@@ -10,8 +10,6 @@ import ch.qos.logback.core.read.ListAppender;
 import com.azure.core.util.BinaryData;
 import com.azure.messaging.servicebus.ServiceBusClientBuilder;
 import com.azure.messaging.servicebus.ServiceBusMessage;
-import com.azure.messaging.servicebus.ServiceBusReceivedMessage;
-import com.azure.messaging.servicebus.ServiceBusReceiverClient;
 import com.azure.messaging.servicebus.ServiceBusSenderClient;
 import com.azure.messaging.servicebus.models.SubQueue;
 import org.junit.jupiter.api.AfterEach;
@@ -59,7 +57,6 @@ class WalkingSkeletonIT {
 
     private static final Duration PROCESSED_WITHIN = Duration.ofSeconds(60);
     private static final Duration NO_FURTHER_RUN_WITHIN = Duration.ofSeconds(10);
-    private static final int PEEK_BATCH = 32;
 
     private static String connectionString;
 
@@ -148,18 +145,6 @@ class WalkingSkeletonIT {
         return ProcessedLogTestSupport.requireRow(ProcessedLogTestSupport.SOURCE, requestId);
     }
 
-    private static Optional<ServiceBusReceivedMessage> peekFor(
-            final String messageId, final SubQueue subQueue) {
-        try (ServiceBusReceiverClient receiver = clients().receiver()
-                .queueName(ServiceBusEmulatorTestSupport.QUEUE_NAME)
-                .subQueue(subQueue)
-                .buildClient()) {
-            return receiver.peekMessages(PEEK_BATCH).stream()
-                    .filter(message -> messageId.equals(message.getMessageId()))
-                    .findFirst();
-        }
-    }
-
     private static List<String> linesOf(final ListAppender<ILoggingEvent> appender) {
         return appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
     }
@@ -188,8 +173,8 @@ class WalkingSkeletonIT {
                 .as("no authorities, so nothing to submit — the port exists and is never called")
                 .isEmpty();
 
-        await().atMost(PROCESSED_WITHIN).until(() -> peekFor(messageId, SubQueue.NONE).isEmpty());
-        assertThat(peekFor(messageId, SubQueue.DEAD_LETTER_QUEUE)).isEmpty();
+        await().atMost(PROCESSED_WITHIN).until(() -> ServiceBusEmulatorTestSupport.peekFor(messageId, SubQueue.NONE).isEmpty());
+        assertThat(ServiceBusEmulatorTestSupport.peekFor(messageId, SubQueue.DEAD_LETTER_QUEUE)).isEmpty();
     }
 
     @Test
@@ -201,7 +186,7 @@ class WalkingSkeletonIT {
         final String secondIdentity = publish();
 
         await().atMost(PROCESSED_WITHIN)
-                .until(() -> peekFor(secondIdentity, SubQueue.NONE).isEmpty());
+                .until(() -> ServiceBusEmulatorTestSupport.peekFor(secondIdentity, SubQueue.NONE).isEmpty());
         await().during(NO_FURTHER_RUN_WITHIN).atMost(PROCESSED_WITHIN).until(() ->
                 row().filter(found -> found.attempts() == 1).isPresent());
 
@@ -212,6 +197,6 @@ class WalkingSkeletonIT {
         assertThat(afterSecondDelivery.updatedAt())
                 .as("a completed record is not written to again")
                 .isEqualTo(firstRun.updatedAt());
-        assertThat(peekFor(secondIdentity, SubQueue.DEAD_LETTER_QUEUE)).isEmpty();
+        assertThat(ServiceBusEmulatorTestSupport.peekFor(secondIdentity, SubQueue.DEAD_LETTER_QUEUE)).isEmpty();
     }
 }

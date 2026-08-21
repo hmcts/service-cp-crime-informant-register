@@ -2,7 +2,13 @@ package uk.gov.hmcts.cp.informantregister.support;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
+import java.util.Optional;
 
+import com.azure.messaging.servicebus.ServiceBusClientBuilder;
+import com.azure.messaging.servicebus.ServiceBusReceivedMessage;
+import com.azure.messaging.servicebus.ServiceBusReceiverClient;
+import com.azure.messaging.servicebus.models.SubQueue;
 import org.testcontainers.azure.ServiceBusEmulatorContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.mssqlserver.MSSQLServerContainer;
@@ -22,6 +28,9 @@ import org.testcontainers.utility.MountableFile;
 public final class ServiceBusEmulatorTestSupport {
 
     public static final String QUEUE_NAME = "informantregister.requests";
+
+    /** How many messages one peek reads. The search pages, so this bounds a round trip, not a scan. */
+    private static final int PEEK_PAGE_SIZE = 32;
 
     private static final String EMULATOR_IMAGE =
             "mcr.microsoft.com/azure-messaging/servicebus-emulator:1.1.2";
@@ -70,5 +79,57 @@ public final class ServiceBusEmulatorTestSupport {
      */
     public static String connectionString() {
         return container().getConnectionString();
+    }
+
+    /**
+     * Looks for one message by its broker identity, on the queue or on its dead-letter queue.
+     *
+     * <p>Every broker suite in this repository shares one queue, so they all assert about their own
+     * message rather than about the queue's contents. That only works if the search really covers the
+     * queue: a single {@code peekMessages(n)} reads the first {@code n} messages and no further, so a
+     * target sitting behind a neighbour's backlog is reported absent — a false pass for "the message
+     * left the queue", and a timeout for "the message reached the dead-letter queue". Both are
+     * failures that would be blamed on the service.
+     *
+     * <p>It therefore pages from the beginning of the queue until the message is found or a page
+     * comes back empty. Peeking never locks or consumes, so paging costs nothing but round trips and
+     * leaves the queue exactly as it was.
+     *
+     * @param messageId the broker identity to look for
+     * @param subQueue  {@link SubQueue#NONE} for the queue itself, {@link SubQueue#DEAD_LETTER_QUEUE}
+     *                  for its dead-letter queue
+     * @return the message, if the queue holds one under that identity
+     */
+    public static Optional<ServiceBusReceivedMessage> peekFor(
+            final String messageId, final SubQueue subQueue) {
+        try (ServiceBusReceiverClient receiver = new ServiceBusClientBuilder()
+                .connectionString(connectionString())
+                .receiver()
+                .queueName(QUEUE_NAME)
+                .subQueue(subQueue)
+                .buildClient()) {
+            return pageFor(receiver, messageId);
+        }
+    }
+
+    private static Optional<ServiceBusReceivedMessage> pageFor(
+            final ServiceBusReceiverClient receiver, final String messageId) {
+        Optional<ServiceBusReceivedMessage> found = Optional.empty();
+        long fromSequenceNumber = 0L;
+        boolean queueHasMore = true;
+        while (found.isEmpty() && queueHasMore) {
+            final List<ServiceBusReceivedMessage> page =
+                    receiver.peekMessages(PEEK_PAGE_SIZE, fromSequenceNumber).stream().toList();
+            queueHasMore = !page.isEmpty();
+            if (queueHasMore) {
+                found = page.stream()
+                        .filter(message -> messageId.equals(message.getMessageId()))
+                        .findFirst();
+                // Strictly past the last message read, so the next page cannot repeat one and the
+                // loop cannot fail to advance.
+                fromSequenceNumber = page.get(page.size() - 1).getSequenceNumber() + 1;
+            }
+        }
+        return found;
     }
 }

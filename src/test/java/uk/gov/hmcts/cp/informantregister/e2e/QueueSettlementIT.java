@@ -11,7 +11,6 @@ import com.azure.messaging.servicebus.ServiceBusClientBuilder;
 import com.azure.messaging.servicebus.ServiceBusMessage;
 import com.azure.messaging.servicebus.ServiceBusProcessorClient;
 import com.azure.messaging.servicebus.ServiceBusReceivedMessage;
-import com.azure.messaging.servicebus.ServiceBusReceiverClient;
 import com.azure.messaging.servicebus.ServiceBusSenderClient;
 import com.azure.messaging.servicebus.models.SubQueue;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -62,7 +61,6 @@ class QueueSettlementIT {
     private static final Logger LOG = LoggerFactory.getLogger(QueueSettlementIT.class);
 
     private static final Duration SETTLED_WITHIN = Duration.ofSeconds(20);
-    private static final int PEEK_BATCH = 32;
 
     private static String connectionString;
 
@@ -148,22 +146,6 @@ class QueueSettlementIT {
         return observed.stream().filter(delivery -> messageId.equals(delivery.messageId())).toList();
     }
 
-    /**
-     * Peeks a sub-queue for one identity. A fresh receiver each time, so the peek cursor starts at
-     * the beginning of the queue rather than wherever the previous poll left it.
-     */
-    private static Optional<ServiceBusReceivedMessage> peekFor(
-            final String messageId, final SubQueue subQueue) {
-        try (ServiceBusReceiverClient receiver = clients().receiver()
-                .queueName(ServiceBusEmulatorTestSupport.QUEUE_NAME)
-                .subQueue(subQueue)
-                .buildClient()) {
-            return receiver.peekMessages(PEEK_BATCH).stream()
-                    .filter(message -> messageId.equals(message.getMessageId()))
-                    .findFirst();
-        }
-    }
-
     // --- the three settlements, as the broker sees them ------------------------------------------
 
     @Test
@@ -175,7 +157,7 @@ class QueueSettlementIT {
 
         await().atMost(SETTLED_WITHIN).until(() -> !deliveriesOf(messageId).isEmpty());
         await().atMost(SETTLED_WITHIN)
-                .until(() -> peekFor(messageId, SubQueue.NONE).isEmpty());
+                .until(() -> ServiceBusEmulatorTestSupport.peekFor(messageId, SubQueue.NONE).isEmpty());
         assertThat(deliveriesOf(messageId)).hasSize(1);
     }
 
@@ -213,12 +195,12 @@ class QueueSettlementIT {
         final String messageId = sendRequest();
 
         await().atMost(SETTLED_WITHIN)
-                .until(() -> peekFor(messageId, SubQueue.DEAD_LETTER_QUEUE).isPresent());
+                .until(() -> ServiceBusEmulatorTestSupport.peekFor(messageId, SubQueue.DEAD_LETTER_QUEUE).isPresent());
         final ServiceBusReceivedMessage parked =
-                peekFor(messageId, SubQueue.DEAD_LETTER_QUEUE).orElseThrow();
+                ServiceBusEmulatorTestSupport.peekFor(messageId, SubQueue.DEAD_LETTER_QUEUE).orElseThrow();
         assertThat(parked.getDeadLetterReason()).isEqualTo(DeadLetterReason.COLLISION.label());
         assertThat(parked.getDeadLetterErrorDescription())
                 .isEqualTo(ReasonCode.IDEMPOTENCY_COLLISION.code());
-        assertThat(peekFor(messageId, SubQueue.NONE)).isEmpty();
+        assertThat(ServiceBusEmulatorTestSupport.peekFor(messageId, SubQueue.NONE)).isEmpty();
     }
 }
