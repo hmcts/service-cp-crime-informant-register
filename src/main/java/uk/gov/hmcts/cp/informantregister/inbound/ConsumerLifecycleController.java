@@ -109,7 +109,7 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
      * went away is working correctly and waiting, the store's own contributor already reports that,
      * and rolling the pod would help nobody.
      */
-    private volatile boolean intakeStarted;
+    private volatile boolean gatedStartCompleted;
 
     public ConsumerLifecycleController(
             final ServiceBusProcessorClient processor,
@@ -237,7 +237,7 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
      * Whether the gated start has completed: the migration ran and the processor started.
      */
     public boolean intakeStarted() {
-        return intakeStarted;
+        return gatedStartCompleted;
     }
 
     private void awaitTransitionsToFinish() {
@@ -320,23 +320,29 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
      * already running does nothing.
      */
     private synchronized void resume() {
-        if (state == State.RUNNING || closing()) {
-            return;
+        if (state != State.RUNNING && !closing()) {
+            final State from = state;
+            migrateOnce();
+            // Asked again, immediately before the one call that cannot be taken back. A migration
+            // can take a long time, and the context may have begun closing while it ran; starting a
+            // processor into a context that is tearing down means consuming messages the beans
+            // needed to record them are no longer there to record.
+            if (closing()) {
+                LOG.info("Intake is closing; the gated start was abandoned rather than completed.");
+            } else {
+                startConsuming(from);
+            }
         }
-        final State from = state;
-        migrateOnce();
-        // Asked again, immediately before the one call that cannot be taken back. A migration can
-        // take a long time, and the context may have begun closing while it ran; starting a
-        // processor into a context that is tearing down means consuming messages the beans needed
-        // to record them are no longer there to record.
-        if (closing()) {
-            LOG.info("Intake is closing; the gated start was abandoned rather than completed.");
-            return;
-        }
+    }
+
+    /**
+     * The start itself, once the store has answered and the schema is in place.
+     */
+    private void startConsuming(final State from) {
         processor.start();
         processorRunning = true;
         state = State.RUNNING;
-        intakeStarted = true;
+        gatedStartCompleted = true;
         metrics.intakeResumed();
         // From here on, silence from the broker means something. Before it, this pod had not asked
         // the broker for anything and had no business reporting on it.

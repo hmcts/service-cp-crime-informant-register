@@ -6,6 +6,7 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -114,20 +115,30 @@ public class DistributionCommandParser {
      * @return the canonical identifiers it yielded, with nulls where it yielded none
      */
     public Correlation canonicalCorrelation(final String body) {
-        JsonNode root;
-        try {
-            root = objectMapper.readTree(body);
-        } catch (JacksonException unreadable) {
-            // Nothing to correlate on, which is a fact about the message rather than a failure
-            // here: a body that is not JSON is accounted for by its dead-letter entry.
-            root = null;
-        }
-        return root == null || !root.isObject()
-                ? Correlation.NONE
-                : new Correlation(
+        return readableTree(body)
+                .filter(JsonNode::isObject)
+                .map(root -> new Correlation(
                         canonicalOrNull(root, REQUEST_ID, CANONICAL_UUID),
                         canonicalOrNull(root, HEARING_ID, CANONICAL_UUID),
-                        canonicalOrNull(root, HEARING_DAY, RFC3339_DATE));
+                        canonicalOrNull(root, HEARING_DAY, RFC3339_DATE)))
+                .orElse(Correlation.NONE);
+    }
+
+    /**
+     * The body as a tree, or nothing at all.
+     *
+     * <p>A body that is not JSON has nothing to correlate on, which is a fact about the message
+     * rather than a failure here: it is accounted for by its dead-letter entry, its ERROR line and
+     * its metric.
+     */
+    private Optional<JsonNode> readableTree(final String body) {
+        Optional<JsonNode> tree;
+        try {
+            tree = Optional.ofNullable(objectMapper.readTree(body));
+        } catch (JacksonException unreadable) {
+            tree = Optional.empty();
+        }
+        return tree;
     }
 
     private static String canonicalOrNull(

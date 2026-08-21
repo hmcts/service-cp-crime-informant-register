@@ -117,7 +117,6 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
     private static final String NONE = "none";
 
     private final Duration staleness;
-    private final ProcessingMetrics metrics;
     private final Clock clock;
 
     /** The last connection-class failure, if one is still unanswered. */
@@ -139,7 +138,6 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
     public ServiceBusHealthIndicator(
             final Duration staleness, final ProcessingMetrics metrics, final Clock clock) {
         this.staleness = staleness;
-        this.metrics = metrics;
         this.clock = clock;
         // The gauge asks this component the same question the health endpoint asks, at the moment
         // it is asked. Prometheus does not call the health endpoint on its way past, and both
@@ -205,29 +203,34 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
      * Whether a refusal is about the message rather than about the connection.
      */
     private static boolean aboutThisMessage(final Throwable refusal) {
+        boolean thisMessage = false;
         Throwable current = refusal;
-        for (int depth = 0; current != null && depth < MAX_CAUSE_DEPTH; depth++) {
-            if (messageLevel(current)) {
-                return true;
-            }
+        for (int depth = 0; !thisMessage && current != null && depth < MAX_CAUSE_DEPTH; depth++) {
+            thisMessage = messageLevel(current);
             current = current.getCause();
         }
-        return false;
+        return thisMessage;
     }
 
     private static boolean messageLevel(final Throwable failure) {
         return switch (failure) {
-            case AmqpException amqp ->
-                    MESSAGE_LEVEL_CONDITIONS.contains(amqp.getErrorCondition());
+            case AmqpException amqp -> contains(MESSAGE_LEVEL_CONDITIONS, amqp.getErrorCondition());
             case ServiceBusException serviceBus ->
-                    MESSAGE_LEVEL_REASONS.contains(serviceBus.getReason());
+                    contains(MESSAGE_LEVEL_REASONS, serviceBus.getReason());
             default -> false;
         };
     }
 
-    private void recordFault(final Throwable failure) {
-        connectionCondition(failure)
-                .ifPresent(condition -> lastFault.set(new Fault(condition, clock.instant())));
+    /**
+     * Set membership that tolerates an absent value.
+     *
+     * <p>The SDK does not promise a condition or a reason on every fault it raises, and an
+     * immutable set answers {@code contains(null)} with a NullPointerException rather than
+     * {@code false}. A health check that threw would take the whole endpoint down over a fault it
+     * merely failed to recognise — the one thing a health check may never do.
+     */
+    private static boolean contains(final Set<?> known, final Object value) {
+        return value != null && known.contains(value);
     }
 
 
@@ -368,7 +371,7 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
         if (condition == null) {
             named = Optional.of(AMQP_TRANSPORT);
         } else {
-            named = MESSAGE_LEVEL_CONDITIONS.contains(condition)
+            named = contains(MESSAGE_LEVEL_CONDITIONS, condition)
                     ? Optional.empty()
                     : Optional.of(condition.name());
         }
@@ -377,7 +380,7 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
 
     private static Optional<String> serviceBusCondition(final ServiceBusException serviceBus) {
         final ServiceBusFailureReason reason = serviceBus.getReason();
-        return UNREACHABLE_REASONS.contains(reason)
+        return contains(UNREACHABLE_REASONS, reason)
                 ? Optional.of(reason.toString())
                 : Optional.empty();
     }

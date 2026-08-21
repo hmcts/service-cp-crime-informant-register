@@ -176,18 +176,35 @@ class ContractValidationDeadLetterIT {
     }
 
     /**
-     * Every failure this delivery was reported for, from the listener's own ERROR lines.
+     * Every failure this body was reported for, from the listener's own ERROR lines.
      *
-     * <p>An invalid body carries no correlation identifiers — that is the point of it — so the
-     * broker identity in the line is what ties a report to a delivery.
+     * <p>Tied to the report by the correlation the body yielded, not by the broker's identity for
+     * the message. Two reasons, and the second is the interesting one. A message identity is text
+     * the producer chose and this service will not write it out. And an invalid body is <em>not</em>
+     * uncorrelated: an unknown extra field, a missing field, an unagreed enum — each leaves the
+     * request id untouched, so the rejection is findable by the identifier support would search
+     * for. Only a body that is not JSON at all yields nothing, and this suite carries one on
+     * purpose, so both halves of the rule are exercised.
      */
-    private List<String> reportsFor(final String messageId) {
+    private List<String> reportsFor(final Invalid invalid) {
         return deliveryLog.events().stream()
                 .filter(event -> event.getLevel() == Level.ERROR)
+                .filter(event -> event.getFormattedMessage().startsWith(VALIDATION_REPORT))
+                .filter(event -> reportsOn(event, invalid))
                 .map(ILoggingEvent::getFormattedMessage)
-                .filter(line -> line.contains(messageId))
                 .toList();
     }
+
+    private static boolean reportsOn(final ILoggingEvent event, final Invalid invalid) {
+        final String correlated = event.getMDCPropertyMap().get(REQUEST_ID);
+        return invalid.requestId() == null
+                ? correlated == null
+                : invalid.requestId().toString().equals(correlated);
+    }
+
+    private static final String VALIDATION_REPORT = "Message body failed contract validation";
+
+    private static final String REQUEST_ID = "requestId";
 
     private double deadLetteredAsInvalid() {
         final Counter counter = registry.find(ProcessingMetrics.DEAD_LETTERED)
@@ -222,8 +239,8 @@ class ContractValidationDeadLetterIT {
         assertThat(ServiceBusEmulatorTestSupport.peekFor(messageId, SubQueue.NONE)).isEmpty();
 
         await().during(NO_FURTHER_DELIVERY_WITHIN).atMost(PARKED_WITHIN)
-                .until(() -> reportsFor(messageId).size() == 1);
-        assertThat(reportsFor(messageId))
+                .until(() -> reportsFor(invalid).size() == 1);
+        assertThat(reportsFor(invalid))
                 .as("one delivery, one report: the delivery budget is not spent on the impossible")
                 .hasSize(1);
 
