@@ -359,6 +359,10 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
     /**
      * The start itself, once the store has answered and the schema is in place.
      */
+    @SuppressWarnings("PMD.AvoidCatchingGenericException")
+    // Deliberately total, and it rethrows. Whatever the SDK raises when a processor refuses to
+    // start, the state this method moved before making the call has to be given back or the probe
+    // would see RUNNING for ever and never retry. The failure itself is then the probe's to report.
     private void startConsuming(final State from) {
         // Recorded before the call, and recorded separately from the state. Once the state has been
         // moved to STOPPING by a shutdown, a shutdown that asked "is the state RUNNING" would find
