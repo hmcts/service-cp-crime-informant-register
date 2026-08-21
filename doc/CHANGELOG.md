@@ -20,6 +20,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   flight: ASB consumer with peek-lock settlement discipline, `(source, requestId)` idempotency
   guard, ports with stub adapters (payload fetch and register submission as logging no-ops),
   actuator and container build.
+- 2026-08-21 — **CRA-220 walking skeleton delivered.** A message now travels the whole path and is
+  accounted for at the end of it:
+  - **Intake** — Service Bus processor on `informantregister.requests` in peek-lock with
+    auto-complete off; exactly one explicit complete / abandon / dead-letter per delivery, and the
+    settlement guard is exactly one broker call wide so nothing after it can be reported as a
+    refusal. Contract-invalid bodies are dead-lettered before any record exists.
+  - **Contract** — `distribution-command.schema.json` parsed into the `DistributionCommand` record,
+    dual-validated against parser and schema over a corpus, with unknown fields and out-of-enum
+    `source`/`eventType` pinned.
+  - **Idempotency** — the `processed_request` log (Flyway `V1`) and a conditional-update claim: at
+    most one run in flight per `(source, requestId)`, claims reclaimable after their lease, stale
+    runners rejected by owner+token, `FAILED` replay decided by broker message identity, and a
+    fingerprint collision dead-lettered with the record untouched.
+  - **Store outages** — a store that stops answering suspends intake and abandons the delivery
+    rather than burning `maxDeliveryCount`; migration is deferred off context refresh and runs on
+    the first successful probe, so nothing is consumed against an unmigrated schema.
+  - **Health and telemetry** — the store gates readiness and the queue never does (a broker blip
+    must not roll the pods); a passive `servicebus` health component plus
+    `informantregister_servicebus_up`; correlation-only MDC with no payload logging, and an ERROR
+    log and a named failure metric on every failure path.
+  - **Packaging** — Dockerfile, `docker-compose.yml` (Postgres + pinned Service Bus emulator 1.1.2
+    sharing one queue definition with the Testcontainers harness) and `scripts/container-smoke.sh`,
+    which CI runs as the `Container-Smoke` job.
+  - The submission and payload adapters remain deliberate logging stubs; an empty authority set is
+    this increment's correct outcome, not a missing step.
+- 2026-08-21 — `doc/CRA-220-HANDOVER.md` added: what CRA-220 still needs outside this repository
+  (queue and DLQ provisioning, workload identity and Key Vault CSI, Flux/ADO wiring, the GitHub
+  remote, and the operability and Results-publisher follow-ups).
 
 ### Changed
 - 2026-08-21 — Git/CI policies aligned with `service-cp-crime-hearing-results-validator`:

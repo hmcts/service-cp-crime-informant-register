@@ -47,6 +47,14 @@ rather than a system Gradle.
 ./gradlew pmdMain            # PMD static analysis — explicit only; `build` does not run it
 ./gradlew jacocoTestReport   # Coverage report; jacocoTestCoverageVerification gates `check`
 ./gradlew bootRun            # Run locally on port 8082
+./scripts/container-smoke.sh # Build the image and require it to report readiness within 60s
+```
+
+**See the skeleton work end to end in one command** — it starts the Service Bus emulator and
+Postgres through Testcontainers, boots the whole application and drives a request through it:
+
+```bash
+./gradlew test --tests '*WalkingSkeletonIT'
 ```
 
 `bootRun` needs its local dependencies — Postgres and the Azure Service Bus emulator — running
@@ -61,6 +69,11 @@ connection string uses `UseDevelopmentEmulator=true`. `docker compose up app` ru
 its container against the same pair. Everything in the compose file is local-only: the credentials
 there are development defaults and must never be reused anywhere else.
 
+`bootRun` runs on the host and does **not** inherit the compose file's environment — that block
+configures the `app` container only — so pass the datasource and broker settings explicitly. The
+full sequence, the health endpoints to check and how to read the queue's state are in
+[the CRA-220 quickstart](specs/CRA-220-informant-register-initial-poc/quickstart.md).
+
 Checkstyle runs against `config/checkstyle/google_checks.xml` with `maxWarnings = 0` as part of
 `check`, alongside a JaCoCo coverage gate (`jacocoTestCoverageVerification`).
 
@@ -73,6 +86,7 @@ Checkstyle runs against `config/checkstyle/google_checks.xml` with `maxWarnings 
 | Contracts (inbound message and outbound command) | [doc/API_CONTRACTS.md](doc/API_CONTRACTS.md) |
 | Deviations register (parity)             | [doc/DEVIATIONS.md](doc/DEVIATIONS.md)             |
 | Changelog                                | [doc/CHANGELOG.md](doc/CHANGELOG.md)               |
+| CRA-220 handover (what it still needs outside this repo) | [doc/CRA-220-HANDOVER.md](doc/CRA-220-HANDOVER.md) |
 | Pipeline overview                        | [docs/PIPELINE.md](docs/PIPELINE.md)               |
 
 `CLAUDE.md` is the working agreement for this repository; the binding rules live in
