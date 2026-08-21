@@ -163,11 +163,15 @@ class IdempotencyGuardIT {
         @Test
         void should_move_the_update_timestamp_on() {
             final RunClaim claim = admitted("msg-1");
+            // Seeded an hour back, so "moved on" can be asserted strictly. Against a timestamp
+            // written moments earlier, a statement that forgot `updated_at = now()` would still
+            // satisfy "not before what it was", and the assertion would be no assertion at all.
+            ProcessedLogTestSupport.ageUpdatedAt(command.source(), command.requestId());
             final Row before = row();
 
             guard.recordCompletion(claim, CompletionReason.NO_AUTHORITIES);
 
-            assertThat(row().updatedAt()).isAfterOrEqualTo(before.updatedAt());
+            assertThat(row().updatedAt()).isAfter(before.updatedAt());
             assertThat(row().createdAt()).isEqualTo(before.createdAt());
         }
     }

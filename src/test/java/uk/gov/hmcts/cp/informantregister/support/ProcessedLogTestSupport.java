@@ -109,6 +109,31 @@ public final class ProcessedLogTestSupport {
     }
 
     /**
+     * Seeds {@code updated_at} an hour into the past, by the database's clock.
+     *
+     * <p>So that "the write moved the timestamp on" can be asserted strictly. Against a timestamp
+     * written moments earlier, a statement that forgot {@code updated_at = now()} still satisfies
+     * "not before what it was", which is no assertion at all.
+     *
+     * @throws IllegalStateException if the row is not there to seed
+     */
+    public static void ageUpdatedAt(final String source, final UUID requestId) {
+        final int aged = jdbcClient()
+                .sql("""
+                        UPDATE processed_request
+                           SET updated_at = now() - interval '1 hour'
+                         WHERE source = :source AND request_id = :requestId
+                        """)
+                .param("source", source)
+                .param("requestId", requestId)
+                .update();
+        if (aged != 1) {
+            throw new IllegalStateException(
+                    "expected one row to age for " + source + "/" + requestId + ", aged " + aged);
+        }
+    }
+
+    /**
      * A fresh, valid command — a request no other test has seen.
      */
     public static DistributionCommand command() {
