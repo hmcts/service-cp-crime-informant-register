@@ -4,6 +4,10 @@ updates:
     directory: "/" # location of build.gradle
     schedule:
       interval: "daily" # or "weekly", "monthly"
+    # Hold new releases for 14 days before proposing them, so freshly
+    # compromised upstream versions are flagged before they reach a PR
+    cooldown:
+      default-days: 14
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(deps)"
@@ -16,3 +20,5 @@ updates:
     directory: "/" # location of your workflow files
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 14

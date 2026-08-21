@@ -1,0 +1,22 @@
+# Reusable composite action to upload Gradle test reports as workflow artifacts.
+# Use with if: always() when calling so reports are uploaded even when tests fail.
+name: Upload test reports
+description: Uploads test reports and JUnit XML results as a workflow artifact
+inputs:
+  artifact_name:
+    description: Name of the uploaded artifact
+    required: true
+  path:
+    description: |
+      Paths to reports (multi-line). Typically:
+      - build/reports/tests/test/  (or apiTest/build/reports/tests/test/)
+      - build/test-results/test/   (or apiTest/build/test-results/test/)
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Upload test reports
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: ${{ inputs.path }}

@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
+import uk.gov.hmcts.cp.informantregister.config.ServiceBusHealthIndicator;
 import uk.gov.hmcts.cp.informantregister.domain.DeadLetterReason;
 import uk.gov.hmcts.cp.informantregister.domain.DeliveryIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
@@ -389,6 +390,48 @@ class SettlementFailureEdgeTest {
             assertThat(settlementsOn(context))
                     .as("and the delivery really was parked, exactly once")
                     .containsExactly("deadLetter");
+        }
+
+        /**
+         * The same rule, applied to the queue-health recorder rather than to a counter.
+         *
+         * <p>Recording that the broker answered is telemetry too, and it is telemetry that sits
+         * closer to the settlement call than anything else does — which is exactly why it must sit
+         * <em>outside</em> the guard. Inside it, its own failure is caught by the handler for "the
+         * broker refused", and the broker is then reported as having refused a settlement it had
+         * just accepted: a settlement-failure counter moves for a settlement that happened, and the
+         * queue-health component records a transport fault against a connection that had plainly
+         * worked. A broker in perfect health goes DOWN on a dashboard because a clock threw.
+         */
+        @Test
+        void should_not_report_a_transport_fault_when_the_recovery_recorder_is_what_failed() {
+            final ServiceBusHealthIndicator failingRecorder = mock(ServiceBusHealthIndicator.class);
+            doThrow(new IllegalStateException("the clock is gone"))
+                    .when(failingRecorder).recordSettlementAccepted();
+            final ProcessingMetrics counters = mock(ProcessingMetrics.class);
+            final InformantRegisterMessageListener listenerWithAFailingRecorder =
+                    new InformantRegisterMessageListener(
+                            parser, pipeline, counters, failingRecorder,
+                            StoreGateTestSupport.open(), MAX_DELIVERY_COUNT);
+
+            final ServiceBusReceivedMessageContext context = deliveryWithALiveLock();
+            pipelineDecides(new GuardDecision.Complete(ReasonCode.RUN_COMPLETED));
+
+            assertThatThrownBy(() -> listenerWithAFailingRecorder.onMessage(context))
+                    .as("the delivery is acknowledged, so there is nothing left to lose by saying "
+                            + "what actually broke")
+                    .isInstanceOf(IllegalStateException.class);
+
+            verify(context).complete();
+            verify(counters, never())
+                    .settlementFailed(any(SettlementOperation.class));
+            verify(failingRecorder, never()).recordSettlementRefusal(any(Throwable.class));
+            assertThat(errorsReported())
+                    .as("no refusal was reported, because none happened")
+                    .isEmpty();
+            assertThat(settlementsOn(context))
+                    .as("and the delivery really was acknowledged, exactly once")
+                    .containsExactly("complete");
         }
     }
 

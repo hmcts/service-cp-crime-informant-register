@@ -422,10 +422,6 @@ public class InformantRegisterMessageListener {
         try {
             brokerCall.run();
             settled = true;
-            // A settlement the broker took is a round trip it completed, which says as much about
-            // reachability as a receive does — and rather more when the consumer is working through
-            // a backlog it received before a blip.
-            health.recordSettlementAccepted();
         } catch (RuntimeException refused) {
             LOG.error("The broker refused the settlement; no second settlement is attempted and the "
                             + "delivery will come round again. operation={} type={}",
@@ -436,6 +432,19 @@ public class InformantRegisterMessageListener {
             // health indicator already counts as evidence of reachability. Reported, not judged:
             // the indicator decides whether this particular refusal means the broker is gone.
             health.recordSettlementRefusal(refused);
+        }
+        if (settled) {
+            // Outside the guard, and this is the whole reason the guard is exactly one call wide.
+            // A settlement the broker took is a round trip it completed, which says as much about
+            // reachability as a receive does — and rather more when the consumer is working through
+            // a backlog it received before a blip. But recording it is telemetry, and telemetry
+            // caught by the handler for "the broker refused" would report the broker as having
+            // refused a settlement it had just accepted: a settlement-failure counter moving for a
+            // settlement that happened, and a transport fault recorded against a connection that
+            // plainly worked. A broker in perfect health would go DOWN on a dashboard because a
+            // clock threw. So a failure here is allowed to propagate as itself — the delivery is
+            // already settled, so nothing is at risk.
+            health.recordSettlementAccepted();
         }
         return settled;
     }
