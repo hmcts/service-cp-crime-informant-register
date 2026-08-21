@@ -1,7 +1,9 @@
 package uk.gov.hmcts.cp.informantregister.support;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -142,6 +144,41 @@ public final class ServiceTestSupport {
                     new ServiceBusMessage(BinaryData.fromString(body)).setMessageId(messageId));
         }
         return messageId;
+    }
+
+    /**
+     * Publishes a burst of valid requests through one sender, and returns their request ids.
+     *
+     * <p>For the broker-outage suites, and the reason is measured rather than stylistic. The SDK
+     * says nothing at all about a broker that goes away while the consumer is idle — it treats a
+     * lost connection as retryable and rolls its message pump silently, and five minutes against a
+     * stopped container produced no callback of any kind. A settlement <em>in progress</em> when the
+     * connection dies fails at once and is evidence; a settlement <em>started</em> after it blocks
+     * indefinitely and is not. The difference is a window of milliseconds, so a suite that published
+     * one message and stopped the container would be timing-dependent in both directions.
+     *
+     * <p>A burst turns that window into seconds: while the service works through it there is always
+     * a settlement in flight, so the cut lands inside one whenever it lands.
+     *
+     * @param count how many requests to publish
+     * @return the request ids, in the order they were sent
+     */
+    public static List<UUID> publishBurst(final int count) {
+        final List<UUID> requestIds = new ArrayList<>(count);
+        try (ServiceBusSenderClient sender = new ServiceBusClientBuilder()
+                .connectionString(ServiceBusEmulatorTestSupport.connectionString())
+                .sender()
+                .queueName(ServiceBusEmulatorTestSupport.QUEUE_NAME)
+                .buildClient()) {
+            for (int sent = 0; sent < count; sent++) {
+                final UUID requestId = UUID.randomUUID();
+                requestIds.add(requestId);
+                sender.sendMessage(new ServiceBusMessage(
+                        BinaryData.fromString(validBody(requestId, UUID.randomUUID())))
+                        .setMessageId(ProcessedLogTestSupport.SOURCE + ':' + UUID.randomUUID()));
+            }
+        }
+        return requestIds;
     }
 
     /**

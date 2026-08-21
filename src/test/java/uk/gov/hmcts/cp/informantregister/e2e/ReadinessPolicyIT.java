@@ -3,6 +3,7 @@ package uk.gov.hmcts.cp.informantregister.e2e;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import com.azure.core.amqp.exception.AmqpErrorCondition;
@@ -26,6 +27,7 @@ import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
 import uk.gov.hmcts.cp.informantregister.config.ServiceBusHealthIndicator;
 import uk.gov.hmcts.cp.informantregister.support.AdjustableClock;
 import uk.gov.hmcts.cp.informantregister.support.PostgresTestSupport;
+import uk.gov.hmcts.cp.informantregister.support.ProcessedLogTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ServiceBusEmulatorTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ServiceTestSupport;
 
@@ -72,6 +74,9 @@ class ReadinessPolicyIT {
 
     /** The default window, so the boundary asserted below is the one the service ships with. */
     private static final Duration STALENESS = Duration.ofSeconds(60);
+
+    /** How much work is in flight when the broker is taken away. */
+    private static final int BURST = 60;
 
     private static String connectionString;
 
@@ -171,10 +176,15 @@ class ReadinessPolicyIT {
         // The outage is staged with work in hand, because that is the only kind the SDK reports.
         // A processor with nothing to do treats a lost connection as retryable and rolls its
         // message pump silently and indefinitely — measured at five minutes against a broker whose
-        // container had been stopped outright, with no callback of any kind. With a delivery in
-        // flight the settlement is refused, and a refusal is evidence. It is also the case that
-        // matters: an outage while there is nothing to do costs nothing.
-        ServiceTestSupport.publish(ServiceTestSupport.validBody(UUID.randomUUID(), UUID.randomUUID()));
+        // container had been stopped outright, with no callback of any kind. A settlement in
+        // progress when the connection dies fails at once and is evidence; one started afterwards
+        // blocks indefinitely and is not. The broker is therefore taken away in the middle of a
+        // burst of real work, which is what makes this a test rather than a race.
+        final List<UUID> burst = ServiceTestSupport.publishBurst(BURST);
+        await().atMost(OBSERVED_WITHIN).pollInterval(Duration.ofMillis(200)).until(() ->
+                ProcessedLogTestSupport.row(ProcessedLogTestSupport.SOURCE, burst.getFirst())
+                        .isPresent());
+
         ServiceBusEmulatorTestSupport.disconnect();
         try {
             await().atMost(OBSERVED_WITHIN).pollInterval(POLL)
