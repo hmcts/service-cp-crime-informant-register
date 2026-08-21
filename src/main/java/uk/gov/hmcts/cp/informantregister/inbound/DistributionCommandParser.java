@@ -97,6 +97,60 @@ public class DistributionCommandParser {
     }
 
     /**
+     * The correlation identifiers a body carries, whether or not the body is valid.
+     *
+     * <p>A rejected message still has to be findable. A contract-validation failure is reported
+     * with no request id at all today, so the one search a support engineer can perform — "show me
+     * everything about this request" — returns nothing for exactly the messages somebody is asking
+     * about. The producer, meanwhile, usually did supply the identifiers: an unknown extra field
+     * leaves the other six untouched.
+     *
+     * <p><strong>Only canonical values, and only these three.</strong> Each is admitted just when it
+     * matches the shape the contract requires — a canonical UUID, an RFC 3339 date — so nothing a
+     * producer wrote can reach the log index by being called {@code requestId}. Anything absent, of
+     * the wrong type or the wrong shape simply is not there, and the line goes out without it.
+     *
+     * @param body the raw message body, valid or not
+     * @return the canonical identifiers it yielded, with nulls where it yielded none
+     */
+    public Correlation canonicalCorrelation(final String body) {
+        JsonNode root;
+        try {
+            root = objectMapper.readTree(body);
+        } catch (JacksonException unreadable) {
+            // Nothing to correlate on, which is a fact about the message rather than a failure
+            // here: a body that is not JSON is accounted for by its dead-letter entry.
+            root = null;
+        }
+        return root == null || !root.isObject()
+                ? Correlation.NONE
+                : new Correlation(
+                        canonicalOrNull(root, REQUEST_ID, CANONICAL_UUID),
+                        canonicalOrNull(root, HEARING_ID, CANONICAL_UUID),
+                        canonicalOrNull(root, HEARING_DAY, RFC3339_DATE));
+    }
+
+    private static String canonicalOrNull(
+            final JsonNode root, final String field, final Pattern canonical) {
+        final JsonNode value = root.get(field);
+        final String text = value != null && value.isString() ? value.stringValue() : null;
+        return text != null && canonical.matcher(text).matches() ? text : null;
+    }
+
+    /**
+     * The correlation set, as far as a body could supply it.
+     *
+     * @param requestId  the canonical request id, or null
+     * @param hearingId  the canonical hearing id, or null
+     * @param hearingDay the canonical hearing day, or null
+     */
+    public record Correlation(String requestId, String hearingId, String hearingDay) {
+
+        /** What a body that yielded nothing gives back. */
+        public static final Correlation NONE = new Correlation(null, null, null);
+    }
+
+    /**
      * Validates and converts a message body.
      *
      * @param body the raw message body

@@ -17,6 +17,7 @@ import uk.gov.hmcts.cp.informantregister.domain.ContractValidationException;
 import uk.gov.hmcts.cp.informantregister.domain.DeadLetterReason;
 import uk.gov.hmcts.cp.informantregister.domain.DeliveryIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
+import uk.gov.hmcts.cp.informantregister.domain.FailureClassification;
 import uk.gov.hmcts.cp.informantregister.domain.GuardDecision;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.SettlementOperation;
@@ -172,11 +173,12 @@ public class InformantRegisterMessageListener {
     // names a settlement: the body that can never be valid is parked, and the fault nothing
     // anticipated is handed back. It is a catch-and-settle, not a catch-and-ignore.
     private GuardDecision decide(final ServiceBusReceivedMessage message) {
+        final String body = message.getBody().toString();
         GuardDecision decision;
         try {
-            decision = process(parser.parse(message.getBody().toString()), message);
+            decision = process(parser.parse(body), message);
         } catch (ContractValidationException invalid) {
-            decision = contractInvalid(message, invalid);
+            decision = contractInvalid(body, invalid);
         } catch (DataAccessException storeGone) {
             decision = storeDiedMidRun();
         } catch (RuntimeException unexpected) {
@@ -217,8 +219,15 @@ public class InformantRegisterMessageListener {
      * offending field name are diagnostics for the log, where a reader can correlate them with the
      * producer's own release; the dead-letter description a support tool reads carries only the code.
      */
-    private static GuardDecision contractInvalid(
-            final ServiceBusReceivedMessage message, final ContractValidationException invalid) {
+    private GuardDecision contractInvalid(
+            final String body, final ContractValidationException invalid) {
+        // Correlation first, so the line that reports the rejection is findable by the one search a
+        // support engineer performs. A message rejected with no identifiers at all is a message
+        // nobody can look up, which is the opposite of what an ERROR is for — and the producer
+        // usually did supply them, because an unknown extra field leaves the other six untouched.
+        // Only canonical values are admitted, so nothing a producer wrote reaches the index by
+        // being called requestId.
+        correlate(parser.canonicalCorrelation(body));
         LOG.error("Message body failed contract validation; parking it. violation={} field={}",
                 invalid.violation(), invalid.field());
         return new GuardDecision.DeadLetter(
@@ -236,7 +245,30 @@ public class InformantRegisterMessageListener {
     private GuardDecision unexpectedFailure(final RuntimeException unexpected) {
         LOG.error("Delivery failed unexpectedly; returning it for redelivery. type={} reason={}",
                 unexpected.getClass().getName(), ReasonCode.UNEXPECTED_FAILURE.code());
+        // Counted as well as reported. An ERROR nobody is watching for is how an incident is
+        // reconstructed afterwards from a dashboard that said the service was fine; the
+        // classification is transient because the delivery is handed back, which is the whole of
+        // what this service is claiming about it.
+        metrics.pipelineFailed(FailureClassification.TRANSIENT);
         return new GuardDecision.Abandon(ReasonCode.UNEXPECTED_FAILURE);
+    }
+
+    /**
+     * Puts whichever correlation identifiers a body yielded in place, and invents none.
+     *
+     * <p>An absent identifier stays absent. A placeholder would be searched for, found, and
+     * believed.
+     */
+    private static void correlate(final DistributionCommandParser.Correlation correlation) {
+        putIfPresent(REQUEST_ID, correlation.requestId());
+        putIfPresent(HEARING_ID, correlation.hearingId());
+        putIfPresent(HEARING_DAY, correlation.hearingDay());
+    }
+
+    private static void putIfPresent(final String key, final String value) {
+        if (value != null) {
+            MDC.put(key, value);
+        }
     }
 
     /**
@@ -310,11 +342,16 @@ public class InformantRegisterMessageListener {
             // settled, and settled the only way that loses nothing: the claim expires and the next
             // delivery reclaims it.
             case GuardDecision.Run unfinished -> {
-                if (accepted(SettlementOperation.ABANDON, context::abandon)) {
-                    LOG.error("A run decision reached settlement; the delivery was returned. "
-                                    + "source={} requestId={}",
-                            unfinished.claim().source(), unfinished.claim().requestId());
-                }
+                // Reported and counted before the settlement rather than after it: the defect
+                // happened whatever the broker then says about the hand-back, and a failure that is
+                // only recorded when the recovery succeeds is a failure that disappears exactly
+                // when things are going worst.
+                LOG.error("A run decision reached settlement; the delivery is being returned. "
+                                + "source={} requestId={} reason={}",
+                        unfinished.claim().source(), unfinished.claim().requestId(),
+                        ReasonCode.UNEXPECTED_FAILURE.code());
+                metrics.pipelineFailed(FailureClassification.TRANSIENT);
+                accepted(SettlementOperation.ABANDON, context::abandon);
             }
         }
     }
