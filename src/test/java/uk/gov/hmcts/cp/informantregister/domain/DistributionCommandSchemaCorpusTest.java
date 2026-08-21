@@ -296,11 +296,50 @@ class DistributionCommandSchemaCorpusTest {
         assertAgreement(bodyWithout(field), false);
     }
 
+    private static final List<String> AGREED_FIELDS = List.of(
+            "source", "requestId", "hearingId", "hearingDay", "sharedTime", "eventType");
+
+    private static List<String> declaredPropertyNames() {
+        return List.copyOf(SCHEMA_DOCUMENT.get("properties").propertyNames());
+    }
+
+    static Stream<String> declaredProperties() {
+        return declaredPropertyNames().stream();
+    }
+
     @Test
     @DisplayName("the schema declares exactly the six agreed fields as required")
     void the_schema_should_require_the_six_agreed_fields() {
-        assertThat(requiredFieldNames()).containsExactlyInAnyOrder(
-                "source", "requestId", "hearingId", "hearingDay", "sharedTime", "eventType");
+        assertThat(requiredFieldNames()).containsExactlyInAnyOrder(AGREED_FIELDS.toArray(new String[0]));
+    }
+
+    @Test
+    @DisplayName("the schema declares exactly the six agreed fields, and no seventh")
+    void the_schema_should_declare_no_property_beyond_the_six() {
+        // Without this, a seventh property added to the schema as optional would sail through: the
+        // required-field assertions would not notice it, and the corpus only knows the unknown-field
+        // names it was written with. The parser would reject a body carrying it while the schema
+        // accepted one — a silent divergence, which is the exact failure this suite exists to stop.
+        assertThat(declaredPropertyNames()).containsExactlyInAnyOrder(AGREED_FIELDS.toArray(new String[0]));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("declaredProperties")
+    @DisplayName("every property the schema declares is also required by it")
+    void a_declared_property_should_also_be_required(final String field) {
+        assertThat(requiredFieldNames())
+                .as("an optional property is a property the parser would reject and the schema accept")
+                .contains(field);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("declaredProperties")
+    @DisplayName("every declared property is exercised through both validators")
+    void a_declared_property_holding_a_wrong_typed_value_should_be_rejected_by_both(final String field) {
+        // Drives each declared property through both validators by name rather than by a
+        // hand-written list, so a property added to the schema is exercised the moment it appears.
+        assertAgreement(bodyWith(field, "{}"), false);
+        assertAgreement(bodyWithout(field), false);
     }
 
     @Test
