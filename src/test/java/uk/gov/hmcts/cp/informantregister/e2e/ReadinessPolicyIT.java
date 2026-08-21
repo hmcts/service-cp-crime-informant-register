@@ -91,6 +91,9 @@ class ReadinessPolicyIT {
         // without changing what is being observed.
         registry.add("spring.datasource.hikari.connection-timeout", () -> "3000");
         registry.add("spring.datasource.hikari.validation-timeout", () -> "2000");
+        // And a socket timeout, because a frozen container stops answering on connections it never
+        // closes: a query over a connection the pool already holds would otherwise wait for ever.
+        registry.add("spring.datasource.hikari.data-source-properties.socketTimeout", () -> "5");
     }
 
     @AfterEach

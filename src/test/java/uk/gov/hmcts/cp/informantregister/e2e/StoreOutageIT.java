@@ -130,7 +130,8 @@ class StoreOutageIT {
     @Test
     @DisplayName("a delivery arriving during a store outage is handed back, and intake suspends")
     void should_abandon_the_delivery_and_suspend_intake_until_the_store_returns() {
-        try (ConfigurableApplicationContext context = ServiceTestSupport.start(Map.of())) {
+        try (ConfigurableApplicationContext context =
+                     ServiceTestSupport.startConsuming(Map.of())) {
             final MeterRegistry registry = meters(context);
             final double suspensionsBefore =
                     counter(registry, ProcessingMetrics.INTAKE_SUSPENSIONS);
@@ -167,7 +168,8 @@ class StoreOutageIT {
     @Test
     @DisplayName("a message that can never validate is not even read until the store is back")
     void should_not_examine_a_contract_invalid_message_during_the_outage() {
-        try (ConfigurableApplicationContext context = ServiceTestSupport.start(Map.of());
+        try (ConfigurableApplicationContext context =
+                     ServiceTestSupport.startConsuming(Map.of());
              CapturedLog listenerLog = CapturedLog.of(InformantRegisterMessageListener.class)) {
             final MeterRegistry registry = meters(context);
             final double parkedBefore = counter(registry, ProcessingMetrics.DEAD_LETTERED,
@@ -214,7 +216,7 @@ class StoreOutageIT {
                 () -> ServiceTestSupport.start(Map.of("spring.datasource.url", jdbcUrl)),
                 "context refresh must complete with the store down: a pod that cannot start "
                         + "cannot report why it is not ready");
-        try (context) {
+        try (context; CapturedLog listenerLog = CapturedLog.of(InformantRegisterMessageListener.class)) {
             final HealthEndpoint health = context.getBean(HealthEndpoint.class);
             assertThat(health.healthForPath("readiness").getStatus())
                     .as("up enough to say it is not ready — which is the only honest thing to say")
@@ -222,8 +224,18 @@ class StoreOutageIT {
 
             final String messageId =
                     ServiceTestSupport.publish(ServiceTestSupport.validBody(requestId, hearingId));
+
+            // Untouched, not merely unfinished — and the listener's silence is what says so. "Still
+            // on the queue" cannot tell the two apart: a pod that had started consuming would take
+            // this message, find no store, and hand it straight back, leaving it on the queue
+            // looking exactly the same. A gated start never takes it at all, so the transport
+            // adapter has nothing to say about it. This suite owns the only consumer alive, so any
+            // line at all would be about this message.
             await().during(LEFT_ALONE_FOR).atMost(OBSERVED_WITHIN).pollInterval(POLL)
-                    .until(() -> onQueue(messageId).isPresent());
+                    .until(() -> listenerLog.events().isEmpty());
+            assertThat(onQueue(messageId))
+                    .as("and it is still there, waiting for a pod that can record what it did")
+                    .isPresent();
 
             PostgresTestSupport.unpause();
 

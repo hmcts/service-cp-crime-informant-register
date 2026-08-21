@@ -2,6 +2,7 @@ package uk.gov.hmcts.cp.informantregister.inbound;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.util.function.Supplier;
 
 import com.azure.core.amqp.AmqpRetryMode;
 import com.azure.core.amqp.AmqpRetryOptions;
@@ -10,16 +11,18 @@ import com.azure.messaging.servicebus.ServiceBusClientBuilder;
 import com.azure.messaging.servicebus.ServiceBusErrorContext;
 import com.azure.messaging.servicebus.ServiceBusProcessorClient;
 import com.azure.messaging.servicebus.ServiceBusReceivedMessageContext;
+import org.flywaydb.core.Flyway;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.SmartLifecycle;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.config.InformantRegisterProperties;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
 import uk.gov.hmcts.cp.informantregister.config.ServiceBusHealthIndicator;
+import uk.gov.hmcts.cp.informantregister.persistence.ProcessedLogProbe;
 
 /**
  * The consumer, built entirely from the typed settings.
@@ -32,12 +35,10 @@ import uk.gov.hmcts.cp.informantregister.config.ServiceBusHealthIndicator;
  * (constitution Principle VI).
  *
  * <p><strong>Who starts the processor.</strong> Building the client and starting it are separate
- * beans on purpose. In this increment the lifecycle bean below starts it once the context is up and
- * stops it on shutdown, which is honest for a skeleton with no store-outage handling yet. The
- * store-probe-gated start — do not consume anything until the processed log has answered, because a
- * service that consumes without a store abandons a queue's worth of deliveries — belongs to the
- * consumer lifecycle controller in the observability story. That controller replaces this one bean;
- * the client definition, its settings and the listener are untouched by the change.
+ * beans on purpose, and nothing here starts it. {@link ConsumerLifecycleController} does, once the
+ * processed log has answered a probe and the deferred migration has run — because a service that
+ * consumes without a store abandons a queue's worth of deliveries, and one that consumes against an
+ * unmigrated schema loses them.
  */
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(
@@ -86,12 +87,37 @@ public class ServiceBusConsumerConfig {
             final DistributionPipeline pipeline,
             final ProcessingMetrics metrics,
             final ServiceBusHealthIndicator health,
+            final ObjectProvider<ConsumerLifecycleController> lifecycle,
             final InformantRegisterProperties properties) {
         // The delivery budget is the queue's, mirrored in configuration: the listener recognises the
         // final permitted delivery from it, so the two are changed together or this service is wrong
         // about the broker.
         return new InformantRegisterMessageListener(
-                parser, pipeline, metrics, health, properties.servicebus().maxDeliveryCount());
+                parser, pipeline, metrics, health, new DeferredStoreGate(lifecycle::getObject),
+                properties.servicebus().maxDeliveryCount());
+    }
+
+    /**
+     * The store gate, resolved when it is used rather than when the listener is built.
+     *
+     * <p>There is a genuine cycle in the object graph and it is not an accident of wiring: the
+     * controller owns the processor, the processor is built around the listener, and the listener
+     * has to be able to ask the controller to stop intake. Something has to be late, and the gate is
+     * the honest place — it is only ever needed while a delivery is being handled, by which time
+     * every bean in the cycle exists.
+     */
+    private record DeferredStoreGate(Supplier<ConsumerLifecycleController> lifecycle)
+            implements StoreGate {
+
+        @Override
+        public boolean storeAvailable() {
+            return lifecycle.get().storeAvailable();
+        }
+
+        @Override
+        public void suspendIntake() {
+            lifecycle.get().suspendIntake();
+        }
     }
 
     /**
@@ -137,12 +163,22 @@ public class ServiceBusConsumerConfig {
     }
 
     /**
-     * Starts intake with the context and stops it with the shutdown.
+     * The one component permitted to start or stop intake (research §7).
+     *
+     * <p>It replaces the plain start-with-the-context lifecycle this configuration used to carry.
+     * The client definition above, its settings and the listener are untouched by the change — the
+     * difference is entirely <em>when</em> the processor is started, and by what.
      */
     @Bean
-    public SmartLifecycle informantRegisterProcessorLifecycle(
-            final ServiceBusProcessorClient processor) {
-        return new ProcessorLifecycle(processor);
+    public ConsumerLifecycleController informantRegisterConsumerLifecycle(
+            final ServiceBusProcessorClient processor,
+            final ProcessedLogProbe storeProbe,
+            final ObjectProvider<Flyway> flyway,
+            final ProcessingMetrics metrics,
+            final InformantRegisterProperties properties) {
+        return new ConsumerLifecycleController(
+                processor, storeProbe, flyway::getIfAvailable, metrics,
+                properties.store().probeInterval());
     }
 
     /**
@@ -187,41 +223,5 @@ public class ServiceBusConsumerConfig {
 
     private static boolean hasText(final String value) {
         return value != null && !value.isBlank();
-    }
-
-    /**
-     * The one bean the lifecycle controller will take over.
-     *
-     * <p>A {@link SmartLifecycle} rather than a start call inside the factory method, because a
-     * processor started while the context is still refreshing would be consuming against beans that
-     * are not there yet.
-     */
-    private static final class ProcessorLifecycle implements SmartLifecycle {
-
-        private final ServiceBusProcessorClient processor;
-        private volatile boolean started;
-
-        private ProcessorLifecycle(final ServiceBusProcessorClient processor) {
-            this.processor = processor;
-        }
-
-        @Override
-        public void start() {
-            processor.start();
-            started = true;
-            LOG.info("Intake started. queue={}", processor.getQueueName());
-        }
-
-        @Override
-        public void stop() {
-            processor.stop();
-            started = false;
-            LOG.info("Intake stopped. queue={}", processor.getQueueName());
-        }
-
-        @Override
-        public boolean isRunning() {
-            return started;
-        }
     }
 }

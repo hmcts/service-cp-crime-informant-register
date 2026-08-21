@@ -31,6 +31,7 @@ import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.inbound.DistributionCommandParser;
 import uk.gov.hmcts.cp.informantregister.inbound.InformantRegisterMessageListener;
 import uk.gov.hmcts.cp.informantregister.support.QueueHealthTestSupport;
+import uk.gov.hmcts.cp.informantregister.support.StoreGateTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ServiceBusEmulatorTestSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -75,6 +76,7 @@ class QueueSettlementIT {
             pipeline,
             new ProcessingMetrics(new SimpleMeterRegistry()),
             QueueHealthTestSupport.unwatched(),
+            StoreGateTestSupport.open(),
             MAX_DELIVERY_COUNT);
 
     /** Every delivery this suite's processor saw, as (messageId, deliveryCount). */

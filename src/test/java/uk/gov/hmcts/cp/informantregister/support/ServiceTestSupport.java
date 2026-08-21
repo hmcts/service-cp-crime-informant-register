@@ -1,5 +1,6 @@
 package uk.gov.hmcts.cp.informantregister.support;
 
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -12,6 +13,9 @@ import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import uk.gov.hmcts.cp.Application;
+import uk.gov.hmcts.cp.informantregister.domain.RequestStatus;
+
+import static org.awaitility.Awaitility.await;
 
 /**
  * The whole service, started by a test that needs to control <em>when</em> it starts.
@@ -24,6 +28,9 @@ import uk.gov.hmcts.cp.Application;
  * test says so, is never cached, and is closed by the test's own try-with-resources.
  */
 public final class ServiceTestSupport {
+
+    /** How long a freshly started service is given to process its first request. */
+    private static final Duration CONSUMING_WITHIN = Duration.ofSeconds(60);
 
     private ServiceTestSupport() {
         // Static fixture holder.
@@ -41,6 +48,33 @@ public final class ServiceTestSupport {
         return new SpringApplicationBuilder(Application.class)
                 .web(WebApplicationType.NONE)
                 .run(asArguments(properties));
+    }
+
+    /**
+     * Starts the service and waits until it is demonstrably consuming.
+     *
+     * <p>For every suite whose scenario is "a service that was working met an outage". Starting the
+     * context is not the same as consuming: intake is gated on a store probe, so a suite that broke
+     * the store immediately after {@code start()} could win the race and be testing a pod that
+     * never began — which passes some assertions for entirely the wrong reason and fails the ones
+     * about suspension, because nothing was ever suspended.
+     *
+     * <p>The proof is a request processed end to end. Nothing else proves it: readiness says the
+     * store answers, and the queue's own state says nothing about who is listening to it.
+     *
+     * @param overrides settings this suite needs to differ
+     * @return the running, consuming context, to be closed by the caller
+     */
+    public static ConfigurableApplicationContext startConsuming(final Map<String, String> overrides) {
+        final ConfigurableApplicationContext context = start(overrides);
+        final UUID warmUp = UUID.randomUUID();
+        publish(validBody(warmUp, UUID.randomUUID()));
+        await().atMost(CONSUMING_WITHIN)
+                .pollInterval(Duration.ofMillis(500))
+                .until(() -> ProcessedLogTestSupport.row(ProcessedLogTestSupport.SOURCE, warmUp)
+                        .filter(row -> RequestStatus.COMPLETED.name().equals(row.status()))
+                        .isPresent());
+        return context;
     }
 
     /**
@@ -73,6 +107,13 @@ public final class ServiceTestSupport {
         // health poll. Three seconds keeps the outage observable without changing what is observed.
         properties.put("spring.datasource.hikari.connection-timeout", "3000");
         properties.put("spring.datasource.hikari.validation-timeout", "2000");
+        // A frozen container does not close its connections, it simply stops answering on them, so
+        // a query issued over a connection the pool already holds waits for a reply that is never
+        // coming — with no socket timeout, for ever. The connect timeout above does not help: it
+        // only bounds opening a *new* connection. Whether an outage is noticed in seconds or never
+        // therefore depends on which connection the pool happens to hand out, which is not a
+        // property any suite should be at the mercy of.
+        properties.put("spring.datasource.hikari.data-source-properties.socketTimeout", "5");
         properties.put("informantregister.servicebus.connection-string",
                 ServiceBusEmulatorTestSupport.connectionString());
         // The deployed interval is ten seconds. Two makes a resume observable without making the

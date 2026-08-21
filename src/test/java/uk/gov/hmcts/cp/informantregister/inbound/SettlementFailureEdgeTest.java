@@ -33,6 +33,7 @@ import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.SettlementOperation;
 import uk.gov.hmcts.cp.informantregister.support.CapturedLog;
 import uk.gov.hmcts.cp.informantregister.support.QueueHealthTestSupport;
+import uk.gov.hmcts.cp.informantregister.support.StoreGateTestSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -93,8 +94,8 @@ class SettlementFailureEdgeTest {
 
     private final InformantRegisterMessageListener listener =
             new InformantRegisterMessageListener(
-                    parser, pipeline, metrics,
-                    QueueHealthTestSupport.unwatched(), MAX_DELIVERY_COUNT);
+                    parser, pipeline, metrics, QueueHealthTestSupport.unwatched(),
+                    StoreGateTestSupport.open(), MAX_DELIVERY_COUNT);
 
     private final UUID requestId = UUID.randomUUID();
     private final UUID hearingId = UUID.randomUUID();
@@ -336,8 +337,8 @@ class SettlementFailureEdgeTest {
 
         private final InformantRegisterMessageListener listenerWithFailingTelemetry =
                 new InformantRegisterMessageListener(
-                        parser, pipeline, unreachable,
-                        QueueHealthTestSupport.unwatched(), MAX_DELIVERY_COUNT);
+                        parser, pipeline, unreachable, QueueHealthTestSupport.unwatched(),
+                        StoreGateTestSupport.open(), MAX_DELIVERY_COUNT);
 
         private ServiceBusReceivedMessageContext aParkingWhoseCounterIsGone() {
             final ServiceBusReceivedMessageContext context = deliveryWithALiveLock();

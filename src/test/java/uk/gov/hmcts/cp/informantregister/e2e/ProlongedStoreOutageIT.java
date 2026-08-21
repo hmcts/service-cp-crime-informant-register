@@ -56,6 +56,13 @@ class ProlongedStoreOutageIT {
      */
     private static final Duration OUTAGE = Duration.ofSeconds(30);
 
+    /**
+     * The one delivery an outage is allowed to cost: the one that discovered it and was handed
+     * back. Spec FR-015 requires that delivery to be returned; suspension is what stops the other
+     * four being spent behind it.
+     */
+    private static final long DISCOVERY_DELIVERY = 1;
+
     private final UUID requestId = UUID.randomUUID();
     private final UUID hearingId = UUID.randomUUID();
 
@@ -85,7 +92,7 @@ class ProlongedStoreOutageIT {
     @Test
     @DisplayName("an outage longer than the delivery budget still parks nothing, and processes on resume")
     void should_leave_the_message_recoverable_however_long_the_store_is_down() {
-        try (ConfigurableApplicationContext context = ServiceTestSupport.start(Map.of())) {
+        try (ConfigurableApplicationContext context = ServiceTestSupport.startConsuming(Map.of())) {
             final MeterRegistry registry = context.getBean(MeterRegistry.class);
 
             PostgresTestSupport.pause();
@@ -93,12 +100,15 @@ class ProlongedStoreOutageIT {
                     ServiceTestSupport.publish(ServiceTestSupport.validBody(requestId, hearingId));
 
             // The claim of this suite, asserted first because it is the one that matters: through
-            // the whole window the message stays exactly where it was, and its delivery budget is
-            // not being spent. Held as a condition rather than checked once at the end, so a
-            // message that visited the dead-letter queue and was replaced could not slip through.
+            // the whole window the message stays on the queue and its delivery budget stops being
+            // spent. One delivery is spent, and only one — the delivery that discovered the outage,
+            // which the spec requires to be handed back — and then intake stops and nothing takes
+            // it again. Five would put it on the dead-letter queue. Held as a condition rather than
+            // checked once at the end, so a message that visited the dead-letter queue and was
+            // replaced could not slip through.
             await().during(OUTAGE).atMost(OBSERVED_WITHIN).pollInterval(POLL)
                     .until(() -> onQueue(messageId)
-                            .filter(message -> message.getDeliveryCount() == 0)
+                            .filter(message -> message.getDeliveryCount() <= DISCOVERY_DELIVERY)
                             .isPresent());
             assertThat(ServiceBusEmulatorTestSupport
                     .peekFor(messageId, SubQueue.DEAD_LETTER_QUEUE))

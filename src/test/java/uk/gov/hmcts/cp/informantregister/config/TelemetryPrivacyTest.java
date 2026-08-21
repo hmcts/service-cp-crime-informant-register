@@ -32,6 +32,7 @@ import uk.gov.hmcts.cp.informantregister.inbound.InformantRegisterMessageListene
 import uk.gov.hmcts.cp.informantregister.inbound.ServiceBusConsumerConfig;
 import uk.gov.hmcts.cp.informantregister.support.CapturedLog;
 import uk.gov.hmcts.cp.informantregister.support.QueueHealthTestSupport;
+import uk.gov.hmcts.cp.informantregister.support.StoreGateTestSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -153,6 +154,7 @@ class TelemetryPrivacyTest {
                 pipeline,
                 new ProcessingMetrics(new SimpleMeterRegistry()),
                 QueueHealthTestSupport.unwatched(),
+                StoreGateTestSupport.open(),
                 MAX_DELIVERY_COUNT);
     }
 

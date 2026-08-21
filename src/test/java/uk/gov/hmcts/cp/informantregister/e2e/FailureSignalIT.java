@@ -103,7 +103,7 @@ class FailureSignalIT {
     @Test
     @DisplayName("a contract-invalid message produces one ERROR and one validation dead-letter")
     void should_signal_a_contract_validation_failure_exactly_once() {
-        try (ConfigurableApplicationContext context = ServiceTestSupport.start(Map.of());
+        try (ConfigurableApplicationContext context = ServiceTestSupport.startConsuming(Map.of());
              CapturedLog log = CapturedLog.of(SERVICE_LOGGERS)) {
             final MeterRegistry registry = context.getBean(MeterRegistry.class);
             final double before = counter(registry, ProcessingMetrics.DEAD_LETTERED,
@@ -178,7 +178,7 @@ class FailureSignalIT {
     @Test
     @DisplayName("a store outage produces one ERROR naming the bounded reason, and one suspension count")
     void should_signal_a_store_outage_suspension_exactly_once() {
-        try (ConfigurableApplicationContext context = ServiceTestSupport.start(Map.of());
+        try (ConfigurableApplicationContext context = ServiceTestSupport.startConsuming(Map.of());
              CapturedLog log = CapturedLog.of(SERVICE_LOGGERS)) {
             final MeterRegistry registry = context.getBean(MeterRegistry.class);
             final double before = counter(registry, ProcessingMetrics.INTAKE_SUSPENSIONS);

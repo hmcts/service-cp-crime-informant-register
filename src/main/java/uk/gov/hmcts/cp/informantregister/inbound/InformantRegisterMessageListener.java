@@ -67,6 +67,7 @@ public class InformantRegisterMessageListener {
     private final DistributionPipeline pipeline;
     private final ProcessingMetrics metrics;
     private final ServiceBusHealthIndicator health;
+    private final StoreGate storeGate;
     private final int maxDeliveryCount;
 
     public InformantRegisterMessageListener(
@@ -74,11 +75,13 @@ public class InformantRegisterMessageListener {
             final DistributionPipeline pipeline,
             final ProcessingMetrics metrics,
             final ServiceBusHealthIndicator health,
+            final StoreGate storeGate,
             final int maxDeliveryCount) {
         this.parser = parser;
         this.pipeline = pipeline;
         this.metrics = metrics;
         this.health = health;
+        this.storeGate = storeGate;
         this.maxDeliveryCount = maxDeliveryCount;
     }
 
@@ -90,10 +93,40 @@ public class InformantRegisterMessageListener {
     public void onMessage(final ServiceBusReceivedMessageContext context) {
         final ServiceBusReceivedMessage message = context.getMessage();
         try {
-            settle(context, decide(message));
+            settle(context, storeGate.storeAvailable()
+                    ? decide(message)
+                    : storeUnavailable(message));
         } finally {
             clearCorrelation();
         }
+    }
+
+    /**
+     * The processed log could not be reached, so this delivery is not examined at all (spec FR-015).
+     *
+     * <p>Availability is a precondition rather than a step, and the ordering is the whole of it. The
+     * body is not read, so nothing is judged: a message that could never validate is not
+     * dead-lettered on the strength of a check this service was not fit to make, and a message that
+     * is perfectly good does not have an attempt recorded against it that never ran. Nothing enters
+     * the state machine, nothing is counted as an attempt, and the delivery goes back exactly as it
+     * arrived.
+     *
+     * <p>Then intake is <em>asked</em> to stop. Asked, because this is the broker's own callback
+     * thread and stopping a processor from inside one deadlocks the shutdown; the controller carries
+     * it out elsewhere. Stopping is the point: without it every message on the queue would be taken,
+     * handed back, and taken again until the broker's delivery budget ran out and parked work whose
+     * only fault was arriving during an outage of ours.
+     *
+     * <p>The line carries the bounded reason code and the broker's identity for the message, which
+     * is all this service knows about it — the body was deliberately not read, so there is no
+     * request id to correlate on yet, and there will be one when the delivery comes round again.
+     */
+    private GuardDecision storeUnavailable(final ServiceBusReceivedMessage message) {
+        LOG.error("The processed log could not be reached, so the delivery was not examined; "
+                        + "returning it and asking for intake to stop. messageId={} reason={}",
+                message.getMessageId(), ReasonCode.STORE_UNAVAILABLE.code());
+        storeGate.suspendIntake();
+        return new GuardDecision.Abandon(ReasonCode.STORE_UNAVAILABLE);
     }
 
     /**

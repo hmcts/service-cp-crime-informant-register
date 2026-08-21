@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import uk.gov.hmcts.cp.informantregister.application.IdempotencyGuard;
+import uk.gov.hmcts.cp.informantregister.persistence.ProcessedLogProbe;
 import uk.gov.hmcts.cp.informantregister.persistence.ProcessedRequestRepository;
 
 /**
@@ -30,6 +31,18 @@ public class ProcessedLogConfig {
     public ProcessedRequestRepository processedRequestRepository(
             final JdbcClient jdbcClient, final InformantRegisterProperties properties) {
         return new ProcessedRequestRepository(jdbcClient, properties.claim().lease());
+    }
+
+    /**
+     * The availability question the consumer lifecycle controller and every delivery both ask.
+     *
+     * <p>A bean of its own rather than a method on the repository: the repository's statements are
+     * the state machine, and "can this database be reached at all" is a different question asked at
+     * a different moment — before a delivery is examined, and on a schedule while intake is stopped.
+     */
+    @Bean
+    public ProcessedLogProbe processedLogProbe(final JdbcClient jdbcClient) {
+        return new ProcessedLogProbe(jdbcClient);
     }
 
     @Bean

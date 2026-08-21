@@ -33,6 +33,7 @@ import uk.gov.hmcts.cp.informantregister.domain.GuardDecision;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.RunClaim;
 import uk.gov.hmcts.cp.informantregister.support.QueueHealthTestSupport;
+import uk.gov.hmcts.cp.informantregister.support.StoreGateTestSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -95,8 +96,8 @@ class MessageListenerSettlementTest {
 
     private final InformantRegisterMessageListener listener =
             new InformantRegisterMessageListener(
-                    parser, pipeline, metrics,
-                    QueueHealthTestSupport.unwatched(), MAX_DELIVERY_COUNT);
+                    parser, pipeline, metrics, QueueHealthTestSupport.unwatched(),
+                    StoreGateTestSupport.open(), MAX_DELIVERY_COUNT);
 
     private final UUID requestId = UUID.randomUUID();
     private final UUID hearingId = UUID.randomUUID();
@@ -259,6 +260,7 @@ class MessageListenerSettlementTest {
                             Clock.systemUTC(), RUN_DEADLINE),
                     metrics,
                     QueueHealthTestSupport.unwatched(),
+                    StoreGateTestSupport.open(),
                     MAX_DELIVERY_COUNT);
         }
 
