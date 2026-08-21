@@ -1,5 +1,6 @@
 package uk.gov.hmcts.cp.informantregister.inbound;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import com.azure.messaging.servicebus.ServiceBusReceivedMessage;
@@ -16,6 +17,7 @@ import uk.gov.hmcts.cp.informantregister.domain.DeliveryIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
 import uk.gov.hmcts.cp.informantregister.domain.GuardDecision;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
+import uk.gov.hmcts.cp.informantregister.domain.SettlementOperation;
 
 /**
  * One delivery in, exactly one settlement out.
@@ -23,9 +25,11 @@ import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
  * <p>The transport adapter. It reads the body, hands the request to the core, and performs the one
  * settlement the core's decision names — nothing more. The structure is what guarantees the "exactly
  * one" half: every path produces a {@link GuardDecision}, and settlement happens once, afterwards,
- * in one place. There is no route through this class that reaches the end without a settlement and
- * none that settles twice, which is what stops a delivery being left to time out (spec FR-001,
- * constitution Principle VI).
+ * in one place. There is no route through this class that reaches the end without a settlement
+ * attempt and none that settles twice, which is what stops a delivery being left to time out (spec
+ * FR-001, constitution Principle VI). The single exception is a lock that has already expired: the
+ * call could not succeed, so it is reported and counted rather than attempted, and the broker's
+ * redelivery is the recovery (spec FR-016).
  *
  * <p>Ordering is the other half. A delivery is acknowledged only after the outcome write has
  * returned durably, because a message acknowledged before the write is a request the processed log
@@ -169,39 +173,107 @@ public class InformantRegisterMessageListener {
     }
 
     /**
-     * The one settlement, performed once.
+     * The one settlement — attempted once, and only while there is still a lock to settle against.
+     *
+     * <p>Spec FR-001 asks for exactly one settlement attempt <em>while the delivery lock is still
+     * valid</em>. A lock that has already run out makes the attempt impossible rather than optional:
+     * the call would be refused whatever it was, so it is not made, the loss is reported and counted
+     * under its own instrument, and recovery is the broker's redelivery into a state machine that
+     * already knows what this delivery achieved (spec FR-016).
      */
     private void settle(
             final ServiceBusReceivedMessageContext context, final GuardDecision decision) {
+        if (lockHeld(context.getMessage())) {
+            perform(context, decision);
+        } else {
+            LOG.error("The delivery lock was lost before settlement, so none was attempted; "
+                            + "recovery is the broker's redelivery. messageId={} decision={}",
+                    context.getMessage().getMessageId(), decision.getClass().getSimpleName());
+            metrics.lockLost();
+        }
+    }
+
+    /**
+     * Whether this delivery's lock is still ours to settle against.
+     *
+     * <p>A broker that has not said when the lock expires is not evidence that it has gone, so an
+     * absent expiry is read as held: refusing to settle a delivery this service could have settled
+     * would leave the message to come round again for no reason. The lock is renewed automatically
+     * up to {@code max-auto-lock-renew-duration}, which startup validation keeps comfortably longer
+     * than a run's own deadline, so a live run reaching this check with an expired lock means the
+     * renewal itself stopped — which is exactly what the instrument is for.
+     */
+    private static boolean lockHeld(final ServiceBusReceivedMessage message) {
+        final OffsetDateTime lockedUntil = message.getLockedUntil();
+        return lockedUntil == null || lockedUntil.isAfter(OffsetDateTime.now());
+    }
+
+    /**
+     * The settlement the decision names, made once.
+     */
+    private void perform(
+            final ServiceBusReceivedMessageContext context, final GuardDecision decision) {
         switch (decision) {
-            case GuardDecision.Complete acknowledged -> {
-                context.complete();
-                LOG.info("Delivery acknowledged. reason={}", acknowledged.reason().code());
-            }
-            case GuardDecision.Abandon handedBack -> {
-                context.abandon();
-                LOG.info("Delivery returned for redelivery. reason={}", handedBack.reason().code());
-            }
-            case GuardDecision.DeadLetter parked -> {
-                context.deadLetter(new DeadLetterOptions()
-                        .setDeadLetterReason(parked.reason().label())
-                        .setDeadLetterErrorDescription(parked.detail().code()));
-                // Counted after the call, so the counter records dead-letters that happened rather
-                // than dead-letters that were intended.
-                metrics.deadLettered(parked.reason());
-                LOG.warn("Delivery parked on the dead-letter queue. reason={} detail={}",
-                        parked.reason().label(), parked.detail().code());
-            }
+            case GuardDecision.Complete acknowledged ->
+                    attempt(SettlementOperation.COMPLETE, () -> {
+                        context.complete();
+                        LOG.info("Delivery acknowledged. reason={}", acknowledged.reason().code());
+                    });
+            case GuardDecision.Abandon handedBack ->
+                    attempt(SettlementOperation.ABANDON, () -> {
+                        context.abandon();
+                        LOG.info("Delivery returned for redelivery. reason={}",
+                                handedBack.reason().code());
+                    });
+            case GuardDecision.DeadLetter parked ->
+                    attempt(SettlementOperation.DEADLETTER, () -> {
+                        context.deadLetter(new DeadLetterOptions()
+                                .setDeadLetterReason(parked.reason().label())
+                                .setDeadLetterErrorDescription(parked.detail().code()));
+                        // Counted after the call, so the counter records dead-letters that happened
+                        // rather than dead-letters that were intended.
+                        metrics.deadLettered(parked.reason());
+                        LOG.warn("Delivery parked on the dead-letter queue. reason={} detail={}",
+                                parked.reason().label(), parked.detail().code());
+                    });
             // The pipeline always brings a run back to the guard, so a run reaching settlement is a
             // defect in this service rather than anything the broker can produce. It is still
             // settled, and settled the only way that loses nothing: the claim expires and the next
             // delivery reclaims it.
-            case GuardDecision.Run unfinished -> {
-                context.abandon();
-                LOG.error("A run decision reached settlement; the delivery was returned. "
-                                + "source={} requestId={}",
-                        unfinished.claim().source(), unfinished.claim().requestId());
-            }
+            case GuardDecision.Run unfinished ->
+                    attempt(SettlementOperation.ABANDON, () -> {
+                        context.abandon();
+                        LOG.error("A run decision reached settlement; the delivery was returned. "
+                                        + "source={} requestId={}",
+                                unfinished.claim().source(), unfinished.claim().requestId());
+                    });
+        }
+    }
+
+    /**
+     * One settlement call, and what happens when the broker refuses it.
+     *
+     * <p>The refusal is reported and counted, and that is all. It is deliberately <strong>not</strong>
+     * followed by a settlement of another kind: handing a delivery back because acknowledging it
+     * failed would either double-settle a lock this service still holds, or succeed — turning work
+     * that <em>is</em> durably recorded into a redelivery that runs again. The outcome was written
+     * before the settlement was attempted, so the redelivery meets a record that already knows the
+     * answer: a completed request is acknowledged without a run, and a parked one is parked again
+     * (spec FR-016, FR-007).
+     */
+    @SuppressWarnings("PMD.AvoidCatchingGenericException")
+    // The SDK reports a refused settlement as a ServiceBusException, but the failure that matters
+    // here is "the call did not happen", whatever type carried that news. A narrower catch would let
+    // an unanticipated one escape into the processor's error handler, where there is no delivery to
+    // account for and no instrument that describes what went wrong.
+    private void attempt(final SettlementOperation operation, final Runnable settlement) {
+        try {
+            settlement.run();
+        } catch (RuntimeException refused) {
+            LOG.error("The broker refused the settlement; no second settlement is attempted and the "
+                            + "delivery will come round again. operation={} type={}",
+                    operation.label(), refused.getClass().getName(), refused);
+            metrics.settlementFailed(operation);
         }
     }
 
