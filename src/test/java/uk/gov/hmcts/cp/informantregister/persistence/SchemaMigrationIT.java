@@ -11,14 +11,18 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import uk.gov.hmcts.cp.informantregister.support.PostgresTestSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
@@ -279,16 +283,78 @@ class SchemaMigrationIT {
                     .contains("claim_owner", "claim_token", "claim_expires_at");
         }
 
-        @Test
-        void claim_triple_check_should_reject_a_partially_written_claim() {
-            assertThatThrownBy(() -> inRolledBackTransaction(insertRequest(
-                    "source, request_id, hearing_id, hearing_day, shared_time, event_type, "
-                            + "request_fingerprint, status, attempts, claim_owner",
-                    "'RESULTS', '" + UUID.randomUUID() + "', '" + UUID.randomUUID() + "', "
-                            + "DATE '2026-08-20', TIMESTAMPTZ '2026-08-20T09:00:00Z', 'Hearing_Resulted', "
-                            + "'fingerprint', 'RECEIVED', 1, 'runner-1'")))
+        /**
+         * Which of the claim's three columns a candidate row populates.
+         */
+        record ClaimTriple(boolean owner, boolean token, boolean expiresAt) {
+            @Override
+            public String toString() {
+                return "owner=" + state(owner) + ", token=" + state(token)
+                        + ", expiresAt=" + state(expiresAt);
+            }
+
+            private static String state(final boolean populated) {
+                return populated ? "set" : "null";
+            }
+        }
+
+        /** The six ways a claim can be half-written. All must be refused. */
+        static Stream<ClaimTriple> partiallyWrittenClaims() {
+            return Stream.of(
+                    new ClaimTriple(true, false, false),
+                    new ClaimTriple(false, true, false),
+                    new ClaimTriple(false, false, true),
+                    new ClaimTriple(true, true, false),
+                    new ClaimTriple(true, false, true),
+                    new ClaimTriple(false, true, true));
+        }
+
+        /** The two ways a claim can be whole. Both must be allowed. */
+        static Stream<ClaimTriple> wholeClaims() {
+            return Stream.of(
+                    new ClaimTriple(false, false, false),
+                    new ClaimTriple(true, true, true));
+        }
+
+        private static String insertWithClaim(final ClaimTriple triple) {
+            final List<String> columns = new ArrayList<>(List.of(
+                    "source", "request_id", "hearing_id", "hearing_day", "shared_time", "event_type",
+                    "request_fingerprint", "status", "attempts"));
+            final List<String> values = new ArrayList<>(List.of(
+                    "'RESULTS'", "'" + UUID.randomUUID() + "'", "'" + UUID.randomUUID() + "'",
+                    "DATE '2026-08-20'", "TIMESTAMPTZ '2026-08-20T09:00:00Z'", "'Hearing_Resulted'",
+                    "'fingerprint'", "'RECEIVED'", "1"));
+
+            if (triple.owner()) {
+                columns.add("claim_owner");
+                values.add("'runner-1'");
+            }
+            if (triple.token()) {
+                columns.add("claim_token");
+                values.add("'" + UUID.randomUUID() + "'");
+            }
+            if (triple.expiresAt()) {
+                columns.add("claim_expires_at");
+                values.add("now() + interval '5 minutes'");
+            }
+            return insertRequest(String.join(", ", columns), String.join(", ", values));
+        }
+
+        @ParameterizedTest(name = "{0}")
+        @MethodSource("partiallyWrittenClaims")
+        void claim_triple_check_should_reject_every_partially_written_claim(final ClaimTriple triple) {
+            // Enumerated rather than sampled: the constraint is written as two equalities, and a
+            // single example would pass against several wrong ways of writing them.
+            assertThatThrownBy(() -> inRolledBackTransaction(insertWithClaim(triple)))
                     .isInstanceOf(SQLException.class)
                     .hasMessageContaining("processed_request_claim_triple_chk");
+        }
+
+        @ParameterizedTest(name = "{0}")
+        @MethodSource("wholeClaims")
+        void claim_triple_check_should_accept_a_claim_that_is_all_set_or_all_null(final ClaimTriple triple) {
+            assertThatCode(() -> inRolledBackTransaction(insertWithClaim(triple)))
+                    .doesNotThrowAnyException();
         }
 
         @Test
