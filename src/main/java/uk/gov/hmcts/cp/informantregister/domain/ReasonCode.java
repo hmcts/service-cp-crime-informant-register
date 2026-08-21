@@ -48,6 +48,17 @@ public enum ReasonCode {
     /** The record was absent when the guard read it back after losing the insert race. */
     RECORD_ABSENT("RECORD_ABSENT"),
 
+    /** The body did not satisfy the inbound contract, so the state machine was never entered. */
+    CONTRACT_VALIDATION_FAILED("CONTRACT_VALIDATION_FAILED"),
+
+    /**
+     * A delivery failed in a way nothing anticipated.
+     *
+     * <p>The catch-all that keeps the settlement contract total: whatever went wrong, the delivery
+     * still gets exactly one settlement and the failure still gets one ERROR line.
+     */
+    UNEXPECTED_FAILURE("UNEXPECTED_FAILURE"),
+
     /** A pipeline run failed in a way redelivery may fix. */
     PIPELINE_TRANSIENT_FAILURE("PIPELINE_TRANSIENT_FAILURE"),
 

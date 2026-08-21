@@ -179,6 +179,17 @@ class QueueSettlementIT {
         assertThat(deliveriesOf(messageId)).hasSize(1);
     }
 
+    /**
+     * <strong>The broker's delivery count is zero-based on the first delivery.</strong>
+     *
+     * <p>Observed here, not assumed: a message abandoned repeatedly is seen with counts
+     * {@code 0, 1, 2, 3, 4} before the queue's limit of five parks it. That matches the AMQP header's
+     * definition — the count is of previous <em>unsuccessful</em> deliveries, so a first delivery has
+     * had none — and it is the fact the final-permitted-delivery rule has to be written against: the
+     * last delivery a message is entitled to carries a count of {@code maxDeliveryCount - 1}, not
+     * {@code maxDeliveryCount}. Off by one here parks a message a delivery early or a delivery late,
+     * so the base is pinned rather than inferred.
+     */
     @Test
     @DisplayName("a delivery handed back comes round again, counted")
     void should_redeliver_an_abandoned_delivery_with_an_incremented_count() {
@@ -187,9 +198,10 @@ class QueueSettlementIT {
         final String messageId = sendRequest();
 
         await().atMost(SETTLED_WITHIN).until(() -> deliveriesOf(messageId).size() >= 2);
-        assertThat(deliveriesOf(messageId))
-                .extracting(Delivery::deliveryCount)
-                .startsWith(1L, 2L);
+        final List<Long> counts =
+                deliveriesOf(messageId).stream().map(Delivery::deliveryCount).toList();
+        assertThat(counts.get(0)).isZero();
+        assertThat(counts.get(1)).isEqualTo(counts.get(0) + 1);
     }
 
     @Test
