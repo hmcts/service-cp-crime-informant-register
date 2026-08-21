@@ -146,9 +146,10 @@ class StaleRunnerRejectionIT {
      * the run that is now in flight from the run that was abandoned is the token minted at each
      * acquisition — which is exactly what data-model invariant 7 says it is for.
      */
-    @Test
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(OutcomeWrite.class)
     @DisplayName("a claim retaken by the same runner is still a different claim")
-    void a_stale_write_should_be_refused_even_when_the_owner_is_unchanged() {
+    void a_stale_write_should_be_refused_even_when_the_owner_is_unchanged(final OutcomeWrite outcome) {
         final DistributionCommand redelivered = ProcessedLogTestSupport.command();
         final String sameOwner = "runner-1/delivery-1";
         final RunClaim lapsed = runClaimOf(
@@ -158,16 +159,18 @@ class StaleRunnerRejectionIT {
                 guard.admit(redelivered, new DeliveryIdentity("msg-1", sameOwner)));
         assertThat(retaken.owner()).isEqualTo(lapsed.owner());
         assertThat(retaken.token()).isNotEqualTo(lapsed.token());
+        final Row before =
+                ProcessedLogTestSupport.requireRow(redelivered.source(), redelivered.requestId());
 
-        final GuardDecision decision = guard.recordCompletion(lapsed, CompletionReason.NO_AUTHORITIES);
+        final GuardDecision decision = write(outcome, lapsed);
 
         assertThat(decision).isEqualTo(new GuardDecision.Abandon(ReasonCode.STALE_RUNNER));
         assertThat(rejections()).isEqualTo(1);
-        final Row row =
-                ProcessedLogTestSupport.requireRow(redelivered.source(), redelivered.requestId());
-        assertThat(row.status()).isEqualTo("RECEIVED");
-        assertThat(row.claimToken()).isEqualTo(retaken.token());
-        assertThat(row.completionReason()).isNull();
+        // Each of the three writes has to carry the predicate; the record is left exactly as the
+        // runner that holds the claim left it.
+        assertThat(ProcessedLogTestSupport.requireRow(redelivered.source(), redelivered.requestId()))
+                .isEqualTo(before);
+        assertThat(before.claimToken()).isEqualTo(retaken.token());
     }
 
     @Test
