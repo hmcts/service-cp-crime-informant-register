@@ -226,8 +226,11 @@ public class InformantRegisterMessageListener {
                 }
             }
             case GuardDecision.DeadLetter parked -> {
+                // Built before the guarded call: an option-construction failure is this service's
+                // own defect and must not be reported as the broker refusing a settlement.
+                final DeadLetterOptions options = optionsFor(parked);
                 if (accepted(SettlementOperation.DEADLETTER,
-                        () -> context.deadLetter(optionsFor(parked)))) {
+                        () -> context.deadLetter(options))) {
                     // Counted after the call was accepted, so the counter records dead-letters that
                     // happened rather than dead-letters that were intended.
                     metrics.deadLettered(parked.reason());
