@@ -86,10 +86,16 @@ management:
         enabled: true   # enables liveness / readiness groups
       group:
         readiness:
-          # The store gates readiness, because processing is unsafe without it. The `servicebus`
-          # indicator is deliberately absent: a broker blip must never roll the pods, and the service
-          # cannot heal the queue by restarting (spec FR-011).
-          include: db
+          # The store gates readiness, because processing is unsafe without it — and so does this
+          # pod's own gated start, because a database that replies is not the same thing as a
+          # service in a position to use it. Between them sits the deferred migration and the
+          # processor, either of which can fail: a pod whose migration is throwing would otherwise
+          # report ready, be sent traffic, count as a healthy replica in a rolling deployment, and
+          # consume nothing while the queue grew.
+          #
+          # The `servicebus` indicator is deliberately absent from both: a broker blip must never
+          # roll the pods, and the service cannot heal the queue by restarting (spec FR-011).
+          include: db,intakeStartup
 
 logging:
   level:

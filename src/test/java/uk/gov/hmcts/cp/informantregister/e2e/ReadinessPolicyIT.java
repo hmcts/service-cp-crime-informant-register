@@ -67,6 +67,7 @@ import static org.awaitility.Awaitility.await;
 class ReadinessPolicyIT {
 
     private static final String STORE_COMPONENT = "db";
+    private static final String STARTUP_COMPONENT = "intakeStartup";
     private static final String BROKER_COMPONENT = "servicebus";
 
     private static final Duration OBSERVED_WITHIN = Duration.ofSeconds(120);
@@ -151,8 +152,9 @@ class ReadinessPolicyIT {
     @DisplayName("readiness names the store and never the broker")
     void should_gate_readiness_on_the_store_alone() {
         assertThat(readiness().getComponents())
-                .as("the store gates readiness; nothing else does")
-                .containsOnlyKeys(STORE_COMPONENT);
+                .as("the store gates readiness, and so does this pod's own gated start — a database "
+                        + "that replies is not a service in a position to use it")
+                .containsOnlyKeys(STORE_COMPONENT, STARTUP_COMPONENT);
 
         assertThat(overall().getComponents())
                 .as("the broker is still observable — as its own component, outside readiness")

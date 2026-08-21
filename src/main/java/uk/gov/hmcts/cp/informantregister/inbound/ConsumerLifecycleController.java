@@ -85,6 +85,16 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
     private volatile boolean migrated;
     private volatile boolean active;
 
+    /**
+     * Latched once the gated start has completed, and never lowered again.
+     *
+     * <p>It answers "has this pod ever got as far as consuming", which is a readiness question. It
+     * deliberately does not follow a later suspension: a pod that stopped intake because its store
+     * went away is working correctly and waiting, the store's own contributor already reports that,
+     * and rolling the pod would help nobody.
+     */
+    private volatile boolean intakeStarted;
+
     public ConsumerLifecycleController(
             final ServiceBusProcessorClient processor,
             final ProcessedLogProbe storeProbe,
@@ -145,6 +155,13 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
     @Override
     public boolean isRunning() {
         return active;
+    }
+
+    /**
+     * Whether the gated start has completed: the migration ran and the processor started.
+     */
+    public boolean intakeStarted() {
+        return intakeStarted;
     }
 
     private void awaitTransitionsToFinish() {
@@ -226,6 +243,7 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
         migrateOnce();
         processor.start();
         state = State.RUNNING;
+        intakeStarted = true;
         metrics.intakeResumed();
         // From here on, silence from the broker means something. Before it, this pod had not asked
         // the broker for anything and had no business reporting on it.
