@@ -82,6 +82,44 @@ public final class ServiceBusEmulatorTestSupport {
     }
 
     /**
+     * Freezes the broker, severing every open AMQP connection without losing the queue.
+     *
+     * <p>The same technique the store-outage suites use on Postgres, and for the same reason:
+     * stopping the container would change its mapped port, so every connection string a running
+     * context holds would be pointing at nothing even after the broker came back — which is a
+     * different outage from the one operations staff meet, and not the one spec SC-004 describes.
+     * A pause severs the connections and leaves the endpoint exactly where it was.
+     */
+    public static void pause() {
+        container().getDockerClient()
+                .pauseContainerCmd(container().getContainerId())
+                .exec();
+    }
+
+    /**
+     * Thaws a broker frozen by {@link #pause()}, whether or not it is frozen.
+     *
+     * <p>Idempotent for the same reason the store's helper is: an outage suite thaws from an
+     * {@code @AfterEach}, and Docker's 500 for "not paused" would replace the assertion the suite
+     * really failed on with a fixture error.
+     */
+    public static void unpause() {
+        if (paused()) {
+            container().getDockerClient()
+                    .unpauseContainerCmd(container().getContainerId())
+                    .exec();
+        }
+    }
+
+    private static boolean paused() {
+        return Boolean.TRUE.equals(container().getDockerClient()
+                .inspectContainerCmd(container().getContainerId())
+                .exec()
+                .getState()
+                .getPaused());
+    }
+
+    /**
      * Looks for one message by its broker identity, on the queue or on its dead-letter queue.
      *
      * <p>Every broker suite in this repository shares one queue, so they all assert about their own

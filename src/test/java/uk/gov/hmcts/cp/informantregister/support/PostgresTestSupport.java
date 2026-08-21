@@ -78,11 +78,26 @@ public final class PostgresTestSupport {
     }
 
     /**
-     * Thaws a container frozen by {@link #pause()}.
+     * Thaws a container frozen by {@link #pause()}, whether or not it is frozen.
+     *
+     * <p>Idempotent deliberately. The outage suites thaw the store from an {@code @AfterEach} so
+     * that a failing assertion cannot leave the rest of the build running against a frozen
+     * database; Docker refuses an unpause of a running container with a 500, and that refusal would
+     * replace the assertion the suite actually failed on with a fixture error nobody can read.
      */
     public static void unpause() {
-        container().getDockerClient()
-                .unpauseContainerCmd(container().getContainerId())
-                .exec();
+        if (paused()) {
+            container().getDockerClient()
+                    .unpauseContainerCmd(container().getContainerId())
+                    .exec();
+        }
+    }
+
+    private static boolean paused() {
+        return Boolean.TRUE.equals(container().getDockerClient()
+                .inspectContainerCmd(container().getContainerId())
+                .exec()
+                .getState()
+                .getPaused());
     }
 }
