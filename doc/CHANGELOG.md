@@ -45,7 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     which CI runs as the `Container-Smoke` job.
   - The submission and payload adapters remain deliberate logging stubs; an empty authority set is
     this increment's correct outcome, not a missing step.
-- 2026-08-21 — `doc/CRA-220-HANDOVER.md` added: what CRA-220 still needs outside this repository
+- 2026-08-21 — CRA-220 handover written (what the increment still needs outside this repository); maintained outside the repo with the workstream's analysis notes
   (queue and DLQ provisioning, workload identity and Key Vault CSI, Flux/ADO wiring, the GitHub
   remote, and the operability and Results-publisher follow-ups).
 

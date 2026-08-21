@@ -86,7 +86,6 @@ Checkstyle runs against `config/checkstyle/google_checks.xml` with `maxWarnings 
 | Contracts (inbound message and outbound command) | [doc/API_CONTRACTS.md](doc/API_CONTRACTS.md) |
 | Deviations register (parity)             | [doc/DEVIATIONS.md](doc/DEVIATIONS.md)             |
 | Changelog                                | [doc/CHANGELOG.md](doc/CHANGELOG.md)               |
-| CRA-220 handover (what it still needs outside this repo) | [doc/CRA-220-HANDOVER.md](doc/CRA-220-HANDOVER.md) |
 | Pipeline overview                        | [docs/PIPELINE.md](docs/PIPELINE.md)               |
 
 `CLAUDE.md` is the working agreement for this repository; the binding rules live in
