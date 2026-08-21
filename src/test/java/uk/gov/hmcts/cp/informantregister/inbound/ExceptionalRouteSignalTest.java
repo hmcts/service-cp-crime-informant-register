@@ -28,6 +28,7 @@ import uk.gov.hmcts.cp.informantregister.support.StoreGateTestSupport;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -202,5 +203,35 @@ class ExceptionalRouteSignalTest {
                     .as("a defect in this service is still a failure of the delivery")
                     .isEqualTo(before + 1);
         }
+    }
+
+    @Test
+    @DisplayName("a body that cannot even be read is still settled, reported and counted")
+    void should_account_for_a_delivery_whose_body_cannot_be_read() {
+        final ServiceBusReceivedMessage message = mock(ServiceBusReceivedMessage.class);
+        // The SDK decodes a received message when it is asked for the body, and an empty, corrupt
+        // or already-disposed one throws rather than returning something disappointing. Read
+        // outside the catch-and-settle boundary that takes the delivery with it: no decision, so no
+        // settlement, so a message locked until its lease runs out and then delivered again, four
+        // more times, into the same failure.
+        when(message.getBody()).thenThrow(new IllegalStateException("the body could not be decoded"));
+        when(message.getMessageId()).thenReturn("RESULTS:" + UUID.randomUUID());
+        when(message.getLockToken()).thenReturn(UUID.randomUUID().toString());
+        when(message.getDeliveryCount()).thenReturn(0L);
+        final ServiceBusReceivedMessageContext context =
+                mock(ServiceBusReceivedMessageContext.class);
+        when(context.getMessage()).thenReturn(message);
+
+        final double before = transientFailures();
+
+        try (CapturedLog log = CapturedLog.of(InformantRegisterMessageListener.class)) {
+            listener.onMessage(context);
+
+            assertThat(errorsIn(log))
+                    .as("as accounted for as a body that cannot be parsed")
+                    .hasSize(1);
+            assertThat(transientFailures()).isEqualTo(before + 1);
+        }
+        verify(context).abandon();
     }
 }

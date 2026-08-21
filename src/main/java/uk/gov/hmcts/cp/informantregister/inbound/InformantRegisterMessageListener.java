@@ -119,9 +119,10 @@ public class InformantRegisterMessageListener {
      * handed back, and taken again until the broker's delivery budget ran out and parked work whose
      * only fault was arriving during an outage of ours.
      *
-     * <p>The line carries the bounded reason code and the broker's identity for the message, which
-     * is all this service knows about it — the body was deliberately not read, so there is no
-     * request id to correlate on yet, and there will be one when the delivery comes round again.
+     * <p>The line carries the bounded reason code and nothing else. There is nothing else to carry:
+     * the body was deliberately not read, so there is no request id to correlate on, and the broker's
+     * identity for the message is text the producer chose and is never written out. The delivery
+     * comes round again once the store is back, and that one is correlated.
      */
     private GuardDecision storeUnavailable() {
         LOG.error("The processed log could not be reached, so the delivery was not examined; "
@@ -173,16 +174,38 @@ public class InformantRegisterMessageListener {
     // names a settlement: the body that can never be valid is parked, and the fault nothing
     // anticipated is handed back. It is a catch-and-settle, not a catch-and-ignore.
     private GuardDecision decide(final ServiceBusReceivedMessage message) {
+        GuardDecision decision;
+        try {
+            decision = examine(message);
+        } catch (DataAccessException storeGone) {
+            decision = storeDiedMidRun();
+        } catch (RuntimeException unexpected) {
+            decision = unexpectedFailure(unexpected);
+        }
+        return decision;
+    }
+
+    /**
+     * Reads the body and runs what it turns out to be — <strong>inside</strong> the boundary above.
+     *
+     * <p>The body read is the first thing that can fail and it is a call into the SDK: it decodes a
+     * received message, and an empty, corrupt or already-disposed one throws rather than returning
+     * something disappointing. Read outside the catch it would take the delivery with it — no
+     * decision, so no settlement, so a message locked until its lease ran out and then delivered
+     * again, four more times, into the same failure. Reading it here means a body that cannot even
+     * be fetched is exactly as accounted for as one that cannot be parsed: one ERROR, one metric,
+     * one settlement.
+     *
+     * <p>It is a separate method only so that the body can be a local of the frame that reads it and
+     * still reach the validation branch, which needs it for correlation.
+     */
+    private GuardDecision examine(final ServiceBusReceivedMessage message) {
         final String body = message.getBody().toString();
         GuardDecision decision;
         try {
             decision = process(parser.parse(body), message);
         } catch (ContractValidationException invalid) {
             decision = contractInvalid(body, invalid);
-        } catch (DataAccessException storeGone) {
-            decision = storeDiedMidRun();
-        } catch (RuntimeException unexpected) {
-            decision = unexpectedFailure(unexpected);
         }
         return decision;
     }
@@ -237,10 +260,12 @@ public class InformantRegisterMessageListener {
     /**
      * Anything else at all.
      *
-     * <p>The stack trace is kept. Everywhere else in this service a failure is reported as a bounded
-     * code because the text would be producer-influenced or PII-bearing; here the failure is by
-     * definition <em>not</em> the message — it is this service or the infrastructure beneath it —
-     * and an unanticipated fault with no diagnostics is the one that stays unfixed.
+     * <p>Reported by type and bounded code, with no stack trace — the same rule as everywhere else,
+     * and for a reason that applies here more than anywhere. "Anything else at all" includes a
+     * payload adapter quoting the key it was asked for, a parser quoting the bytes it choked on, and
+     * a driver quoting a connection URL: the failure is not the message, but its <em>text</em> is
+     * routinely made of the message. The type names what happened, and the delivery comes round
+     * again to say whether it is still happening.
      */
     private GuardDecision unexpectedFailure(final RuntimeException unexpected) {
         LOG.error("Delivery failed unexpectedly; returning it for redelivery. type={} reason={}",

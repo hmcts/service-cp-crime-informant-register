@@ -40,3 +40,9 @@ applicationinsights-agent-*.jar
 .claude/todos/
 .claude/shell-snapshots/
 .claude/worktrees/
+
+.codex
+.codex/
+.gemini/
+
+/graphify-out/
