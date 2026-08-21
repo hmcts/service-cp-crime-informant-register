@@ -121,8 +121,12 @@ delivery therefore gets **no `processed_request` record** — it may not even ca
 The machine-readable schema lives at `src/main/resources/contracts/distribution-command.schema.json`
 and is the validation source used by the message-contract gate. The schema is **normative**; the
 service's own parser is the runtime implementation of it, and the contract tests run every corpus
-case through both, asserting they agree on accept and reject. This document is the narrative
-companion; if they disagree, the schema plus its tests win, and this page is corrected.
+case through both, asserting they agree on accept and reject. On date and time formats the runtime
+parser is the strict authority — the RFC 3339 grammar, a `T`/`t` separator and no leap seconds —
+while the reference validator is marginally more lenient on two enumerated forms (a space separator,
+and a verified leap second), a deliberate divergence pinned case by case in
+`DistributionCommandSchemaCorpusTest`. This document is the narrative companion; if they disagree,
+the schema plus its tests win, and this page is corrected.
 
 ---
 

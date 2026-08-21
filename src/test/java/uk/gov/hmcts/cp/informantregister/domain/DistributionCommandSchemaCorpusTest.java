@@ -236,6 +236,17 @@ class DistributionCommandSchemaCorpusTest {
                 rejected("fractional part with no digits",
                         bodyWith("sharedTime", "\"2026-08-20T09:00:00.Z\"")),
                 rejected("offset with no colon", bodyWith("sharedTime", "\"2026-08-20T09:00:00+0100\"")),
+                // A second numbered 60 is only grammatical at an instant where a leap second was
+                // actually inserted. These two are not such instants, and both sides refuse them —
+                // which is what shows the validator consults a leap-second table rather than waving
+                // through any ":60". The instants that WERE leap seconds are a documented divergence;
+                // see documentedValidatorLeniency below.
+                rejected("second 60 on an ordinary day",
+                        bodyWith("sharedTime", "\"2026-08-20T09:00:60Z\"")),
+                rejected("second 60 at a plausible but unannounced leap instant",
+                        bodyWith("sharedTime", "\"2026-06-30T23:59:60Z\"")),
+                rejected("space separator with no offset",
+                        bodyWith("sharedTime", "\"2026-08-20 09:00:00\"")),
 
                 // --- rejected: empties, nulls and wrong types ---------------------------
                 rejected("empty source", bodyWith("source", "\"\"")),
@@ -269,6 +280,92 @@ class DistributionCommandSchemaCorpusTest {
     @DisplayName("parser and schema agree on every boundary case")
     void parser_and_schema_should_agree(final CorpusCase corpusCase) {
         assertAgreement(corpusCase.body(), corpusCase.accepted());
+    }
+
+    // --- documented validator leniency ------------------------------------------------------
+
+    /**
+     * A form the reference validator accepts and this service's parser deliberately refuses.
+     *
+     * @param name      how the case reads in the test report
+     * @param body      the message body
+     * @param rationale why the parser stays stricter — stated per case, so the exemption cannot be
+     *                  extended later without someone writing down a reason
+     */
+    private record LenientCase(String name, String body, String rationale) {
+        @Override
+        public String toString() {
+            return name;
+        }
+    }
+
+    /**
+     * The complete list of forms on which the parser is deliberately stricter than the reference
+     * validator, each with its reason.
+     *
+     * <p>This is an exemption list, so it is closed by construction: {@link #corpus()} keeps the
+     * strict agreement assertion, and only the bodies enumerated here are excused from it. A new
+     * divergence appearing anywhere else still fails the build, and a case listed here is asserted
+     * in <em>both</em> directions — validator accepts, parser rejects — so if a validator upgrade
+     * changes its mind, this fails too and the case gets reclassified rather than quietly rotting.
+     *
+     * <p>The validator here is networknt 3.0.7, which delegates {@code date-time} to
+     * {@code com.ethlo.time:itu}. Both leniencies below were confirmed by running them through it,
+     * not inferred from its documentation.
+     */
+    static Stream<LenientCase> documentedValidatorLeniency() {
+        return Stream.of(
+                new LenientCase("space-separated date-time, zulu",
+                        bodyWith("sharedTime", "\"2026-08-20 09:00:00Z\""),
+                        "RFC 3339's grammar is date-time = full-date \"T\" full-time. The space form "
+                                + "appears only in a readability note in section 5.6, which permits "
+                                + "applications to accept it — it is not the ABNF, and draft-07's "
+                                + "date-time format means the ABNF. Accepting it here would widen this "
+                                + "service's contract past what the schema document states."),
+                new LenientCase("space-separated date-time, numeric offset",
+                        bodyWith("sharedTime", "\"2026-08-20 09:00:00+01:00\""),
+                        "Same as above; listed separately because the separator and the offset form "
+                                + "are independent, and a fix that handled one and not the other would "
+                                + "otherwise go unnoticed."),
+                new LenientCase("verified leap second, 31 December 2016",
+                        bodyWith("sharedTime", "\"2016-12-31T23:59:60Z\""),
+                        "Grammatical under RFC 3339, but unrepresentable in java.time: there is no "
+                                + "Instant for a 61st second, so accepting it would mean inventing a "
+                                + "value to store. Deciding it is valid also requires a third-party "
+                                + "leap-second table, which is a moving dependency to put on the "
+                                + "contract's hot path."),
+                new LenientCase("verified leap second, 30 June 2015",
+                        bodyWith("sharedTime", "\"2015-06-30T23:59:60Z\""),
+                        "As above. A second verified instant is included so the case group cannot "
+                                + "pass by coincidence of one date."));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("documentedValidatorLeniency")
+    @DisplayName("the parser is deliberately stricter than the validator, and only here")
+    void a_documented_leniency_should_be_accepted_by_the_validator_and_refused_by_the_parser(
+            final LenientCase lenientCase) {
+        // Nothing the publisher can emit reaches either form: cpp-context-results serialises with
+        // Instant.toString(), which always writes a T separator and never a 61st second. So the
+        // divergence costs no real message, and closing it would cost either correctness (inventing
+        // an Instant) or contract width (accepting a form the schema's grammar excludes).
+        assertThat(schemaAccepts(lenientCase.body()))
+                .as("the reference validator is expected to accept this form — %s", lenientCase.rationale())
+                .isTrue();
+        assertThat(parserAccepts(lenientCase.body()))
+                .as("the parser is expected to refuse this form — %s", lenientCase.rationale())
+                .isFalse();
+    }
+
+    @Test
+    @DisplayName("the leniency list exempts nothing the agreement corpus already covers")
+    void the_leniency_list_should_not_overlap_the_agreement_corpus() {
+        // Keeps the exemption honest: a body cannot be asserted to agree and to diverge at once, and
+        // a case cannot be moved onto the exemption list while still appearing to be covered.
+        final List<String> lenientBodies = documentedValidatorLeniency().map(LenientCase::body).toList();
+        final List<String> corpusBodies = corpus().map(CorpusCase::body).toList();
+
+        assertThat(lenientBodies).isNotEmpty().doesNotContainAnyElementsOf(corpusBodies);
     }
 
     // --- assertions taken mechanically from the schema document -----------------------------
