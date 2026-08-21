@@ -44,8 +44,13 @@ public class ServiceBusConsumerConfig {
     public InformantRegisterMessageListener informantRegisterMessageListener(
             final DistributionCommandParser parser,
             final DistributionPipeline pipeline,
-            final ProcessingMetrics metrics) {
-        return new InformantRegisterMessageListener(parser, pipeline, metrics);
+            final ProcessingMetrics metrics,
+            final InformantRegisterProperties properties) {
+        // The delivery budget is the queue's, mirrored in configuration: the listener recognises the
+        // final permitted delivery from it, so the two are changed together or this service is wrong
+        // about the broker.
+        return new InformantRegisterMessageListener(
+                parser, pipeline, metrics, properties.servicebus().maxDeliveryCount());
     }
 
     /**

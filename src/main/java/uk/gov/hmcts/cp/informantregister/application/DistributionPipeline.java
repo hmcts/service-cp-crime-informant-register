@@ -87,7 +87,7 @@ public class DistributionPipeline {
         final GuardDecision admission = guard.admit(command, delivery);
         final GuardDecision decision;
         if (admission instanceof GuardDecision.Run admitted) {
-            decision = runUnder(command, admitted.claim());
+            decision = runUnder(command, admitted.claim(), delivery.finalPermittedDelivery());
         } else {
             // Already completed, contested, or a collision: the guard has decided, and a run would
             // either duplicate work or overwrite a record that belongs to a different request.
@@ -99,17 +99,19 @@ public class DistributionPipeline {
     /**
      * The run itself, with the one failure it can meet turned into an outcome.
      */
-    private GuardDecision runUnder(final DistributionCommand command, final RunClaim claim) {
+    private GuardDecision runUnder(
+            final DistributionCommand command, final RunClaim claim, final boolean lastChance) {
         GuardDecision outcome;
         try {
-            outcome = runToOutcome(command, claim);
+            outcome = runToOutcome(command, claim, lastChance);
         } catch (PayloadUnavailableException unavailable) {
-            outcome = failed(claim, unavailable.classification(), unavailable.reason());
+            outcome = failed(claim, unavailable.classification(), unavailable.reason(), lastChance);
         }
         return outcome;
     }
 
-    private GuardDecision runToOutcome(final DistributionCommand command, final RunClaim claim) {
+    private GuardDecision runToOutcome(
+            final DistributionCommand command, final RunClaim claim, final boolean lastChance) {
         final Instant deadline = clock.instant().plus(processingDeadline);
 
         final JsonNode payload = payloadSource.fetch(command);
@@ -130,8 +132,8 @@ public class DistributionPipeline {
             }
             outcome = completed(claim, submissions.size());
         } else {
-            outcome = failed(
-                    claim, FailureClassification.TRANSIENT, ReasonCode.PROCESSING_DEADLINE_EXCEEDED);
+            outcome = failed(claim, FailureClassification.TRANSIENT,
+                    ReasonCode.PROCESSING_DEADLINE_EXCEEDED, lastChance);
         }
         return outcome;
     }
@@ -155,14 +157,38 @@ public class DistributionPipeline {
     /**
      * Records a failed run — loudly, and with a bounded reason rather than whatever the layer
      * beneath had to say about it.
+     *
+     * <p>The same failure means two different things depending on whether the queue will deliver the
+     * message again. With deliveries remaining it is recorded RETRYING and the delivery is handed
+     * back. On the final permitted delivery it is recorded FAILED, in the transaction that stamps the
+     * identity of the delivery that exhausted the budget onto the row, and the message is parked
+     * where support can see it. Retry exhaustion is judged by that delivery count alone and never by
+     * the cumulative attempt count, which is a lifetime tally and would park a replayed request on
+     * its first failure (spec FR-004, FR-009).
+     *
+     * <p>The terminal outcome is counted only once the guard has accepted the write: a superseded
+     * runner's parking affects no rows and comes back as a hand-back, and counting it would report a
+     * request parked that is still being worked on by somebody else.
      */
     private GuardDecision failed(
             final RunClaim claim,
             final FailureClassification classification,
-            final ReasonCode reason) {
-        LOG.error("Pipeline run failed. source={} requestId={} classification={} reason={}",
-                claim.source(), claim.requestId(), classification.label(), reason.code());
+            final ReasonCode reason,
+            final boolean lastChance) {
+        LOG.error("Pipeline run failed. source={} requestId={} classification={} reason={} "
+                        + "finalPermittedDelivery={}",
+                claim.source(), claim.requestId(), classification.label(), reason.code(), lastChance);
         metrics.pipelineFailed(classification);
-        return guard.recordTransientFailure(claim, reason);
+
+        final GuardDecision outcome;
+        if (lastChance) {
+            outcome = guard.recordExhaustion(claim, reason);
+            if (outcome instanceof GuardDecision.DeadLetter) {
+                metrics.requestSettled(RequestOutcome.FAILED);
+            }
+        } else {
+            outcome = guard.recordTransientFailure(claim, reason);
+        }
+        return outcome;
     }
 }

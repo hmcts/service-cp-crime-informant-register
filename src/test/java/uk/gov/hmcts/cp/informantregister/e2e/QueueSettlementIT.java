@@ -62,6 +62,9 @@ class QueueSettlementIT {
 
     private static final Duration SETTLED_WITHIN = Duration.ofSeconds(20);
 
+    /** The queue's delivery budget, as declared in the emulator configuration this suite mounts. */
+    private static final int MAX_DELIVERY_COUNT = 5;
+
     private static String connectionString;
 
     private final DistributionPipeline pipeline = mock(DistributionPipeline.class);
@@ -69,7 +72,8 @@ class QueueSettlementIT {
     private final InformantRegisterMessageListener listener = new InformantRegisterMessageListener(
             new DistributionCommandParser(JacksonConfig.contractObjectMapper()),
             pipeline,
-            new ProcessingMetrics(new SimpleMeterRegistry()));
+            new ProcessingMetrics(new SimpleMeterRegistry()),
+            MAX_DELIVERY_COUNT);
 
     /** Every delivery this suite's processor saw, as (messageId, deliveryCount). */
     private final List<Delivery> observed = new CopyOnWriteArrayList<>();

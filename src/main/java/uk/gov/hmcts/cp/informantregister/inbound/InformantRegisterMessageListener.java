@@ -30,6 +30,11 @@ import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
  * returned durably, because a message acknowledged before the write is a request the processed log
  * has never heard of and the broker will never deliver again.
  *
+ * <p>One broker fact is read here and nowhere else: whether the queue will deliver this message
+ * again. The processed log cannot answer it — the delivery budget belongs to the message, not to the
+ * request — so the transport adapter reads it from the delivery and carries it into the core, where
+ * it decides whether a failing run is recorded as retrying or parked.
+ *
  * <p>Correlation is put in place as soon as the body yields it and taken down when the delivery
  * ends, so receipt, processing and settlement all carry the same {@code requestId}, {@code hearingId}
  * and {@code hearingDay}. The pod is single-threaded per delivery from the SDK's point of view, and
@@ -55,14 +60,17 @@ public class InformantRegisterMessageListener {
     private final DistributionCommandParser parser;
     private final DistributionPipeline pipeline;
     private final ProcessingMetrics metrics;
+    private final int maxDeliveryCount;
 
     public InformantRegisterMessageListener(
             final DistributionCommandParser parser,
             final DistributionPipeline pipeline,
-            final ProcessingMetrics metrics) {
+            final ProcessingMetrics metrics,
+            final int maxDeliveryCount) {
         this.parser = parser;
         this.pipeline = pipeline;
         this.metrics = metrics;
+        this.maxDeliveryCount = maxDeliveryCount;
     }
 
     /**
@@ -110,8 +118,9 @@ public class InformantRegisterMessageListener {
         MDC.put(REQUEST_ID, command.requestId().toString());
         MDC.put(HEARING_ID, command.hearingId().toString());
         MDC.put(HEARING_DAY, command.hearingDay().toString());
-        LOG.info("Delivery received. source={} eventType={} deliveryCount={}",
-                command.source(), command.eventType(), message.getDeliveryCount());
+        LOG.info("Delivery received. source={} eventType={} deliveryCount={} finalPermittedDelivery={}",
+                command.source(), command.eventType(), message.getDeliveryCount(),
+                isFinalPermittedDelivery(message));
         return pipeline.process(command, identityOf(message));
     }
 
@@ -189,8 +198,33 @@ public class InformantRegisterMessageListener {
      * <p>The lock token is the delivery half — it is unique to the delivery and changes on every
      * redelivery, which is exactly the granularity {@code claim_owner} wants.
      */
-    private static DeliveryIdentity identityOf(final ServiceBusReceivedMessage message) {
-        return new DeliveryIdentity(message.getMessageId(), INSTANCE + '/' + message.getLockToken());
+    private DeliveryIdentity identityOf(final ServiceBusReceivedMessage message) {
+        return new DeliveryIdentity(
+                message.getMessageId(),
+                INSTANCE + '/' + message.getLockToken(),
+                isFinalPermittedDelivery(message));
+    }
+
+    /**
+     * Whether the queue will deliver this message again after this delivery.
+     *
+     * <p><strong>The count is zero-based.</strong> The broker counts previous <em>unsuccessful</em>
+     * deliveries, so a first delivery has had none and the last delivery a message is entitled to
+     * carries {@code maxDeliveryCount - 1}. That is observed against a real broker in
+     * {@code QueueSettlementIT}, not assumed from the property's name, because both mistakes are
+     * quiet and both are damaging: reading it as {@code maxDeliveryCount} means this service parks
+     * nothing and the broker parks the message a delivery later under its own reason with no FAILED
+     * record behind it, while reading it a delivery early throws away a retry the queue was willing
+     * to give.
+     *
+     * <p>The limit is the configured one rather than a constant, because it mirrors a setting on the
+     * queue itself: the two are changed together or the service is wrong about the broker. The
+     * comparison is {@code >=} so that a message somehow arriving past the budget — a queue
+     * reconfigured downwards while messages were in flight — is still parked rather than never
+     * parked at all.
+     */
+    private boolean isFinalPermittedDelivery(final ServiceBusReceivedMessage message) {
+        return message.getDeliveryCount() >= (long) maxDeliveryCount - 1;
     }
 
     private static void clearCorrelation() {

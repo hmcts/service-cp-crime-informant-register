@@ -77,6 +77,9 @@ class SettlementFailureEdgeTest {
     private static final String MESSAGE_ID = "RESULTS:abcd";
     private static final String LOCK_TOKEN = "5a4f2f1e-0000-0000-0000-00000000000a";
 
+    /** The queue's delivery budget. Every delivery here is its message's first. */
+    private static final int MAX_DELIVERY_COUNT = 5;
+
     private final DistributionPipeline pipeline = mock(DistributionPipeline.class);
     private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
     private final ProcessingMetrics metrics = new ProcessingMetrics(registry);
@@ -84,7 +87,7 @@ class SettlementFailureEdgeTest {
             new DistributionCommandParser(JacksonConfig.contractObjectMapper());
 
     private final InformantRegisterMessageListener listener =
-            new InformantRegisterMessageListener(parser, pipeline, metrics);
+            new InformantRegisterMessageListener(parser, pipeline, metrics, MAX_DELIVERY_COUNT);
 
     private final UUID requestId = UUID.randomUUID();
     private final UUID hearingId = UUID.randomUUID();

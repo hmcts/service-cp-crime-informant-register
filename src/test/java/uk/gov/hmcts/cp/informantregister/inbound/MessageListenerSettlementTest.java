@@ -65,6 +65,9 @@ class MessageListenerSettlementTest {
     private static final String MESSAGE_ID = "RESULTS:abcd";
     private static final String LOCK_TOKEN = "5a4f2f1e-0000-0000-0000-00000000000a";
 
+    /** The queue's delivery budget. Every delivery here is well inside it. */
+    private static final int MAX_DELIVERY_COUNT = 5;
+
     /** The pipeline's own bound; nothing here comes near it. */
     private static final Duration RUN_DEADLINE = Duration.ofMinutes(4);
 
@@ -90,7 +93,7 @@ class MessageListenerSettlementTest {
             new DistributionCommandParser(JacksonConfig.contractObjectMapper());
 
     private final InformantRegisterMessageListener listener =
-            new InformantRegisterMessageListener(parser, pipeline, metrics);
+            new InformantRegisterMessageListener(parser, pipeline, metrics, MAX_DELIVERY_COUNT);
 
     private final UUID requestId = UUID.randomUUID();
     private final UUID hearingId = UUID.randomUUID();
@@ -251,7 +254,8 @@ class MessageListenerSettlementTest {
                     parser,
                     new DistributionPipeline(guard, payloadSource, submissionClient, metrics,
                             Clock.systemUTC(), RUN_DEADLINE),
-                    metrics);
+                    metrics,
+                    MAX_DELIVERY_COUNT);
         }
 
         /** A write that has been issued and has not yet come back — a slow store, in one fixture. */
