@@ -1,5 +1,10 @@
 package uk.gov.hmcts.cp.informantregister.support;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
+
 import org.flywaydb.core.Flyway;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
@@ -62,6 +67,31 @@ public final class PostgresTestSupport {
                 .locations("classpath:db/migration")
                 .load()
                 .migrate();
+    }
+
+    /**
+     * Creates an empty, unmigrated database inside the shared container and returns its JDBC URL.
+     *
+     * <p>For the one suite that has to watch a migration happen. Against the shared database, which
+     * every other suite has already migrated, "the deferred migration ran" is unobservable — Flyway
+     * would find its own history table and do nothing, and the assertion would pass whether the
+     * migration was invoked or not. A database with nothing in it makes the question answerable.
+     *
+     * @param name the database to create; must be a plain identifier
+     * @return the JDBC URL of the new, empty database
+     */
+    public static String createEmptyDatabase(final String name) {
+        if (!name.matches("[a-z][a-z0-9_]{0,62}")) {
+            throw new IllegalArgumentException("not a plain database identifier: " + name);
+        }
+        try (Connection connection = DriverManager.getConnection(jdbcUrl(), username(), password());
+             Statement statement = connection.createStatement()) {
+            statement.execute("CREATE DATABASE " + name);
+        } catch (SQLException failed) {
+            throw new IllegalStateException("could not create the database " + name, failed);
+        }
+        return "jdbc:postgresql://" + container().getHost() + ':'
+                + container().getFirstMappedPort() + '/' + name;
     }
 
     /**
