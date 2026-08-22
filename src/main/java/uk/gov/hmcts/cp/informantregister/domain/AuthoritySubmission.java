@@ -1,17 +1,17 @@
 package uk.gov.hmcts.cp.informantregister.domain;
 
 import java.util.UUID;
-import tools.jackson.databind.JsonNode;
 
 /**
  * One prosecuting authority's share of a request, ready to be submitted.
  *
- * <p>The identifiers are typed because this service owns them; the document is left as a tree
- * because this service does not. The outbound {@code add-informant-register} body is results-owned
- * and its shape is settled by the transformation story, so binding it to a record here would fix a
- * contract this record has not been given. Principle IV's rule holds either way — what this service
- * <em>produces</em> is typed, and {@code InformantRegisterDocument} is that type; a submission
- * carries whatever tree the transformation produced from it.
+ * <p>Both halves are typed, and the document half deliberately so. Principle IV is not symmetrical:
+ * a hearing payload crosses this service as a {@code JsonNode} because it is owned elsewhere and
+ * must survive untouched, while <em>everything this service produces</em> — the
+ * {@code add-informant-register} body included — is a typed record, so a field the service cannot
+ * name is a field it cannot send under a contract that is {@code additionalProperties: false}. The
+ * tree this component briefly held was a placeholder for a document type that had not been written
+ * yet; {@link InformantRegisterDocument} is that type, so the placeholder is gone.
  *
  * <p><strong>Why the request's key travels with the authority.</strong> A submission is recorded in
  * {@code processed_output} before it is sent, and that row is keyed
@@ -23,8 +23,11 @@ import tools.jackson.databind.JsonNode;
  * @param source                 the request's key, part 1
  * @param requestId              the request's key, part 2
  * @param prosecutionAuthorityId the authority this output is for
- * @param document               the outbound document, as a canonical tree
+ * @param document               the outbound document, typed against the results-owned contract
  */
 public record AuthoritySubmission(
-        String source, UUID requestId, String prosecutionAuthorityId, JsonNode document) {
+        String source,
+        UUID requestId,
+        String prosecutionAuthorityId,
+        InformantRegisterDocument document) {
 }

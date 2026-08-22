@@ -58,12 +58,20 @@ public class ProcessedOutputRepository {
              WHERE processed_output.status <> 'POSTED'
             """;
 
-    /** Statement 2 — the POST was accepted. */
+    /**
+     * Statement 2 — the POST was accepted.
+     *
+     * <p>The {@code status <> 'POSTED'} predicate is the same rule as the claim's, applied to the
+     * outcome: <strong>POSTED is terminal</strong>. It costs nothing on the ordinary path and it
+     * says, in the statement rather than in a comment, that no later write may move a row out of the
+     * state that stops it being sent again.
+     */
     private static final String RECORD_POSTED = """
             UPDATE processed_output
                SET status = 'POSTED', updated_at = now()
              WHERE source = :source AND request_id = :requestId
                AND prosecution_authority_id = :authority
+               AND status <> 'POSTED'
             """;
 
     /**
@@ -71,12 +79,20 @@ public class ProcessedOutputRepository {
      *
      * <p>{@code request_digest} is deliberately left in place. What was attempted is the
      * reconciliation evidence, and it is worth more after a failure than after a success.
+     *
+     * <p>The {@code status <> 'POSTED'} predicate is the one that has to be there. Two deliveries of
+     * a request can overlap — a runner whose claim was reclaimed while it worked is still running —
+     * and without the predicate that runner's late failure would move an authority the winner had
+     * already POSTED back to FAILED. The next delivery would then re-claim it and POST a second,
+     * non-idempotent {@code add-informant-register}: a duplicate register row created by the very
+     * log that exists to prevent one.
      */
     private static final String RECORD_FAILED = """
             UPDATE processed_output
                SET status = 'FAILED', updated_at = now()
              WHERE source = :source AND request_id = :requestId
                AND prosecution_authority_id = :authority
+               AND status <> 'POSTED'
             """;
 
     private final JdbcClient jdbcClient;
@@ -123,7 +139,8 @@ public class ProcessedOutputRepository {
      * @param source                 the request's key, part 1
      * @param requestId              the request's key, part 2
      * @param prosecutionAuthorityId the authority this output is for
-     * @return whether a row was updated; false means no row was ever claimed for this authority
+     * @return whether a row was moved to POSTED; false means no row was ever claimed for this
+     *         authority, or it was already POSTED by an overlapping delivery
      */
     public boolean recordPosted(
             final String source, final UUID requestId, final String prosecutionAuthorityId) {
@@ -136,7 +153,8 @@ public class ProcessedOutputRepository {
      * @param source                 the request's key, part 1
      * @param requestId              the request's key, part 2
      * @param prosecutionAuthorityId the authority this output is for
-     * @return whether a row was updated; false means no row was ever claimed for this authority
+     * @return whether a row was moved to FAILED; false means no row was ever claimed for this
+     *         authority, or it is POSTED and must not be moved out of it
      */
     public boolean recordFailed(
             final String source, final UUID requestId, final String prosecutionAuthorityId) {

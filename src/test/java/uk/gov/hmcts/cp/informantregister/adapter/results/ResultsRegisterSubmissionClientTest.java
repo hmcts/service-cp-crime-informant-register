@@ -25,7 +25,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
 import uk.gov.hmcts.cp.informantregister.domain.AuthoritySubmission;
@@ -98,6 +97,7 @@ class ResultsRegisterSubmissionClientTest {
         void the_row_should_be_claimed_before_the_post_and_marked_posted_after() {
             when(outputs.claimPending(any(), eq(SOURCE), eq(requestId), eq(AUTHORITY), anyString()))
                     .thenReturn(true);
+            when(outputs.recordPosted(SOURCE, requestId, AUTHORITY)).thenReturn(true);
 
             client().submit(submission());
 
@@ -112,6 +112,7 @@ class ResultsRegisterSubmissionClientTest {
         void the_bytes_posted_should_be_the_document_this_service_produced() {
             when(outputs.claimPending(any(), anyString(), any(), anyString(), anyString()))
                     .thenReturn(true);
+            when(outputs.recordPosted(SOURCE, requestId, AUTHORITY)).thenReturn(true);
             final ArgumentCaptor<byte[]> sent = ArgumentCaptor.forClass(byte[].class);
 
             client().submit(submission());
@@ -125,6 +126,7 @@ class ResultsRegisterSubmissionClientTest {
         void the_digest_recorded_should_be_the_sha_256_of_the_bytes_that_went_out() {
             when(outputs.claimPending(any(), anyString(), any(), anyString(), anyString()))
                     .thenReturn(true);
+            when(outputs.recordPosted(SOURCE, requestId, AUTHORITY)).thenReturn(true);
             final ArgumentCaptor<byte[]> sent = ArgumentCaptor.forClass(byte[].class);
             final ArgumentCaptor<String> digest = ArgumentCaptor.forClass(String.class);
 
@@ -161,6 +163,7 @@ class ResultsRegisterSubmissionClientTest {
         void a_transient_failure_should_be_recorded_before_it_is_rethrown() {
             when(outputs.claimPending(any(), anyString(), any(), anyString(), anyString()))
                     .thenReturn(true);
+            when(outputs.recordFailed(SOURCE, requestId, AUTHORITY)).thenReturn(true);
             doThrow(new SubmissionFailedException(
                     FailureClassification.TRANSIENT, ReasonCode.PIPELINE_TRANSIENT_FAILURE))
                     .when(gateway).post(any());
@@ -180,6 +183,7 @@ class ResultsRegisterSubmissionClientTest {
         void a_refusal_should_reach_the_pipeline_with_its_classification_intact() {
             when(outputs.claimPending(any(), anyString(), any(), anyString(), anyString()))
                     .thenReturn(true);
+            when(outputs.recordFailed(SOURCE, requestId, AUTHORITY)).thenReturn(true);
             doThrow(new SubmissionFailedException(
                     FailureClassification.NON_TRANSIENT, ReasonCode.SUBMISSION_REJECTED))
                     .when(gateway).post(any());
@@ -193,6 +197,53 @@ class ResultsRegisterSubmissionClientTest {
         }
     }
 
+    /**
+     * The outcome write is the durable half of a submission, and it is checked rather than assumed.
+     *
+     * <p>A claim was granted moments before, so the only way one of these statements can affect no
+     * row is that a delivery this one overlapped with reached the row first and POSTED it — POSTED
+     * being terminal in the log. That means two runners were working the same request, which is
+     * worth an ERROR: what this runner believes happened is not what the log durably says.
+     */
+    @Nested
+    @DisplayName("an outcome write that lands on nothing")
+    class OutcomeNotRecorded {
+
+        @Test
+        void a_post_that_recorded_nothing_should_be_reported_rather_than_assumed_written() {
+            when(outputs.claimPending(any(), anyString(), any(), anyString(), anyString()))
+                    .thenReturn(true);
+            when(outputs.recordPosted(SOURCE, requestId, AUTHORITY)).thenReturn(false);
+
+            try (CapturedLog log = CapturedLog.of(ResultsRegisterSubmissionClient.class)) {
+                client().submit(submission());
+
+                assertThat(log.renderings())
+                        .anyMatch(line -> line.contains("Outcome write affected no row")
+                                && line.contains(AUTHORITY));
+            }
+        }
+
+        @Test
+        void a_failure_that_recorded_nothing_should_still_reach_the_pipeline() {
+            when(outputs.claimPending(any(), anyString(), any(), anyString(), anyString()))
+                    .thenReturn(true);
+            when(outputs.recordFailed(SOURCE, requestId, AUTHORITY)).thenReturn(false);
+            doThrow(new SubmissionFailedException(
+                    FailureClassification.NON_TRANSIENT, ReasonCode.SUBMISSION_REJECTED))
+                    .when(gateway).post(any());
+
+            try (CapturedLog log = CapturedLog.of(ResultsRegisterSubmissionClient.class)) {
+                assertThatThrownBy(() -> client().submit(submission()))
+                        .isInstanceOf(SubmissionFailedException.class);
+
+                assertThat(log.renderings())
+                        .as("a failure the log could not record is still a failure")
+                        .anyMatch(line -> line.contains("Outcome write affected no row"));
+            }
+        }
+    }
+
     @Nested
     @DisplayName("what the log is allowed to say")
     class Privacy {
@@ -201,6 +252,7 @@ class ResultsRegisterSubmissionClientTest {
         void no_line_should_carry_the_document_or_anyone_named_in_it() {
             when(outputs.claimPending(any(), anyString(), any(), anyString(), anyString()))
                     .thenReturn(true);
+            when(outputs.recordPosted(SOURCE, requestId, AUTHORITY)).thenReturn(true);
 
             try (CapturedLog log = CapturedLog.of(ResultsRegisterSubmissionClient.class)) {
                 client().submit(submission());
@@ -221,7 +273,7 @@ class ResultsRegisterSubmissionClientTest {
         }
     }
 
-    private static JsonNode document() {
+    private static InformantRegisterDocument document() {
         final InformantRegisterDefendant defendant = new InformantRegisterDefendant(
                 DEFENDANT_NAME, null, "1 High Street", null, null, null, null,
                 null, null, null, null, null, null, null);
@@ -229,13 +281,12 @@ class ResultsRegisterSubmissionClientTest {
                 new InformantRegisterHearing("Court 1", "10:00:00Z", List.of(defendant));
         final InformantRegisterHearingVenue venue =
                 new InformantRegisterHearingVenue(null, "Bristol Magistrates' Court", List.of(session));
-        final InformantRegisterDocument document = new InformantRegisterDocument(
+        return new InformantRegisterDocument(
                 ZonedDateTime.parse("2026-08-20T11:00:00Z"),
                 ZonedDateTime.parse("2026-08-19T10:00:00Z"),
                 UUID.fromString("11111111-2222-4333-8444-555555555555"),
                 UUID.fromString(AUTHORITY),
                 "CPS", null, null, null,
                 "informant-register-CPS-20260820.pdf", null, venue, null);
-        return MAPPER.readTree(MAPPER.writeValueAsString(document));
     }
 }

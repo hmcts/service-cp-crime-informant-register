@@ -152,6 +152,32 @@ public class IdempotencyGuard {
     }
 
     /**
+     * Records a run that failed in a way no redelivery could change, parking it at once.
+     *
+     * <p>The delivery budget does not enter into it. A body the Results command refused is the same
+     * body on the next delivery, so spending four more deliveries on it buys nothing and delays the
+     * dead-letter the support team acts on by four back-offs (design rules, "Processing State
+     * Machine": non-transient failures go straight to FAILED and {@code deadLetter()}).
+     *
+     * <p>The row is parked under this delivery's identity exactly as an exhausted one is, and for
+     * the same reason: a redelivery of the identity that parked the request re-parks it rather than
+     * replaying it, while a deliberate resubmission under a fresh identity replays — which is how a
+     * dead-lettered request is recovered once whatever the command refused has been dealt with.
+     */
+    public GuardDecision recordNonTransientFailure(final RunClaim claim, final ReasonCode reason) {
+        final GuardDecision decision;
+        if (repository.recordFailed(claim, reason.code())) {
+            LOG.info("Request parked; no redelivery could change the outcome. "
+                            + "source={} requestId={} reason={}",
+                    claim.source(), claim.requestId(), reason.code());
+            decision = new GuardDecision.DeadLetter(DeadLetterReason.NON_TRANSIENT, reason);
+        } else {
+            decision = rejectStaleRunner(claim);
+        }
+        return decision;
+    }
+
+    /**
      * The transition table, in the order the data model states it: identity first, then state.
      */
     private GuardDecision branch(

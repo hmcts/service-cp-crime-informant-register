@@ -180,6 +180,64 @@ class ProcessedOutputRepositoryIT {
                     .isEqualTo(DIGEST);
         }
 
+        /**
+         * The case that makes the predicate worth having.
+         *
+         * <p>Two deliveries of a request can overlap: a runner whose claim was reclaimed while it
+         * worked is still running, and its POST can finish after the winner's. If its late failure
+         * could move a POSTED authority back to FAILED, the next delivery would re-claim that
+         * authority and POST a second, non-idempotent {@code add-informant-register} — a duplicate
+         * register row created by the log that exists to prevent one.
+         */
+        @Test
+        void a_late_failure_should_never_move_an_authority_out_of_posted() {
+            final DistributionCommand command = seededRequest();
+            final ProcessedOutputRepository repository = repository();
+            repository.claimPending(
+                    UUID.randomUUID(), command.source(), command.requestId(), AUTHORITY, DIGEST);
+            repository.recordPosted(command.source(), command.requestId(), AUTHORITY);
+
+            final boolean recorded =
+                    repository.recordFailed(command.source(), command.requestId(), AUTHORITY);
+
+            assertThat(recorded)
+                    .as("the loser of an overlap is told its write affected nothing")
+                    .isFalse();
+            assertThat(requireRow(command, AUTHORITY).status()).isEqualTo("POSTED");
+        }
+
+        @Test
+        void recording_a_post_twice_should_leave_the_row_posted_and_affect_nothing_the_second_time() {
+            final DistributionCommand command = seededRequest();
+            final ProcessedOutputRepository repository = repository();
+            repository.claimPending(
+                    UUID.randomUUID(), command.source(), command.requestId(), AUTHORITY, DIGEST);
+            repository.recordPosted(command.source(), command.requestId(), AUTHORITY);
+
+            final boolean again =
+                    repository.recordPosted(command.source(), command.requestId(), AUTHORITY);
+
+            assertThat(again).isFalse();
+            assertThat(requireRow(command, AUTHORITY).status()).isEqualTo("POSTED");
+        }
+
+        @Test
+        void recording_a_post_after_a_failure_should_be_admitted_so_the_success_is_the_last_word() {
+            final DistributionCommand command = seededRequest();
+            final ProcessedOutputRepository repository = repository();
+            repository.claimPending(
+                    UUID.randomUUID(), command.source(), command.requestId(), AUTHORITY, DIGEST);
+            repository.recordFailed(command.source(), command.requestId(), AUTHORITY);
+
+            final boolean recorded =
+                    repository.recordPosted(command.source(), command.requestId(), AUTHORITY);
+
+            assertThat(recorded)
+                    .as("an authority that did go must end POSTED, or it would be sent again")
+                    .isTrue();
+            assertThat(requireRow(command, AUTHORITY).status()).isEqualTo("POSTED");
+        }
+
         @Test
         void recording_an_outcome_for_an_unclaimed_authority_should_affect_nothing() {
             final DistributionCommand command = seededRequest();

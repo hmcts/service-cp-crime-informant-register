@@ -18,6 +18,7 @@ import uk.gov.hmcts.cp.informantregister.domain.PayloadUnavailableException;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.RequestOutcome;
 import uk.gov.hmcts.cp.informantregister.domain.RunClaim;
+import uk.gov.hmcts.cp.informantregister.domain.SubmissionFailedException;
 
 /**
  * One request, from the guard admitting it to the guard recording what happened.
@@ -42,19 +43,19 @@ import uk.gov.hmcts.cp.informantregister.domain.RunClaim;
  * timestamp, which is the multi-node skew the data model's single-time-authority rule exists to rule
  * out.
  *
- * <p>Every failure a run can meet this increment is transient — payload unavailability is transient
- * by construction, and a deadline is not a fault at all — so no failure here is ever parked for
- * being unretryable. What decides the outcome instead is whether the queue will deliver the message
- * again: with deliveries remaining the failure is recorded RETRYING and the delivery is handed back;
- * on the final permitted delivery the same failure is recorded FAILED, with the identity of the
- * delivery that exhausted the budget, and the message is parked. The transport adapter reads that
- * fact from the delivery and carries it in, because the processed log cannot know it — the budget
- * belongs to the message, not to the request.
+ * <p><strong>Every failure is settled on the classification it carries, not on where it came
+ * from.</strong> A non-transient failure — the Results command refusing a body, which is the only
+ * source of one — is parked immediately: the next delivery would send the same bytes to the same
+ * refusal, so the remaining budget buys nothing. A transient failure is settled on whether the
+ * queue will deliver the message again: with deliveries remaining it is recorded RETRYING and the
+ * delivery is handed back; on the final permitted delivery it is recorded FAILED, with the identity
+ * of the delivery that exhausted the budget, and the message is parked. The transport adapter reads
+ * that fact from the delivery and carries it in, because the processed log cannot know it — the
+ * budget belongs to the message, not to the request.
  *
- * <p>The classification is carried rather than assumed because it already decides the metric label,
- * and it becomes a second branch the moment the submission port has authorities to reject: a 4xx
- * contract rejection is not worth a redelivery whatever the delivery count says, and that branch
- * belongs with the story that can test it.
+ * <p>Payload unavailability is transient by construction and a deadline is not a fault at all, so
+ * neither is ever parked for being unretryable, and a failure nothing anticipated is treated as
+ * transient because "unknown" is not the same as "hopeless".
  */
 public class DistributionPipeline {
 
@@ -124,6 +125,11 @@ public class DistributionPipeline {
             outcome = runToOutcome(command, claim, lastChance);
         } catch (PayloadUnavailableException unavailable) {
             outcome = failed(claim, unavailable.classification(), unavailable.reason(), lastChance);
+        } catch (SubmissionFailedException submission) {
+            // The one failure that says whether it is worth retrying, so it is asked rather than
+            // assumed: a refused body is refused on every delivery, and the delivery budget is
+            // finite.
+            outcome = failed(claim, submission.classification(), submission.reason(), lastChance);
         } catch (RuntimeException unexpected) {
             LOG.error("Run failed unexpectedly; recording it so the claim is released. "
                             + "source={} requestId={} type={}",
@@ -182,8 +188,13 @@ public class DistributionPipeline {
      * Records a failed run — loudly, and with a bounded reason rather than whatever the layer
      * beneath had to say about it.
      *
-     * <p>The same failure means two different things depending on whether the queue will deliver the
-     * message again. With deliveries remaining it is recorded RETRYING and the delivery is handed
+     * <p><strong>A non-transient failure is parked at once</strong>, whatever the delivery budget
+     * says. Nothing about the next delivery would be different — the same bytes meet the same
+     * refusal — so the remaining deliveries would buy nothing and would delay by four back-offs the
+     * dead-letter support acts on (design rules, "Processing State Machine").
+     *
+     * <p>A transient failure means two different things depending on whether the queue will deliver
+     * the message again. With deliveries remaining it is recorded RETRYING and the delivery is handed
      * back. On the final permitted delivery it is recorded FAILED, in the transaction that stamps the
      * identity of the delivery that exhausted the budget onto the row, and the message is parked
      * where support can see it. Retry exhaustion is judged by that delivery count alone and never by
@@ -204,14 +215,18 @@ public class DistributionPipeline {
                 claim.source(), claim.requestId(), classification.label(), reason.code(), lastChance);
         metrics.pipelineFailed(classification);
 
-        final GuardDecision outcome;
-        if (lastChance) {
-            outcome = guard.recordExhaustion(claim, reason);
-            if (outcome instanceof GuardDecision.DeadLetter) {
-                metrics.requestSettled(RequestOutcome.FAILED);
-            }
-        } else {
-            outcome = guard.recordTransientFailure(claim, reason);
+        return switch (classification) {
+            case NON_TRANSIENT -> parked(guard.recordNonTransientFailure(claim, reason));
+            case TRANSIENT -> lastChance
+                    ? parked(guard.recordExhaustion(claim, reason))
+                    : guard.recordTransientFailure(claim, reason);
+        };
+    }
+
+    /** Counts a parking the guard accepted, and only one it accepted. */
+    private GuardDecision parked(final GuardDecision outcome) {
+        if (outcome instanceof GuardDecision.DeadLetter) {
+            metrics.requestSettled(RequestOutcome.FAILED);
         }
         return outcome;
     }

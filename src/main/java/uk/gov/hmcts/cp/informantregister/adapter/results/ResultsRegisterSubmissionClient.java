@@ -92,15 +92,42 @@ public class ResultsRegisterSubmissionClient implements RegisterSubmissionClient
         } catch (SubmissionFailedException failure) {
             // Caught to record, never to absorb: the row is moved to FAILED and the same exception
             // continues, carrying the classification the pipeline settles the delivery on.
-            outputs.recordFailed(
-                    submission.source(), submission.requestId(), submission.prosecutionAuthorityId());
+            recorded(outputs.recordFailed(
+                    submission.source(), submission.requestId(), submission.prosecutionAuthorityId()),
+                    "FAILED", submission);
             throw failure;
         }
 
-        outputs.recordPosted(
-                submission.source(), submission.requestId(), submission.prosecutionAuthorityId());
+        recorded(outputs.recordPosted(
+                submission.source(), submission.requestId(), submission.prosecutionAuthorityId()),
+                "POSTED", submission);
         LOG.info("Authority submitted. source={} requestId={} authority={}",
                 submission.source(), submission.requestId(), submission.prosecutionAuthorityId());
+    }
+
+    /**
+     * Checks that the outcome write this delivery depended on actually landed.
+     *
+     * <p>The affected-row count is the decision here as it is everywhere else in the processed log,
+     * and it is asked rather than discarded. A claim was granted moments earlier, so the only way an
+     * outcome write can affect nothing is that a delivery this one overlapped with reached the row
+     * first and POSTED it — which means two runners were working the same request, and the losing
+     * one's view of what happened is not the durable one.
+     *
+     * <p>It is reported and not thrown. The POST has already happened either way, and turning a
+     * disagreement about the evidence into a failure would either re-send a body that was accepted
+     * or hide a failure that was not. The register's fate is decided by the exception the caller is
+     * already carrying, or by its absence; this line is how an overlap becomes visible instead of
+     * silent.
+     */
+    private static void recorded(
+            final boolean written, final String status, final AuthoritySubmission submission) {
+        if (!written) {
+            LOG.error("Outcome write affected no row; an overlapping delivery reached it first. "
+                            + "source={} requestId={} authority={} intendedStatus={}",
+                    submission.source(), submission.requestId(),
+                    submission.prosecutionAuthorityId(), status);
+        }
     }
 
     /**
