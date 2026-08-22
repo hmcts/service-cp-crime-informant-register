@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "id": "http://justice.gov.uk/results/courts/informantRegisterDocument/informantRegisterHearing.json",
+  "description": "The hearing details for the informant register entry",
+  "type": "object",
+  "properties": {
+    "courtRoom": {
+      "description": "The court room where the hearing was proceeded",
+      "type": "string"
+    },
+    "hearingStartTime": {
+      "description": "The start time of the hearing",
+      "type": "string",
+      "format": "time"
+    },
+    "defendants": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "http://justice.gov.uk/results/courts/informantRegisterDocument/informantRegisterDefendant.json"
+      }
+    }
+  },
+  "required": [
+    "courtRoom",
+    "hearingStartTime",
+    "defendants"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "id": "http://justice.gov.uk/results/courts/informantRegisterDocument/informantRegisterOffence.json",
+  "description": "The details of a defendant offence for a prosecution case rendered in a informant register document",
+  "type": "object",
+  "properties": {
+    "originatingCaseUrn": {
+      "description": "URN of the case containing the offence",
+      "type": "string"
+    },
+    "offenceCode": {
+      "description": "The cjs code for the offence",
+      "type": "string"
+    },
+    "orderIndex": {
+      "description": "The offence index",
+      "type": "integer",
+      "minimum": 0
+    },
+    "offenceTitle": {
+      "description": "The title taken from ref data",
+      "type": "string"
+    },
+    "pleaValue": {
+      "description": "The defendants plea against the offence",
+      "type": "string"
+    },
+    "verdict": {
+      "description": "The structured verdict recorded against the offence",
+      "$ref": "http://justice.gov.uk/results/courts/informantRegisterDocument/verdict.json"
+    },
+    "offenceResults": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "http://justice.gov.uk/results/courts/informantRegisterDocument/informantRegisterResult.json"
+      }
+    }
+  },
+  "required": [
+    "offenceCode",
+    "orderIndex",
+    "offenceTitle"
+  ],
+  "additionalProperties": false
+}

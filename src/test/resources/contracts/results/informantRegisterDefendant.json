@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "id": "http://justice.gov.uk/results/courts/informantRegisterDocument/informantRegisterDefendant.json",
+  "description": "The details of a defendant rendered in a informant register document",
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "The defendant name",
+      "type": "string"
+    },
+    "dateOfBirth": {
+      "description": "The defendant date of birth",
+      "type": "string",
+      "format": "date"
+    },
+    "address1": {
+      "description": "The defendant address line 1",
+      "type": "string"
+    },
+    "address2": {
+      "description": "The defendant address line 2",
+      "type": "string"
+    },
+    "address3": {
+      "description": "The defendant address line 3",
+      "type": "string"
+    },
+    "address4": {
+      "description": "The defendant address line 4",
+      "type": "string"
+    },
+    "address5": {
+      "description": "The defendant address line 5",
+      "type": "string"
+    },
+    "postCode": {
+      "description": "The defendant postCode",
+      "type": "string"
+    },
+    "nationality": {
+      "description": "The defendant nationality",
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "firstName": {
+      "type": "string"
+    },
+    "lastName": {
+      "type": "string"
+    },
+    "prosecutionCasesOrApplications": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "http://justice.gov.uk/results/courts/informantRegisterDocument/informantRegisterCaseOrApplication.json"
+      }
+    },
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "http://justice.gov.uk/results/courts/informantRegisterDocument/informantRegisterResult.json"
+      }
+    }
+  },
+  "required": [
+    "name",
+    "address1"
+  ],
+  "additionalProperties": false
+}

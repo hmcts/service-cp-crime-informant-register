@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "id": "http://justice.gov.uk/results/courts/informantRegisterDocument/informantRegisterRecipient.json",
+  "description": "The recipient details for the Informant Register document",
+  "type": "object",
+  "properties": {
+    "recipientName": {
+      "type": "string"
+    },
+    "emailAddress1": {
+      "type": "string"
+    },
+    "emailAddress2": {
+      "type": "string"
+    },
+    "emailTemplateName": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "recipientName",
+    "emailAddress1",
+    "emailTemplateName"
+  ],
+  "additionalProperties": false
+}

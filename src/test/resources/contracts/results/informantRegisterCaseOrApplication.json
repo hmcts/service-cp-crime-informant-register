@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "id": "http://justice.gov.uk/results/courts/informantRegisterDocument/informantRegisterCaseOrApplication.json",
+  "description": "The details of a defendants prosecution case or application rendered in a informant register document",
+  "type": "object",
+  "properties": {
+    "caseOrApplicationReference": {
+      "description": "The case or application reference",
+      "type": "string"
+    },
+    "arrestSummonsNumber": {
+      "type": "string"
+    },
+    "applicationParticulars": {
+      "type": "string"
+    },
+    "offences": {
+      "description": "The details of the offences for the defendant",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "http://justice.gov.uk/results/courts/informantRegisterDocument/informantRegisterOffence.json"
+      }
+    },
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "http://justice.gov.uk/results/courts/informantRegisterDocument/informantRegisterResult.json"
+      }
+    }
+  },
+  "required": [
+    "caseOrApplicationReference",
+    "offences"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "id": "http://justice.gov.uk/results/courts/informantRegisterDocument/informantRegisterResult.json",
+  "description": "The details of a published result rendered in a informant register document",
+  "type": "object",
+  "properties": {
+    "resultText": {
+      "description": "The textual description of the result",
+      "type": "string"
+    },
+    "cjsResultCode": {
+      "description": "The cjs code for the result",
+      "type": "string"
+    },
+    "resultData": {
+      "$ref": "http://justice.gov.uk/results/courts/informantRegisterDocument/informantRegisterResultData.json"
+    }
+  },
+  "required": [
+    "resultText"
+  ],
+  "additionalProperties": false
+}

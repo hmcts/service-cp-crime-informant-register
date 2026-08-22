@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "id": "http://justice.gov.uk/results/courts/informantRegisterDocument/verdict.json",
+  "description": "Verdict recorded against an SJP offence",
+  "type": "object",
+  "properties": {
+    "verdictCode": {
+      "description": "Verdict code: G (FOUND_GUILTY), N (FOUND_NOT_GUILTY), PSJ (PROVED_SJP)",
+      "type": "string"
+    },
+    "verdictDate": {
+      "description": "Conviction date in yyyy-MM-dd format. Optional, but when present verdictCode is required.",
+      "type": "string"
+    },
+    "verdictType": {
+      "description": "Verdict type resolved from reference data: FOUND_GUILTY, FOUND_NOT_GUILTY, PROVED_SJP",
+      "type": "string"
+    }
+  },
+  "dependencies": {
+    "verdictDate": ["verdictCode"]
+  },
+  "additionalProperties": false
+}
