@@ -1,5 +1,6 @@
 package uk.gov.hmcts.cp.informantregister.domain;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 /**
@@ -12,8 +13,16 @@ import java.util.List;
  * @param courtHouse    the venue name; required by the schema
  * @param courtSessions the sessions held at the venue; required by the schema
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record InformantRegisterHearingVenue(
         String ljaName,
         String courtHouse,
         List<InformantRegisterHearing> courtSessions) {
+
+    /**
+     * Freezes the session list so the venue cannot be changed after it is built.
+     */
+    public InformantRegisterHearingVenue {
+        courtSessions = ContractLists.frozen(courtSessions);
+    }
 }

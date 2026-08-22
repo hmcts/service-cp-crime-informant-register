@@ -1,5 +1,6 @@
 package uk.gov.hmcts.cp.informantregister.domain;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 /**
@@ -32,6 +33,7 @@ import java.util.List;
  * @param prosecutionCasesOrApplications the cases and applications the defendant appeared on
  * @param results                        results recorded against the defendant as a whole
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record InformantRegisterDefendant(
         String name,
         String dateOfBirth,
@@ -47,4 +49,12 @@ public record InformantRegisterDefendant(
         String lastName,
         List<InformantRegisterCaseOrApplication> prosecutionCasesOrApplications,
         List<InformantRegisterResult> results) {
+
+    /**
+     * Freezes both lists so the defendant cannot be changed after it is built.
+     */
+    public InformantRegisterDefendant {
+        prosecutionCasesOrApplications = ContractLists.frozen(prosecutionCasesOrApplications);
+        results = ContractLists.frozen(results);
+    }
 }

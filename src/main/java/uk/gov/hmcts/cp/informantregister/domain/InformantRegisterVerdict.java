@@ -1,5 +1,7 @@
 package uk.gov.hmcts.cp.informantregister.domain;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 /**
  * The structured verdict recorded against an offence.
  *
@@ -22,6 +24,7 @@ package uk.gov.hmcts.cp.informantregister.domain;
  * @param verdictDate the conviction date, rendered as the contract's descriptions expect
  * @param verdictType the verdict type resolved from reference data
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record InformantRegisterVerdict(
         String verdictCode,
         String verdictDate,

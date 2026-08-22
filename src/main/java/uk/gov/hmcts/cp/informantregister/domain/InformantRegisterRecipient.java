@@ -1,5 +1,7 @@
 package uk.gov.hmcts.cp.informantregister.domain;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 /**
  * One addressee of the generated informant register document.
  *
@@ -14,6 +16,7 @@ package uk.gov.hmcts.cp.informantregister.domain;
  * @param emailAddress2     a secondary address
  * @param emailTemplateName the template the notification leg renders with
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record InformantRegisterRecipient(
         String recipientName,
         String emailAddress1,

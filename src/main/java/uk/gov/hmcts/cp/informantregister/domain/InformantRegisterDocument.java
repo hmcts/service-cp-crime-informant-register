@@ -1,5 +1,7 @@
 package uk.gov.hmcts.cp.informantregister.domain;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -31,6 +33,16 @@ import java.util.UUID;
  * reads would have been guesswork; matching the binding that will actually deserialise the body is
  * not.
  *
+ * <p>The two timestamps are pinned to a textual shape by annotation rather than left to a mapper
+ * feature. {@code WRITE_DATES_AS_TIMESTAMPS} is a global switch, and a body that silently became a
+ * pair of epoch numbers because somebody customised a mapper elsewhere would be rejected by the
+ * consumer's schema, not by anything here.
+ *
+ * <p>Absent components are omitted from the wire rather than written as {@code null}: every optional
+ * property declares a JSON type, so a null would violate the schema, and every optional array
+ * declares {@code minItems: 1}, so an empty array would too. {@code @JsonInclude(NON_NULL)} on every
+ * record in the tree is what makes "this authority has no recipients" representable at all.
+ *
  * <p>Note for whoever builds the submission leg: a non-null {@code groupId} makes the consumer query
  * progression for group member cases and throw if it finds none, so a schema-valid body can still
  * fail server-side purely because the field was populated. The design rules already confine
@@ -49,9 +61,10 @@ import java.util.UUID;
  * @param hearingVenue               the venue and its sessions; required by the schema
  * @param groupId                    the group the master prosecution case belongs to
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record InformantRegisterDocument(
-        ZonedDateTime registerDate,
-        ZonedDateTime hearingDate,
+        @JsonFormat(shape = JsonFormat.Shape.STRING) ZonedDateTime registerDate,
+        @JsonFormat(shape = JsonFormat.Shape.STRING) ZonedDateTime hearingDate,
         UUID hearingId,
         UUID prosecutionAuthorityId,
         String prosecutionAuthorityCode,
@@ -62,4 +75,11 @@ public record InformantRegisterDocument(
         List<InformantRegisterRecipient> recipients,
         InformantRegisterHearingVenue hearingVenue,
         UUID groupId) {
+
+    /**
+     * Freezes the recipient list so the document cannot be changed after it is built.
+     */
+    public InformantRegisterDocument {
+        recipients = ContractLists.frozen(recipients);
+    }
 }

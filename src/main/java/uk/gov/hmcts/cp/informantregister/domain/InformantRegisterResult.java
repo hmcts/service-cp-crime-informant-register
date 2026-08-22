@@ -1,5 +1,7 @@
 package uk.gov.hmcts.cp.informantregister.domain;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 /**
  * One published result as it appears in an informant register.
  *
@@ -13,6 +15,7 @@ package uk.gov.hmcts.cp.informantregister.domain;
  * @param cjsResultCode the CJS code for the result
  * @param resultData    the structured detail behind the text
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record InformantRegisterResult(
         String resultText,
         String cjsResultCode,

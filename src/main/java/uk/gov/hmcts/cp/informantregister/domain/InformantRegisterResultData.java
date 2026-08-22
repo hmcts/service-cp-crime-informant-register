@@ -1,5 +1,7 @@
 package uk.gov.hmcts.cp.informantregister.domain;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 /**
  * The structured detail carried alongside a result's text.
  *
@@ -22,6 +24,7 @@ package uk.gov.hmcts.cp.informantregister.domain;
  * @param secondaryDurationValue  the secondary duration's magnitude, as rendered
  * @param secondaryDurationUnit   the secondary duration's unit
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record InformantRegisterResultData(
         String amount,
         String nextHearingDate,

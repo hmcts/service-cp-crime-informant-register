@@ -1,5 +1,6 @@
 package uk.gov.hmcts.cp.informantregister.domain;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 /**
@@ -22,6 +23,7 @@ import java.util.List;
  * @param verdict            the structured verdict recorded against the offence
  * @param offenceResults     results recorded against this offence
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record InformantRegisterOffence(
         String originatingCaseUrn,
         String offenceCode,
@@ -30,4 +32,11 @@ public record InformantRegisterOffence(
         String pleaValue,
         InformantRegisterVerdict verdict,
         List<InformantRegisterResult> offenceResults) {
+
+    /**
+     * Freezes the results list so the offence cannot be changed after it is built.
+     */
+    public InformantRegisterOffence {
+        offenceResults = ContractLists.frozen(offenceResults);
+    }
 }

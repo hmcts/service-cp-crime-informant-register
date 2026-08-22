@@ -1,5 +1,6 @@
 package uk.gov.hmcts.cp.informantregister.domain;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 /**
@@ -19,8 +20,16 @@ import java.util.List;
  * @param hearingStartTime the session's start time, as rendered; required by the schema
  * @param defendants       the defendants heard in the session; required by the schema
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record InformantRegisterHearing(
         String courtRoom,
         String hearingStartTime,
         List<InformantRegisterDefendant> defendants) {
+
+    /**
+     * Freezes the defendant list so the session cannot be changed after it is built.
+     */
+    public InformantRegisterHearing {
+        defendants = ContractLists.frozen(defendants);
+    }
 }
