@@ -43,6 +43,21 @@ public final class RedisTestSupport {
      * The URI a client should connect to the shared container on.
      */
     public static String uri() {
-        return "redis://" + container().getHost() + ':' + container().getMappedPort(PORT);
+        return "redis://" + host() + ':' + port();
+    }
+
+    /**
+     * The address the shared container answers on, for a suite that configures the service rather
+     * than building a client of its own.
+     */
+    public static String host() {
+        return container().getHost();
+    }
+
+    /**
+     * The port the shared container answers on.
+     */
+    public static int port() {
+        return container().getMappedPort(PORT);
     }
 }
