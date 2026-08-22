@@ -142,8 +142,9 @@ public class ResultsCommandGateway {
      * three kinds of non-2xx apart.
      */
     private Outcome attempt(final byte[] body, final int attempt) {
+        Outcome outcome;
         try {
-            return restClient.post()
+            outcome = restClient.post()
                     .uri(INFORMANT_REGISTER_PATH)
                     .contentType(MediaType.parseMediaType(ADD_INFORMANT_REGISTER_MEDIA_TYPE))
                     .headers(headers -> {
@@ -159,8 +160,9 @@ public class ResultsCommandGateway {
             // applied. Unknown is not failed, and it is retried rather than written off.
             LOG.warn("Submission attempt did not reach a verdict; retrying. attempt={} type={}",
                     attempt, unreachable.getClass().getSimpleName());
-            return Outcome.retryable(Optional.empty());
+            outcome = Outcome.retryable(Optional.empty());
         }
+        return outcome;
     }
 
     private Outcome classify(final ClientHttpResponse response, final int attempt) throws IOException {
