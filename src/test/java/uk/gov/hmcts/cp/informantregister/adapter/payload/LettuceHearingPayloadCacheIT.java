@@ -18,6 +18,7 @@ import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.support.RedisTestSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
@@ -147,6 +148,46 @@ class LettuceHearingPayloadCacheIT {
             final String key = write(hearingId, LocalDate.of(2026, 8, 21), "");
 
             assertThat(cache.read(key)).isEmpty();
+        }
+
+        /**
+         * A cached {@code null} literal parses perfectly well and carries no payload. Handing it on
+         * would put a null node into a transformation that has no way to tell it from a hearing.
+         */
+        @Test
+        void read_should_report_nothing_when_the_cached_value_is_the_json_null_literal() {
+            final UUID hearingId = UUID.randomUUID();
+            final String key = write(hearingId, LocalDate.of(2026, 8, 21), "null");
+
+            assertThat(cache.read(key)).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("connection lifecycle")
+    class Lifecycle {
+
+        /**
+         * A pod runs for weeks and a cache is restarted inside them, so the first read after a
+         * connection has gone must open another one rather than fail for ever on a closed handle.
+         */
+        @Test
+        void read_should_open_a_fresh_connection_after_the_previous_one_was_closed() {
+            final UUID hearingId = UUID.randomUUID();
+            final String key = write(hearingId, LocalDate.of(2026, 8, 21),
+                    PAYLOAD.formatted(hearingId));
+            assertThat(cache.read(key)).isPresent();
+
+            cache.close();
+
+            assertThat(cache.read(key)).isPresent();
+        }
+
+        @Test
+        void close_should_be_safe_to_call_when_nothing_is_open() {
+            cache.close();
+
+            assertThatCode(cache::close).doesNotThrowAnyException();
         }
     }
 

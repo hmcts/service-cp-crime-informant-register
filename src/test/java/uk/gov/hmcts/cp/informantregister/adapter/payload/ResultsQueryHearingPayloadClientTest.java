@@ -81,14 +81,19 @@ class ResultsQueryHearingPayloadClientTest {
     }
 
     private static ResultsQueryHearingPayloadClient clientFor(final String systemUserId) {
+        // The legacy interval is a second. Waiting three of them to observe a retry count would make
+        // the suite slow without making it say anything more.
+        return clientFor(systemUserId, 3, Duration.ZERO);
+    }
+
+    private static ResultsQueryHearingPayloadClient clientFor(final String systemUserId,
+            final int maxAttempts, final Duration retryInterval) {
         return new ResultsQueryHearingPayloadClient(
                 RestClient.builder().baseUrl(server.baseUrl()).build(),
                 systemUserId,
                 MAPPER,
-                3,
-                // The legacy interval is a second. Waiting three of them to observe a retry count
-                // would make the suite slow without making it say anything more.
-                Duration.ZERO);
+                maxAttempts,
+                retryInterval);
     }
 
     private static DistributionCommand command() {
@@ -203,6 +208,17 @@ class ResultsQueryHearingPayloadClientTest {
 
             assertThat(client.fetch(command())).isEmpty();
         }
+
+        /**
+         * The query side's declared schema allows a null document, so the literal is a shape a
+         * conforming implementation may send — and it carries no more payload than an empty object.
+         */
+        @Test
+        void fetch_should_report_nothing_when_the_body_is_the_json_null_literal() {
+            respondWith(200, "null");
+
+            assertThat(client.fetch(command())).isEmpty();
+        }
     }
 
     @Nested
@@ -270,6 +286,28 @@ class ResultsQueryHearingPayloadClientTest {
             server.verify(3, getRequestedFor(urlEqualTo(PATH)));
         }
 
+        /**
+         * With the interval genuinely elapsing, so the wait between attempts is exercised rather
+         * than skipped. Twenty milliseconds rather than the legacy second: what is being proven is
+         * that waiting does not lose an attempt, not how long the wait is.
+         */
+        @Test
+        void fetch_should_still_make_every_attempt_when_the_interval_actually_elapses() {
+            respondWith(500, "{}");
+
+            assertThat(clientFor(SYSTEM_USER_ID, 3, Duration.ofMillis(20)).fetch(command()))
+                    .isEmpty();
+            server.verify(3, getRequestedFor(urlEqualTo(PATH)));
+        }
+
+        @Test
+        void fetch_should_make_a_single_attempt_when_only_one_is_allowed() {
+            respondWith(500, "{}");
+
+            assertThat(clientFor(SYSTEM_USER_ID, 1, Duration.ZERO).fetch(command())).isEmpty();
+            server.verify(1, getRequestedFor(urlEqualTo(PATH)));
+        }
+
         @Test
         void fetch_should_retry_a_connection_that_never_answered() {
             server.stubFor(get(urlEqualTo(PATH)).willReturn(
@@ -294,6 +332,18 @@ class ResultsQueryHearingPayloadClientTest {
             respondWith(200, PAYLOAD);
 
             assertThat(clientFor("  ").fetch(command())).isEmpty();
+            server.verify(0, getRequestedFor(urlEqualTo(PATH)));
+        }
+
+        /**
+         * Unset and blank have to behave alike. The setting has no default precisely because it is a
+         * secret, so "absent" is the shape a misconfigured environment actually produces.
+         */
+        @Test
+        void fetch_should_not_call_the_query_side_when_the_identity_is_absent_entirely() {
+            respondWith(200, PAYLOAD);
+
+            assertThat(clientFor(null).fetch(command())).isEmpty();
             server.verify(0, getRequestedFor(urlEqualTo(PATH)));
         }
     }
