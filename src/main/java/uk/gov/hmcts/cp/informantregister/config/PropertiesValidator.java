@@ -8,10 +8,15 @@ import org.springframework.stereotype.Component;
 /**
  * Refuses to let the application start on a configuration that cannot be operated safely.
  *
- * <p>Two timing relationships and one credential rule are checked here rather than discovered later:
- * a run that can outlive its claim, a broker lock that can expire mid-run, and an ambiguous
- * credential source all fail quietly in production and loudly at startup, so startup is where they
- * are made to fail.
+ * <p>Everything checked here fails quietly in production and loudly at startup, so startup is where
+ * it is made to fail: a run that can outlive its claim, a broker lock that can expire mid-run, an
+ * ambiguous credential source, a payload source that cannot fetch anything, and a payload fetch
+ * whose own worst case outlasts the run it happens inside.
+ *
+ * <p>The payload rules are the ones a healthy-looking pod hides. A live source with no identity, a
+ * fallback with no attempts and a cache with no address all produce a service that consumes
+ * normally, settles nothing usefully, and dead-letters every request it is given — while readiness,
+ * liveness and the queue's own metrics say the deployment succeeded.
  */
 @Component
 // The properties record is registered here, explicitly, rather than left to a scan: without it the
@@ -33,6 +38,12 @@ public class PropertiesValidator implements InitializingBean {
     private static final String CONNECTION_STRING =
             "informantregister.servicebus.connection-string";
     private static final String NAMESPACE = "informantregister.servicebus.namespace";
+    private static final String PAYLOAD_MODE = "informantregister.payload.mode";
+    private static final String SYSTEM_USER_ID = "informantregister.system-user-id";
+    private static final String FALLBACK = "informantregister.payload.fallback";
+    private static final String MAX_ATTEMPTS = FALLBACK + ".max-attempts";
+    private static final String RETRY_INTERVAL = FALLBACK + ".retry-interval";
+    private static final String REDIS = "informantregister.payload.redis";
 
     private final InformantRegisterProperties properties;
 
@@ -56,6 +67,8 @@ public class PropertiesValidator implements InitializingBean {
         validateRunFinishesBeforeTheClaimExpires(properties);
         validateLockOutlivesTheRun(properties);
         validateExactlyOneCredentialSource(properties);
+        validateThePayloadSourceCanFetch(properties);
+        validateTheFallbackFinishesInsideTheRun(properties);
     }
 
     private static void validateRunFinishesBeforeTheClaimExpires(
@@ -90,6 +103,118 @@ public class PropertiesValidator implements InitializingBean {
                     "Set exactly one of " + CONNECTION_STRING + " (local and CI) or " + NAMESPACE
                             + " (deployed) — currently "
                             + (hasConnectionString ? "both are set" : "neither is set"));
+        }
+    }
+
+    /**
+     * The payload source must be one that can actually produce a payload.
+     *
+     * <p>Three separate ways a deployment can look healthy and fetch nothing: the stub selected
+     * where the service is deployed, a live source with no identity to authorise its fallback with,
+     * and a cache or fallback configured out of existence.
+     */
+    private static void validateThePayloadSourceCanFetch(
+            final InformantRegisterProperties properties) {
+        final InformantRegisterProperties.Payload payload = properties.payload();
+        if (payload.mode() == PayloadSourceMode.STUB) {
+            validateTheStubIsNotDeployed(properties);
+        } else {
+            validateTheLiveSourceHasAnIdentity(properties);
+        }
+        validateTheCacheIsAddressable(payload.redis());
+        validateTheFallbackIsAttempted(payload.fallback());
+    }
+
+    /**
+     * Constitution Principle V: the stub must not be reachable in a production profile now that the
+     * real adapter has landed. A namespace means workload identity, which means a deployed pod —
+     * the same discriminator the credential rule above already draws deployment on.
+     */
+    private static void validateTheStubIsNotDeployed(
+            final InformantRegisterProperties properties) {
+        if (hasText(properties.servicebus().namespace())) {
+            throw new IllegalStateException(
+                    PAYLOAD_MODE + " is STUB while " + NAMESPACE + " is set, which is a deployed"
+                            + " environment — the stub fetches nothing, so every request would be"
+                            + " settled having produced no register at all");
+        }
+    }
+
+    /**
+     * The query-side fallback authorises with the system user identity, and without one it cannot be
+     * used: every cold-cache request would be abandoned, redelivered and dead-lettered by a pod
+     * reporting itself healthy throughout.
+     */
+    private static void validateTheLiveSourceHasAnIdentity(
+            final InformantRegisterProperties properties) {
+        if (!hasText(properties.systemUserId())) {
+            throw new IllegalStateException(
+                    SYSTEM_USER_ID + " must be set when " + PAYLOAD_MODE + " is LIVE, because the"
+                            + " payload fallback cannot be used without an identity to authorise"
+                            + " with");
+        }
+    }
+
+    private static void validateTheCacheIsAddressable(
+            final InformantRegisterProperties.Redis redis) {
+        if (!hasText(redis.host())) {
+            throw new IllegalStateException(REDIS + ".host must name the payload cache");
+        }
+        if (!hasText(redis.keyPrefix())) {
+            throw new IllegalStateException(
+                    REDIS + ".key-prefix must be the prefix the producer writes the payload under,"
+                            + " INT_ for this flow — an empty prefix reads a key nobody writes");
+        }
+        requirePositive(redis.connectTimeout(), REDIS + ".connect-timeout");
+        requirePositive(redis.commandTimeout(), REDIS + ".command-timeout");
+    }
+
+    private static void validateTheFallbackIsAttempted(
+            final InformantRegisterProperties.Fallback fallback) {
+        if (fallback.maxAttempts() < 1) {
+            throw new IllegalStateException(
+                    MAX_ATTEMPTS + " (" + fallback.maxAttempts() + ") must be at least 1 — at zero"
+                            + " every cache miss skips a query side that could have answered, and"
+                            + " the request is retried to the dead-letter queue instead");
+        }
+        if (fallback.retryInterval().isNegative()) {
+            throw new IllegalStateException(
+                    RETRY_INTERVAL + " (" + fallback.retryInterval() + ") must not be negative");
+        }
+        requirePositive(fallback.connectTimeout(), FALLBACK + ".connect-timeout");
+        requirePositive(fallback.readTimeout(), FALLBACK + ".read-timeout");
+    }
+
+    /**
+     * The fetch happens inside the run, and the run must finish before its claim can be reclaimed.
+     *
+     * <p>So the fallback's own worst case — every attempt spending its connect and read timeouts,
+     * with an interval between them — has to fit inside the processing deadline. A configuration
+     * where it does not guarantees exactly what the deadline exists to prevent: a runner still
+     * waiting on a socket while another runner takes its request.
+     */
+    private static void validateTheFallbackFinishesInsideTheRun(
+            final InformantRegisterProperties properties) {
+        final InformantRegisterProperties.Fallback fallback = properties.payload().fallback();
+        final Duration deadline = properties.claim().processingDeadline();
+        final Duration worstCase = fallback.connectTimeout()
+                .plus(fallback.readTimeout())
+                .multipliedBy(fallback.maxAttempts())
+                .plus(fallback.retryInterval().multipliedBy(fallback.maxAttempts() - 1L));
+        if (worstCase.compareTo(deadline) > 0) {
+            throw new IllegalStateException(
+                    "The " + FALLBACK + " settings allow a payload read of up to " + worstCase
+                            + ", which is longer than " + PROCESSING_DEADLINE + " (" + deadline
+                            + ") — a run must be able to stop itself while its claim is still its"
+                            + " own");
+        }
+    }
+
+    private static void requirePositive(final Duration value, final String setting) {
+        if (value.isZero() || value.isNegative()) {
+            throw new IllegalStateException(
+                    setting + " (" + value + ") must be positive — a timeout that never expires is"
+                            + " a run that never ends");
         }
     }
 

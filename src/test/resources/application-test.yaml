@@ -15,6 +15,12 @@ informantregister:
     # configuration through. This is the same emulator string `application.yaml` carries as the local
     # default, and nothing in this profile ever connects with it.
     connection-string: "Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;"
+  payload:
+    # There is no cache and no query side in this profile, and nothing here fetches a payload. LIVE
+    # would demand a system user identity at startup — correctly, since a live source without one
+    # can never fetch anything — so the stub is selected explicitly. Startup refuses the stub on the
+    # deployed credential source, and this profile carries the local one above.
+    mode: STUB
 
 spring:
   autoconfigure:
