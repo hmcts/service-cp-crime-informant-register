@@ -8,7 +8,7 @@ public enum RequestOutcome {
     /** The pipeline ran and the outcome was recorded. */
     COMPLETED("completed"),
 
-    /** The request was parked after exhausting its permitted deliveries. */
+    /** The request was parked — its permitted deliveries exhausted, or a failure no retry can fix. */
     FAILED("failed");
 
     private final String metricLabel;
