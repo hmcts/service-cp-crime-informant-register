@@ -36,6 +36,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     whatever the code does.
 
 ### Fixed
+- 2026-08-22 — **Second review pass over the submission leg** (findings re-verified against the
+  rules and the Node source before fixing; the ones that contradicted a rule were rebutted, not
+  applied):
+  - `RESULTS_SYSTEM_USER_ID` now reaches something. `application.yaml` documented the variable in a
+    comment and bound no key to it, so a deployment that set the identity correctly still refused to
+    start with "system-user-id is required". It is bound as `${RESULTS_SYSTEM_USER_ID:}`, in the
+    same shape as `RESULTS_BASE_URL`, and the shipped file's binding is now asserted against the
+    real file rather than against property values a test invents;
+  - the retry policy is validated at startup alongside the claim timings and the credential rule.
+    `max-attempts` below one attempted no POST at all and handed every hearing back as an unresolved
+    transient failure — silent non-delivery wearing a retry policy's clothes. A negative
+    `initial-backoff` and a `max-backoff` below it are refused for the same reason: they fail
+    quietly at runtime and loudly at startup;
+  - a transport failure is logged with the exception rather than with its class name. The
+    classification is what the pipeline settles on; a refused connection, a read that timed out and
+    a dropped route are three different investigations, and the bounded reason code the failure is
+    reported under cannot carry the difference;
+  - the idempotency gate is now proven across the real repository, a real store and a real socket
+    (`SubmissionRedeliveryIT`): a redelivery does not re-POST an authority that went, and a
+    redelivery after a partial failure repeats exactly the authority that did not. The existing
+    suites proved each half against a mock of the other;
+  - `doc/DEVIATIONS.md` #4 records the `Retry-After` treatment that #2 implied but did not state.
 - 2026-08-22 — **Post-review hardening of the submission leg** (review of the story-3 change,
   findings re-verified against the rules and the contract before fixing):
   - a failure that carries a classification is now settled on it. A refusal from the Results command
