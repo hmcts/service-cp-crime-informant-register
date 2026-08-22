@@ -72,8 +72,10 @@ informantregister:
   payload:
     # LIVE | STUB. LIVE is the cache-with-query-fallback adapter and is what an environment that
     # says nothing gets: a service that has to be told to fetch payloads is a service that will one
-    # day be deployed not fetching them. STUB is for local runs and for the container suites whose
-    # subject is settlement and the processed log rather than the payload.
+    # day be deployed not fetching them. It requires informantregister.system-user-id, without which
+    # its fallback cannot authorise. STUB is for local runs and for the container suites whose
+    # subject is settlement and the processed log rather than the payload; startup refuses it
+    # wherever the deployed credential source (servicebus.namespace) is in use.
     mode: LIVE
     redis:
       # LOCAL development defaults, matching the datasource above. Deployed environments override

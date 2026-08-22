@@ -16,8 +16,11 @@ import uk.gov.hmcts.cp.informantregister.application.HearingPayloadSource;
  * in a hearing payload, and standing a cache and an HTTP stub up for them would make what they prove
  * depend on infrastructure their scenarios never mention. They select this instead.
  *
- * <p>Never the default. It contributes a bean only when {@code informantregister.payload.mode} says
- * {@code STUB}, so a deployed environment that says nothing gets the real adapter.
+ * <p>Never the default, and not selectable where the service is deployed. It contributes a bean only
+ * when {@code informantregister.payload.mode} says {@code STUB}, so an environment that says nothing
+ * gets the real adapter — and {@link PropertiesValidator} refuses {@code STUB} outright wherever the
+ * deployed credential source is in use, because a stub reachable in production is exactly the pod
+ * that settles every message and produces no register (constitution Principle V).
  */
 @Configuration(proxyBeanMethods = false)
 @Profile("!test")
