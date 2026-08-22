@@ -15,7 +15,15 @@ import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
  * <p>Ordering, and the fact that a cache failure is not a request failure, are the whole of this
  * class. Both come from {@code HearingResultedCacheQuery.getHearing}: read the cache, and go to the
  * query API when the cache produced nothing — for whatever reason, an absent key and an unreachable
- * cache alike.
+ * cache alike. Deciding that a cache which cannot answer has nothing to say belongs to the cache
+ * adapter, which knows what its own failures look like; this class catches nothing, so a fault that
+ * is not the cache's own reaches the pipeline and is recorded there rather than being spent on a
+ * fallback.
+ *
+ * <p>Two keys are read, not one. The producer publishes the payload under a dated key and a legacy
+ * undated twin (design doc §2.1, {@code doc/API_CONTRACTS.md}), and both are read here; the function
+ * app reads exactly one, built from the hearing date it was given. That is registered deviation 4
+ * ({@code doc/DEVIATIONS.md}).
  *
  * <p>Where it deliberately parts company with the function app is the end of the chain. There, a
  * hearing that neither source could supply returned {@code null}, the orchestrator's
@@ -49,13 +57,12 @@ public class CachedHearingPayloadAdapter implements HearingPayloadSource {
 
     @Override
     public JsonNode fetch(final DistributionCommand command) {
-        Optional<JsonNode> payload = read(
+        Optional<JsonNode> payload = cache.read(
                 HearingPayloadCacheKey.cacheKey(keyPrefix, command.hearingId(),
-                        command.hearingDay()),
-                command);
+                        command.hearingDay()));
         if (payload.isEmpty()) {
-            payload = read(
-                    HearingPayloadCacheKey.cacheKey(keyPrefix, command.hearingId(), null), command);
+            payload = cache.read(
+                    HearingPayloadCacheKey.cacheKey(keyPrefix, command.hearingId(), null));
         }
         if (payload.isEmpty()) {
             LOG.info("Hearing payload not cached; querying the results query API. "
@@ -64,32 +71,6 @@ public class CachedHearingPayloadAdapter implements HearingPayloadSource {
             payload = query.fetch(command);
         }
         return payload.orElseThrow(() -> unavailable(command));
-    }
-
-    /**
-     * Reads one key, treating a cache that cannot answer as a cache with nothing in it.
-     *
-     * <p>The failure is logged at WARN with its cause, so a cache outage is visible rather than
-     * inferred from a rise in query-side traffic. It is not rethrown, because the query side can
-     * still answer and the function app's own behaviour here is to carry on.
-     *
-     * <p>The catch is deliberately as wide as the port. This class knows a cache capability and not
-     * a cache technology, so it cannot name the exceptions a particular client throws — and naming a
-     * few of them would mean the next client's failures escaped as unexpected pipeline errors rather
-     * than as the fallback this method exists to perform.
-     */
-    @SuppressWarnings("PMD.AvoidCatchingGenericException")
-    private Optional<JsonNode> read(final String key, final DistributionCommand command) {
-        Optional<JsonNode> found;
-        try {
-            found = cache.read(key);
-        } catch (RuntimeException unreadable) {
-            LOG.warn("Hearing payload cache could not be read; continuing to the query API. "
-                            + "requestId={} hearingId={}",
-                    command.requestId(), command.hearingId(), unreadable);
-            found = Optional.empty();
-        }
-        return found;
     }
 
     /**

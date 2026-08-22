@@ -11,10 +11,12 @@ import tools.jackson.databind.JsonNode;
  * so the composite adapter's ordering and failure rules can be tested without a broker, a cache or a
  * network.
  *
- * <p>An unreachable cache is reported as an empty result rather than as a failure, because that is
- * what the function app does with it: {@code getResultFromCache} catches every error and returns
- * {@code null}, and the caller then goes to the query API. A cache that is down is not a reason to
- * abandon a request that the query side can still answer.
+ * <p>An unreachable cache is reported as an empty result rather than as a failure, so a cache that is
+ * down is not a reason to abandon a request the query side can still answer (design rules,
+ * "Transient … both Redis and the fallback unavailable"). The function app absorbs a failed
+ * {@code GET} the same way; a failed <em>connection</em> it does not, which is registered deviation 5
+ * ({@code doc/DEVIATIONS.md}). An implementation absorbs the failures of its own technology and
+ * nothing else — anything wider would hide a defect in this service behind the fallback.
  */
 public interface HearingPayloadCache {
 

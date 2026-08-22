@@ -150,7 +150,11 @@ public class ResultsQueryHearingPayloadClient implements HearingPayloadQuery {
                     payload = Optional.of(parsed);
                 }
             } catch (JacksonException notJson) {
-                LOG.warn("The results query API answered with something that is not JSON.", notJson);
+                // By type, never by message. A parser quotes the token it choked on, and in a
+                // truncated hearing response that token is a name, an address or a URN — which this
+                // line would then carry into a log index (constitution Principle VII).
+                LOG.warn("The results query API answered with something that is not JSON. type={}",
+                        notJson.getClass().getName());
             }
         }
         return payload;
