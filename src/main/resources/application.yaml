@@ -69,11 +69,14 @@ informantregister:
     # RAML declares. Deployed environments set RESULTS_BASE_URL to the internal mesh host.
     base-url: ${RESULTS_BASE_URL:http://localhost:8080}
     # The CJSCPPUID identity. A secret: it arrives from Key Vault through the Secrets Store CSI
-    # driver and is deliberately absent here, so a local run cannot borrow a deployed identity.
-    # system-user-id: set from the environment only (RESULTS_SYSTEM_USER_ID).
+    # driver, so what is written here is the binding and never a value — the empty default leaves a
+    # local run with no identity to borrow.
     # It is REQUIRED. The command is refused without it, so the service refuses to start without it
     # rather than dead-letter every hearing it is given, one 403 at a time — a local run that has no
-    # identity to use has nothing to post with either.
+    # identity to use has nothing to post with either. Named here rather than left to relaxed
+    # binding: a variable a comment documents and no key reads is a deployment that sets it
+    # correctly and still fails to start.
+    system-user-id: ${RESULTS_SYSTEM_USER_ID:}
     # Retry policy for the POST. Connect and read failures, 5xx and 429 are retried; any other 4xx is
     # a refusal and is never retried. The numbers are this service's own: the contract documents that
     # back-off happens, not how much of it, so they are configuration rather than constants.

@@ -8,10 +8,10 @@ import org.springframework.stereotype.Component;
 /**
  * Refuses to let the application start on a configuration that cannot be operated safely.
  *
- * <p>Two timing relationships and one credential rule are checked here rather than discovered later:
- * a run that can outlive its claim, a broker lock that can expire mid-run, and an ambiguous
- * credential source all fail quietly in production and loudly at startup, so startup is where they
- * are made to fail.
+ * <p>Two timing relationships, one credential rule and the retry policy are checked here rather than
+ * discovered later: a run that can outlive its claim, a broker lock that can expire mid-run, an
+ * ambiguous credential source and a policy that cannot make the call it exists to make all fail
+ * quietly in production and loudly at startup, so startup is where they are made to fail.
  */
 @Component
 // The properties record is registered here, explicitly, rather than left to a scan: without it the
@@ -33,6 +33,12 @@ public class PropertiesValidator implements InitializingBean {
     private static final String CONNECTION_STRING =
             "informantregister.servicebus.connection-string";
     private static final String NAMESPACE = "informantregister.servicebus.namespace";
+    private static final String MAX_ATTEMPTS = "informantregister.results.max-attempts";
+    private static final String INITIAL_BACKOFF = "informantregister.results.initial-backoff";
+    private static final String MAX_BACKOFF = "informantregister.results.max-backoff";
+
+    /** The first attempt is the POST itself, so a policy that permits fewer never sends one. */
+    private static final int MINIMUM_ATTEMPTS = 1;
 
     private final InformantRegisterProperties properties;
 
@@ -56,6 +62,7 @@ public class PropertiesValidator implements InitializingBean {
         validateRunFinishesBeforeTheClaimExpires(properties);
         validateLockOutlivesTheRun(properties);
         validateExactlyOneCredentialSource(properties);
+        validateTheRetryPolicyCanPost(properties);
     }
 
     private static void validateRunFinishesBeforeTheClaimExpires(
@@ -90,6 +97,37 @@ public class PropertiesValidator implements InitializingBean {
                     "Set exactly one of " + CONNECTION_STRING + " (local and CI) or " + NAMESPACE
                             + " (deployed) — currently "
                             + (hasConnectionString ? "both are set" : "neither is set"));
+        }
+    }
+
+    /**
+     * The retry policy has to be able to make the call it exists to make.
+     *
+     * <p>{@code max-attempts} below one is the one that matters: the loop that POSTs the register
+     * never runs, every hearing is handed back as an unresolved transient failure, and the queue
+     * fills with deliveries that were never attempted — silent non-delivery wearing a retry policy's
+     * clothes, and unobservable except as a queue that will not drain. A negative wait reaches
+     * {@link Thread#sleep(java.time.Duration)} and throws from inside the retry, and a ceiling below
+     * the first wait shortens the very back-off it exists to bound.
+     */
+    private static void validateTheRetryPolicyCanPost(final InformantRegisterProperties properties) {
+        final InformantRegisterProperties.Results results = properties.results();
+        if (results.maxAttempts() < MINIMUM_ATTEMPTS) {
+            throw new IllegalStateException(
+                    MAX_ATTEMPTS + " (" + results.maxAttempts() + ") must be at least "
+                            + MINIMUM_ATTEMPTS + ": a policy with no attempts posts no register at "
+                            + "all and hands every hearing back unsent");
+        }
+        if (results.initialBackoff().isNegative()) {
+            throw new IllegalStateException(
+                    INITIAL_BACKOFF + " (" + results.initialBackoff() + ") must not be negative: a "
+                            + "negative wait throws from inside the retry rather than being taken");
+        }
+        if (results.maxBackoff().compareTo(results.initialBackoff()) < 0) {
+            throw new IllegalStateException(
+                    MAX_BACKOFF + " (" + results.maxBackoff() + ") must be at least "
+                            + INITIAL_BACKOFF + " (" + results.initialBackoff() + "), or the ceiling "
+                            + "shortens the very wait it exists to bound");
         }
     }
 

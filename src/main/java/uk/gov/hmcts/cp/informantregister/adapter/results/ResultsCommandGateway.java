@@ -188,8 +188,17 @@ public class ResultsCommandGateway {
         } catch (ResourceAccessException unreachable) {
             // Connect failure, read timeout, connection dropped: the request may or may not have been
             // applied. Unknown is not failed, and it is retried rather than written off.
-            LOG.warn("Submission attempt did not reach a verdict; retrying. attempt={} type={}",
-                    attempt, unreachable.getClass().getSimpleName());
+            //
+            // The exception travels with the line rather than only its type. Classifying it is what
+            // the pipeline acts on; what it *was* — a refused connection, a read that timed out, a
+            // route the mesh dropped — is what a human acts on, and the bounded ReasonCode this
+            // failure is eventually reported under is deliberately incapable of carrying it. If this
+            // line does not keep the cause, nothing does, and a classification that discards its
+            // evidence is a swallow with a log line in front of it. It is safe to keep: a transport
+            // exception is raised instead of a response, so it carries the endpoint and the socket
+            // error and never a register body.
+            LOG.warn("Submission attempt did not reach a verdict; retrying. attempt={}",
+                    attempt, unreachable);
             outcome = Outcome.retryable(Optional.empty());
         }
         return outcome;
