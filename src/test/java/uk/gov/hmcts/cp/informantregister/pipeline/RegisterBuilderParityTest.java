@@ -43,6 +43,13 @@ import uk.gov.hmcts.cp.informantregister.support.JsonParity;
  * <p><strong>Fixtures are byte-identical copies</strong> of the seven JSON files under
  * {@code SetInformantRegister/test/}, verified with {@code diff} at copy time, as constitution
  * Principle I requires.
+ *
+ * <p><strong>Two goldens record an absence rather than a value.</strong> Cases 08 and 09 are
+ * hearings the legacy produces {@code undefined} for, and {@code undefined} has no JSON encoding, so
+ * those goldens hold the marker {@code {"undefined": true}} instead of a captured tree. That marker
+ * is not legacy output and is not pretending to be: it is this suite's record of what the generator
+ * observed, and the twins that meet it assert the registered divergence explicitly — see
+ * {@link #assertLegacyProducedNothing} and {@code doc/DEVIATIONS.md} entry 4.
  */
 @DisplayName("RegisterBuilder — parity with the legacy SetInformantRegister")
 class RegisterBuilderParityTest {
@@ -52,6 +59,9 @@ class RegisterBuilderParityTest {
             Clock.fixed(Instant.parse("2021-06-15T09:30:00Z"), ZoneOffset.UTC);
 
     private static final String FIXTURES = "/fixtures/setinformantregister/";
+
+    /** The golden marker meaning "the legacy returned undefined for this case". */
+    private static final String RECORDED_UNDEFINED = "undefined";
 
     private final ObjectMapper mapper = JacksonConfig.contractObjectMapper();
 
@@ -283,14 +293,55 @@ class RegisterBuilderParityTest {
         final List<RegisterFragment> fragments = builder.build(hearing, sharedTime);
         final JsonNode expected = golden(caseName);
 
-        if (expected.isObject() && expected.has("undefined")) {
-            assertThat(fragments)
-                    .as("%s — the legacy produces no fragments at all for this hearing", caseName)
-                    .isEmpty();
+        if (isRecordedUndefined(expected)) {
+            assertLegacyProducedNothing(caseName, fragments);
             return;
         }
 
         JsonParity.assertMatches(expected, mapper.valueToTree(fragments), caseName);
+    }
+
+    /**
+     * Whether the golden records that the legacy returned {@code undefined} rather than a tree.
+     *
+     * <p>{@code undefined} has no JSON encoding, so a golden captured from a case that produced one
+     * cannot hold the legacy's answer — it can only record the fact. {@code {"undefined": true}} is
+     * that record, and it is the whole of the file: a golden that also held fragments would be
+     * ambiguous, so the marker is required to stand alone.
+     *
+     * @param expected the golden tree
+     * @return whether the golden is the recorded-undefined marker
+     */
+    private static boolean isRecordedUndefined(final JsonNode expected) {
+        return expected.isObject()
+                && expected.size() == 1
+                && expected.path(RECORDED_UNDEFINED).booleanValue();
+    }
+
+    /**
+     * Asserts the registered deviation for a hearing the legacy produced nothing for.
+     *
+     * <p>This is the one place the goldens are not compared field by field, so it is asserted
+     * explicitly rather than skipped: <strong>deviations register entry 4</strong>. The legacy
+     * returns {@code undefined} and the orchestrator's {@code if (informantRegisters)} then skips
+     * subscription matching, the outbound mapping and the POST; the port returns an empty list and
+     * the run is recorded COMPLETED with the reason {@code no-authorities}. Nothing is submitted
+     * either way — the difference is that the port's answer is a value the state machine can record
+     * rather than an absence every caller must test for.
+     *
+     * <p>The assertion is deliberately two-sided. An empty list is the registered answer; a
+     * <em>populated</em> one would mean the port had found authorities the legacy did not, which is
+     * an unregistered divergence and fails here rather than reaching a prosecuting authority.
+     *
+     * @param caseName  the case being asserted
+     * @param fragments what the port produced
+     */
+    private static void assertLegacyProducedNothing(
+            final String caseName, final List<RegisterFragment> fragments) {
+        assertThat(fragments)
+                .as("%s — deviation 4: the legacy returns undefined here and the port returns an "
+                        + "empty list; anything else is an unregistered divergence", caseName)
+                .isEmpty();
     }
 
     /**
