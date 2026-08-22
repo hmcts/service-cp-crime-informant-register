@@ -51,24 +51,24 @@ public class LettuceHearingPayloadCache implements HearingPayloadCache, AutoClos
 
     @Override
     public Optional<JsonNode> read(final String key) {
-        final String cached = connection().sync().get(key);
-        if (cached == null || cached.isBlank()) {
-            return Optional.empty();
-        }
-        try {
-            final JsonNode parsed = objectMapper.readTree(cached);
-            if (parsed == null || parsed.isNull() || parsed.isMissingNode()) {
-                return Optional.empty();
+        final String cached = openConnection().sync().get(key);
+        Optional<JsonNode> payload = Optional.empty();
+        if (cached != null && !cached.isBlank()) {
+            try {
+                final JsonNode parsed = objectMapper.readTree(cached);
+                if (parsed != null && !parsed.isNull() && !parsed.isMissingNode()) {
+                    payload = Optional.of(parsed);
+                }
+            } catch (JacksonException unparseable) {
+                // The key exists and its value is not a payload. Left as a miss, exactly as the
+                // function app leaves it, so the query side still gets its turn — and logged,
+                // because a cache the producer is corrupting should not have to be discovered from
+                // a traffic graph.
+                LOG.warn("A cached hearing payload could not be parsed; treating it as absent.",
+                        unparseable);
             }
-            return Optional.of(parsed);
-        } catch (JacksonException unparseable) {
-            // The key exists and its value is not a payload. Reported as a miss, exactly as the
-            // function app reports it, so the query side still gets its turn — and logged, because a
-            // cache the producer is corrupting is not something to discover from a traffic graph.
-            LOG.warn("A cached hearing payload could not be parsed; treating it as absent.",
-                    unparseable);
-            return Optional.empty();
         }
+        return payload;
     }
 
     /**
@@ -79,18 +79,24 @@ public class LettuceHearingPayloadCache implements HearingPayloadCache, AutoClos
      * needs to record what happened. Once open, Lettuce's own reconnection keeps it that way; this
      * only has to notice a connection that has been closed for good.
      */
-    private synchronized StatefulRedisConnection<String, String> connection() {
+    private synchronized StatefulRedisConnection<String, String> openConnection() {
         if (connection == null || !connection.isOpen()) {
             connection = client.connect();
         }
         return connection;
     }
 
+    /**
+     * Closes the connection if one is open.
+     *
+     * <p>The field is left pointing at the closed connection rather than cleared, because
+     * {@link #openConnection()} already asks whether it is open — and a reference that survives is
+     * how a read after a close reopens instead of failing on a handle nobody can revive.
+     */
     @Override
     public synchronized void close() {
         if (connection != null) {
             connection.close();
-            connection = null;
         }
     }
 }

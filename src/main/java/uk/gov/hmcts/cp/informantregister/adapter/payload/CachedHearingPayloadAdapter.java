@@ -49,25 +49,21 @@ public class CachedHearingPayloadAdapter implements HearingPayloadSource {
 
     @Override
     public JsonNode fetch(final DistributionCommand command) {
-        final Optional<JsonNode> dated = read(
+        Optional<JsonNode> payload = read(
                 HearingPayloadCacheKey.cacheKey(keyPrefix, command.hearingId(),
                         command.hearingDay()),
                 command);
-        if (dated.isPresent()) {
-            return dated.get();
+        if (payload.isEmpty()) {
+            payload = read(
+                    HearingPayloadCacheKey.cacheKey(keyPrefix, command.hearingId(), null), command);
         }
-
-        final Optional<JsonNode> legacy = read(
-                HearingPayloadCacheKey.cacheKey(keyPrefix, command.hearingId(), null), command);
-        if (legacy.isPresent()) {
-            return legacy.get();
+        if (payload.isEmpty()) {
+            LOG.info("Hearing payload not cached; querying the results query API. "
+                            + "requestId={} hearingId={} hearingDay={}",
+                    command.requestId(), command.hearingId(), command.hearingDay());
+            payload = query.fetch(command);
         }
-
-        LOG.info("Hearing payload not cached; querying the results query API. "
-                        + "requestId={} hearingId={} hearingDay={}",
-                command.requestId(), command.hearingId(), command.hearingDay());
-        return query.fetch(command)
-                .orElseThrow(() -> unavailable(command));
+        return payload.orElseThrow(() -> unavailable(command));
     }
 
     /**
@@ -76,16 +72,24 @@ public class CachedHearingPayloadAdapter implements HearingPayloadSource {
      * <p>The failure is logged at WARN with its cause, so a cache outage is visible rather than
      * inferred from a rise in query-side traffic. It is not rethrown, because the query side can
      * still answer and the function app's own behaviour here is to carry on.
+     *
+     * <p>The catch is deliberately as wide as the port. This class knows a cache capability and not
+     * a cache technology, so it cannot name the exceptions a particular client throws — and naming a
+     * few of them would mean the next client's failures escaped as unexpected pipeline errors rather
+     * than as the fallback this method exists to perform.
      */
+    @SuppressWarnings("PMD.AvoidCatchingGenericException")
     private Optional<JsonNode> read(final String key, final DistributionCommand command) {
+        Optional<JsonNode> found;
         try {
-            return cache.read(key);
+            found = cache.read(key);
         } catch (RuntimeException unreadable) {
             LOG.warn("Hearing payload cache could not be read; continuing to the query API. "
                             + "requestId={} hearingId={}",
                     command.requestId(), command.hearingId(), unreadable);
-            return Optional.empty();
+            found = Optional.empty();
         }
+        return found;
     }
 
     /**

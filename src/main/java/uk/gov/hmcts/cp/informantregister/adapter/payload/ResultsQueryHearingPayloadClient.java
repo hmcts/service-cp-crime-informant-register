@@ -46,6 +46,9 @@ public class ResultsQueryHearingPayloadClient implements HearingPayloadQuery {
      */
     private static final int LEGACY_RETRY_CUT_OFF = 429;
 
+    /** The attempt budget at which the current try is the last one. */
+    private static final int LAST_ATTEMPT = 1;
+
     private static final String PATH =
             "/results-query-api/query/api/rest/results/hearingDetails/internal/{hearingId}";
 
@@ -78,32 +81,45 @@ public class ResultsQueryHearingPayloadClient implements HearingPayloadQuery {
 
     @Override
     public Optional<JsonNode> fetch(final DistributionCommand command) {
+        Optional<JsonNode> payload = Optional.empty();
         if (systemUserId == null || systemUserId.isBlank()) {
             LOG.warn("No system user identity is configured, so the payload fallback cannot be "
                             + "used. requestId={} hearingId={}",
                     command.requestId(), command.hearingId());
-            return Optional.empty();
+        } else {
+            payload = attempt(command);
         }
+        return payload;
+    }
 
-        for (int attemptsLeft = maxAttempts; attemptsLeft > 0; attemptsLeft--) {
+    /**
+     * The legacy retry loop: at most {@code maxAttempts} tries, and none of them after a response
+     * has arrived carrying a status at or below the cut-off.
+     */
+    private Optional<JsonNode> attempt(final DistributionCommand command) {
+        Optional<JsonNode> payload = Optional.empty();
+        boolean tryAgain = true;
+        for (int attemptsLeft = maxAttempts; tryAgain && attemptsLeft > 0; attemptsLeft--) {
+            final boolean lastAttempt = attemptsLeft <= LAST_ATTEMPT;
             try {
-                return content(get(command.hearingId()));
+                payload = content(get(command.hearingId()));
+                tryAgain = false;
             } catch (RestClientResponseException answered) {
-                if (attemptsLeft <= 1 || answered.getStatusCode().value() <= LEGACY_RETRY_CUT_OFF) {
-                    return refused(command, answered.getStatusCode().value());
+                final int status = answered.getStatusCode().value();
+                if (lastAttempt || status <= LEGACY_RETRY_CUT_OFF) {
+                    refused(command, status);
+                    tryAgain = false;
                 }
             } catch (RestClientException unanswered) {
-                if (attemptsLeft <= 1) {
+                if (lastAttempt) {
                     LOG.warn("The results query API did not answer. requestId={} hearingId={}",
                             command.requestId(), command.hearingId(), unanswered);
-                    return Optional.empty();
+                    tryAgain = false;
                 }
             }
-            if (!pause(command)) {
-                return Optional.empty();
-            }
+            tryAgain = tryAgain && pause(command);
         }
-        return Optional.empty();
+        return payload;
     }
 
     /** Issues the read. Kept apart so the retry loop above reads as the rule it ports. */
@@ -125,32 +141,30 @@ public class ResultsQueryHearingPayloadClient implements HearingPayloadQuery {
      * because there is no payload in it either.
      */
     private Optional<JsonNode> content(final String body) {
-        if (body == null || body.isBlank()) {
-            return Optional.empty();
+        Optional<JsonNode> payload = Optional.empty();
+        if (body != null && !body.isBlank()) {
+            try {
+                final JsonNode parsed = objectMapper.readTree(body);
+                if (parsed != null && !parsed.isNull() && !parsed.isMissingNode()
+                        && !parsed.isEmpty()) {
+                    payload = Optional.of(parsed);
+                }
+            } catch (JacksonException notJson) {
+                LOG.warn("The results query API answered with something that is not JSON.", notJson);
+            }
         }
-        final JsonNode parsed;
-        try {
-            parsed = objectMapper.readTree(body);
-        } catch (JacksonException notJson) {
-            LOG.warn("The results query API answered with something that is not JSON.", notJson);
-            return Optional.empty();
-        }
-        if (parsed == null || parsed.isNull() || parsed.isMissingNode() || parsed.isEmpty()) {
-            return Optional.empty();
-        }
-        return Optional.of(parsed);
+        return payload;
     }
 
     /**
-     * Records a refusal and gives up on it.
+     * Records a refusal.
      *
      * <p>The status is logged because it is the query side's own answer and bounded by HTTP; the
      * body is not, because it is text somebody else wrote and this line reaches the log index.
      */
-    private Optional<JsonNode> refused(final DistributionCommand command, final int status) {
+    private void refused(final DistributionCommand command, final int status) {
         LOG.warn("The results query API refused the payload read. requestId={} hearingId={} "
                 + "status={}", command.requestId(), command.hearingId(), status);
-        return Optional.empty();
     }
 
     /**
@@ -161,17 +175,17 @@ public class ResultsQueryHearingPayloadClient implements HearingPayloadQuery {
      * lost its interrupt.
      */
     private boolean pause(final DistributionCommand command) {
-        if (retryInterval.isZero() || retryInterval.isNegative()) {
-            return true;
+        boolean mayContinue = true;
+        if (!retryInterval.isZero() && !retryInterval.isNegative()) {
+            try {
+                Thread.sleep(retryInterval);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                LOG.warn("Interrupted while waiting to retry the payload read. requestId={} "
+                        + "hearingId={}", command.requestId(), command.hearingId());
+                mayContinue = false;
+            }
         }
-        try {
-            Thread.sleep(retryInterval);
-            return true;
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            LOG.warn("Interrupted while waiting to retry the payload read. requestId={} "
-                    + "hearingId={}", command.requestId(), command.hearingId());
-            return false;
-        }
+        return mayContinue;
     }
 }

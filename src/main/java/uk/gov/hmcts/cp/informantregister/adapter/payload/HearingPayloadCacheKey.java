@@ -33,9 +33,7 @@ public final class HearingPayloadCacheKey {
      */
     public static String cacheKey(final String prefix, final UUID hearingId,
             final LocalDate hearingDay) {
-        if (hearingDay == null) {
-            return prefix + hearingId + SUFFIX;
-        }
-        return prefix + hearingId + '_' + hearingDay + SUFFIX;
+        final String day = hearingDay == null ? "" : "_" + hearingDay;
+        return prefix + hearingId + day + SUFFIX;
     }
 }
