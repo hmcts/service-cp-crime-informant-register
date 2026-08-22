@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -28,11 +29,13 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * so do the parity goldens. It is not corrected here; a correction is a change to what prosecuting
  * authorities ingest and belongs on the deviations register with business sign-off, not in a port.
  *
- * <p><strong>Two parsing modes, because moment has two.</strong> {@code moment.tz(value, zone)}
+ * <p><strong>Three parsing modes, because moment has three.</strong> {@code moment.tz(value, zone)}
  * resolves a value that carries an offset to that instant and then converts it to the zone, but
  * treats a value with no offset as already being in the zone. Both appear here: shared times arrive
  * as instants ({@code ...Z}), while ordered dates arrive as bare {@code YYYY-MM-DD} days that must be
- * read as London days. {@link #toLondon} reproduces that split rather than guessing one rule.
+ * read as London days. A value moment recognises as neither takes a third route — {@code new Date()},
+ * whose result is read as UTC and <em>then</em> converted, landing an hour later in British Summer
+ * Time. {@link #toLondon} reproduces that split rather than guessing one rule.
  *
  * <p><strong>Absent input means "now".</strong> {@code moment.tz(undefined, zone)} is the current
  * time, so a hearing shared without a shared time is stamped with the wall clock. Several legacy Jest
@@ -151,7 +154,51 @@ public final class HearingDates {
         try {
             return LocalDateTime.parse(value).atZone(LONDON);
         } catch (DateTimeParseException notADateTime) {
+            return dayWithoutOffset(value);
+        }
+    }
+
+    /**
+     * Resolves a bare day, ISO-separated or not.
+     *
+     * <p>The two halves land an hour apart in summer and that is the legacy's answer, not a rounding
+     * choice made here. {@code moment.tz} matches {@code 2020-06-19} against its ISO pattern and
+     * reads it as a London day, so it is midnight London. It has no pattern for {@code 2020/06/19},
+     * falls through to {@code new Date(...)}, and the result is read as a UTC day and then converted
+     * — so the same date arrives as 01:00 in British Summer Time. Verified against the
+     * {@code moment-timezone} vendored with the function app, and the answer does not depend on the
+     * host's time zone.
+     *
+     * <p>Only the leading-date form is reproduced. {@code moment} accepts more than that through the
+     * same fallback ({@code 2020-06}, {@code 2020/06/19 10:30}), and it answers an unreadable value
+     * with the literal string {@code "Invalid date"} rather than by throwing. Neither is reachable
+     * on this path: every value formatted here has already been through {@link #orderingKey}, which
+     * requires a leading calendar date and refuses anything without one, exactly as the legacy
+     * {@code DateService.parse} does before {@code getHearingDate} is ever called. So the rest is
+     * refused rather than guessed — and refused as a classified transformation failure, because an
+     * unclassified parse error would be read as transient and retried until the delivery budget ran
+     * out on a payload no redelivery can change.
+     *
+     * @param value the value to resolve
+     * @return the value as a London date-time
+     * @throws TransformationFailedException if no calendar day can be read from it
+     */
+    private static ZonedDateTime dayWithoutOffset(final String value) {
+        try {
             return LocalDate.parse(value).atStartOfDay(LONDON);
+        } catch (DateTimeParseException notAnIsoDay) {
+            final Matcher matcher = LEADING_DATE.matcher(value);
+            if (!matcher.matches()) {
+                // The legacy message, kept verbatim, and classified for the same reason
+                // `orderingKey` classifies its own.
+                throw new TransformationFailedException("Invalid date format");
+            }
+            return LocalDate.of(
+                            Integer.parseInt(matcher.group(1)),
+                            Integer.parseInt(matcher.group(2)),
+                            Integer.parseInt(matcher.group(3)))
+                    .atStartOfDay(ZoneOffset.UTC)
+                    .withZoneSameInstant(LONDON);
         }
     }
 }

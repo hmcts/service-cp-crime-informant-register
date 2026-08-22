@@ -92,7 +92,9 @@ final class DefendantContextBuilder {
         for (final JsonNode prosecutionCase : Json.array(hearing, "prosecutionCases")) {
             final String caseId = Json.text(prosecutionCase, "id");
 
-            for (final JsonNode defendant : Json.array(prosecutionCase, "defendants")) {
+            // `prosecutionCase.defendants.forEach` — unguarded in the legacy, so a case with no
+            // defendants field ends the hearing there rather than contributing nothing.
+            for (final JsonNode defendant : Json.dereferencedArray(prosecutionCase, "defendants")) {
                 final String masterDefendantId = Json.text(defendant, "masterDefendantId");
                 final DefendantContext context = byMasterDefendant
                         .computeIfAbsent(masterDefendantId, key -> new DefendantContext());
@@ -167,7 +169,9 @@ final class DefendantContextBuilder {
      * @return the offence title, or {@code null}
      */
     private String offenceTitleOf(final JsonNode defendant, final String offenceId) {
-        for (final JsonNode offence : Json.array(defendant, "offences")) {
+        // `defendant.offences.find(...)` — unguarded in the legacy, and reached only because the
+        // case-level result named an offence.
+        for (final JsonNode offence : Json.dereferencedArray(defendant, "offences")) {
             if (offenceId.equals(Json.text(offence, "id"))) {
                 return Json.text(offence, "offenceTitle");
             }
@@ -187,7 +191,8 @@ final class DefendantContextBuilder {
             final JsonNode defendant, final String caseId, final String masterDefendantId) {
 
         final List<RegisterResult> results = new ArrayList<>();
-        for (final JsonNode offence : Json.array(defendant, "offences")) {
+        // `defendant.offences.forEach` — unguarded in the legacy.
+        for (final JsonNode offence : Json.dereferencedArray(defendant, "offences")) {
             if (!Json.truthy(offence, "judicialResults")) {
                 continue;
             }
@@ -268,8 +273,15 @@ final class DefendantContextBuilder {
                 context.cases().add(caseId);
             }
         }
+        // The legacy `if (courtApplication.courtOrder)` guards the court order and nothing else, so
+        // an order with no offences field is dereferenced anyway and ends the hearing. The court
+        // order pass further down guards both and is left alone.
+        if (!Json.truthy(application, "courtOrder")) {
+            return;
+        }
         final JsonNode courtOrder = Json.at(application, "courtOrder");
-        for (final JsonNode courtOrderOffence : Json.array(courtOrder, "courtOrderOffences")) {
+        for (final JsonNode courtOrderOffence
+                : Json.dereferencedArray(courtOrder, "courtOrderOffences")) {
             final String caseId = Json.text(courtOrderOffence, "prosecutionCaseId");
             if (!context.cases().contains(caseId)) {
                 context.cases().add(caseId);
@@ -304,7 +316,11 @@ final class DefendantContextBuilder {
             final JsonNode application, final String masterDefendantId) {
 
         final List<RegisterResult> results = new ArrayList<>();
-        if (Json.array(application, "judicialResults").isEmpty()) {
+        // `courtApplication.judicialResults && courtApplication.judicialResults.length > 0`. The
+        // length half is why this is not an emptiness test on the iterated list: a truthy value that
+        // is not an array has no length, `undefined > 0` is false, and the legacy skips this level
+        // and carries on with the rest of the application rather than failing the hearing.
+        if (!Json.nonEmptyArray(application, "judicialResults")) {
             return results;
         }
         for (final JsonNode judicialResult : Json.array(application, "judicialResults")) {

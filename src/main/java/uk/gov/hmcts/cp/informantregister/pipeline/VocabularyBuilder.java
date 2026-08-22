@@ -72,8 +72,11 @@ final class VocabularyBuilder {
         final boolean youthDefendant = Boolean.TRUE.equals(defendant.youthDefendant());
 
         final JsonNode courtCentre = Json.at(hearing, "courtCentre");
-        if (courtCentre == null) {
-            // Classified: a hearing with no court centre reads the same on every delivery.
+        if (courtCentre == null || courtCentre.isNull()) {
+            // Classified: a hearing with no court centre reads the same on every delivery. An
+            // explicit JSON null counts, because `null.welshCourtCentre` is the same TypeError as
+            // `undefined.welshCourtCentre` — treating it as "not Welsh" would mark the hearing
+            // English and emit a register the legacy never produced.
             throw new TransformationFailedException("hearing carries no court centre");
         }
         final boolean welshCourtHearing = Json.truthy(courtCentre, "welshCourtCentre");
@@ -108,7 +111,9 @@ final class VocabularyBuilder {
      */
     private boolean custodyAt(final DefendantContext defendant, final String location) {
         for (final JsonNode prosecutionCase : Json.array(hearing, "prosecutionCases")) {
-            for (final JsonNode caseDefendant : Json.array(prosecutionCase, "defendants")) {
+            // `prosecutionCase.defendants.forEach` — unguarded in the legacy here too.
+            for (final JsonNode caseDefendant
+                    : Json.dereferencedArray(prosecutionCase, "defendants")) {
                 if (matches(defendant, Json.text(caseDefendant, "masterDefendantId"))
                         && custodyIs(caseDefendant, location)) {
                     return true;
@@ -195,7 +200,9 @@ final class VocabularyBuilder {
             if (!defendant.defendantIds().contains(Json.text(attendance, "defendantId"))) {
                 continue;
             }
-            for (final JsonNode attendanceDay : Json.array(attendance, "attendanceDays")) {
+            // `defendantAttendance.attendanceDays.forEach` — unguarded in the legacy.
+            for (final JsonNode attendanceDay
+                    : Json.dereferencedArray(attendance, "attendanceDays")) {
                 final String day = Json.text(attendanceDay, "day");
                 if (orderedOn(defendant, day)
                         && attendanceType.equals(Json.text(attendanceDay, "attendanceType"))) {

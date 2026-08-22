@@ -244,6 +244,10 @@ public final class RegisterBuilder {
                     Json.text(identifier, "prosecutionAuthorityId"), prosecutionAuthorityId)) {
                 continue;
             }
+            // The guarded form, deliberately: the legacy dereference here
+            // (`getDefendantsFromContext`, SetInformantRegister/index.js:125) is unreachable with a
+            // missing `defendants`, because the defendant-context pass ran first and already
+            // refused the same case. Both sides agree; nothing here decides the outcome.
             for (final JsonNode defendant : Json.array(prosecutionCase, "defendants")) {
                 identities.add(Json.text(defendant, "masterDefendantId"));
             }
