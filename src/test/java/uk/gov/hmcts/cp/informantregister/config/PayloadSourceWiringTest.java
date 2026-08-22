@@ -5,7 +5,9 @@ import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -36,7 +38,9 @@ class PayloadSourceWiringTest {
     }
 
     private final ApplicationContextRunner runner =
-            new ApplicationContextRunner().withUserConfiguration(PayloadTestConfiguration.class);
+            new ApplicationContextRunner()
+                    .withConfiguration(AutoConfigurations.of(JacksonAutoConfiguration.class))
+                    .withUserConfiguration(PayloadTestConfiguration.class);
 
     @Nested
     @DisplayName("adapter selection")

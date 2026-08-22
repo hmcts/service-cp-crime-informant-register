@@ -5,7 +5,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import tools.jackson.databind.ObjectMapper;
-import uk.gov.hmcts.cp.informantregister.adapter.stub.StubHearingPayloadSource;
 import uk.gov.hmcts.cp.informantregister.adapter.stub.StubRegisterSubmissionClient;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.application.HearingPayloadSource;
@@ -16,9 +15,11 @@ import uk.gov.hmcts.cp.informantregister.inbound.DistributionCommandParser;
 /**
  * The application core and the adapters currently serving its ports.
  *
- * <p>The two stubs are declared as the port types rather than as their own classes, so replacing
- * either with a real adapter is a change to one method here and to nothing else. That is the whole
- * claim the skeleton makes, and stating it in the wiring is how it stays true.
+ * <p>The remaining stub is declared as its port type rather than as its own class, so replacing it
+ * with a real adapter is a change to one method here and to nothing else. That is the claim the
+ * skeleton made, and the payload port has now been through it: the adapter behind it moved out to
+ * {@link LivePayloadConfig} and {@link StubPayloadConfig}, which choose between two implementations,
+ * and nothing in {@link DistributionPipeline} changed to allow it.
  *
  * <p>Excluded from the {@code test} profile for the same reason as the processed-log wiring: the
  * pipeline needs the guard, the guard needs a store, and that profile has none.
@@ -46,13 +47,6 @@ public class PipelineConfig {
     @Bean
     public DistributionCommandParser distributionCommandParser(final ObjectMapper objectMapper) {
         return new DistributionCommandParser(objectMapper);
-    }
-
-    /** The payload-source port, stubbed until the Redis adapter story lands. */
-    @Bean
-    public HearingPayloadSource hearingPayloadSource(
-            final InformantRegisterProperties properties, final ObjectMapper objectMapper) {
-        return new StubHearingPayloadSource(properties, objectMapper);
     }
 
     /** The submission port, stubbed until the Results adapter story lands. */
