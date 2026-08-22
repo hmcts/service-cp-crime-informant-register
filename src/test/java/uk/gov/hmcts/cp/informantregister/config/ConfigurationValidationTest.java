@@ -40,8 +40,17 @@ class ConfigurationValidationTest {
     private static final String NAMESPACE_PROPERTY =
             "informantregister.servicebus.namespace=" + NAMESPACE;
 
+    /**
+     * The identity the query-side fallback authorises with. Carried by every case here that is not
+     * about it, because the live payload source cannot work without one and startup says so.
+     */
+    private static final String IDENTITY_PROPERTY =
+            "informantregister.system-user-id=9f61bdbb-6f1a-4c0f-9a3d-6b8f0f1c2a44";
+
     private final ApplicationContextRunner runner =
-            new ApplicationContextRunner().withUserConfiguration(PropertiesTestConfiguration.class);
+            new ApplicationContextRunner()
+                    .withUserConfiguration(PropertiesTestConfiguration.class)
+                    .withPropertyValues(IDENTITY_PROPERTY);
 
     @Configuration(proxyBeanMethods = false)
     @EnableConfigurationProperties(InformantRegisterProperties.class)
@@ -232,6 +241,175 @@ class ConfigurationValidationTest {
             // "both set".
             runner.withPropertyValues("informantregister.servicebus.connection-string=",
                     NAMESPACE_PROPERTY).run(context -> assertThat(context).hasNotFailed());
+        }
+    }
+
+    @Nested
+    @DisplayName("the live payload source needs an identity to fall back with")
+    class PayloadIdentity {
+
+        /**
+         * Without it the fallback cannot be used at all: the client says so and returns nothing, so
+         * every cold-cache request is abandoned, redelivered and finally dead-lettered by a pod that
+         * reports itself perfectly healthy throughout. A mount that did not arrive is a deployment
+         * fault, and a deployment fault belongs at startup.
+         */
+        @Test
+        void live_mode_without_an_identity_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.system-user-id=",
+                    "informantregister.payload.mode=LIVE").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.system-user-id")
+                                .hasMessageContaining("informantregister.payload.mode");
+                    });
+        }
+
+        @Test
+        void live_mode_with_an_identity_should_start() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.payload.mode=LIVE")
+                    .run(context -> assertThat(context).hasNotFailed());
+        }
+
+        /**
+         * The identity is the live source's requirement and nobody else's. A local run on the stub
+         * fetches nothing and so authorises with nobody.
+         */
+        @Test
+        void stub_mode_without_an_identity_should_start() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.system-user-id=",
+                    "informantregister.payload.mode=STUB")
+                    .run(context -> assertThat(context).hasNotFailed());
+        }
+    }
+
+    @Nested
+    @DisplayName("the stub payload source is not reachable where the service is deployed")
+    class StubReachability {
+
+        /**
+         * Constitution Principle V: a stub must not be reachable in a production profile once the
+         * real adapter lands, and it has landed. The discriminator is the credential source already
+         * used for exactly this distinction — a namespace means workload identity, which means a
+         * deployed pod. Such a pod running the stub would settle every message and produce nothing,
+         * which is the failure this service exists to end.
+         */
+        @Test
+        void stub_mode_on_the_deployed_credential_source_should_fail_startup() {
+            runner.withPropertyValues(NAMESPACE_PROPERTY,
+                    "informantregister.payload.mode=STUB").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.payload.mode")
+                                .hasMessageContaining("informantregister.servicebus.namespace");
+                    });
+        }
+
+        @Test
+        void stub_mode_on_the_local_credential_source_should_start() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.payload.mode=STUB")
+                    .run(context -> assertThat(context).hasNotFailed());
+        }
+
+        @Test
+        void live_mode_on_the_deployed_credential_source_should_start() {
+            runner.withPropertyValues(NAMESPACE_PROPERTY,
+                    "informantregister.payload.mode=LIVE")
+                    .run(context -> assertThat(context).hasNotFailed());
+        }
+    }
+
+    @Nested
+    @DisplayName("the payload settings must describe a source that can answer")
+    class PayloadReachability {
+
+        @Test
+        void a_fallback_with_no_attempts_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.payload.fallback.max-attempts=0").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining(
+                                        "informantregister.payload.fallback.max-attempts");
+                    });
+        }
+
+        @Test
+        void a_single_attempt_should_start() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.payload.fallback.max-attempts=1")
+                    .run(context -> assertThat(context).hasNotFailed());
+        }
+
+        @Test
+        void a_negative_retry_interval_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.payload.fallback.retry-interval=-1s").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining(
+                                        "informantregister.payload.fallback.retry-interval");
+                    });
+        }
+
+        @Test
+        void a_timeout_that_never_expires_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.payload.redis.command-timeout=0s").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining(
+                                        "informantregister.payload.redis.command-timeout");
+                    });
+        }
+
+        @Test
+        void a_cache_with_no_address_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.payload.redis.host=").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.payload.redis.host");
+                    });
+        }
+
+        @Test
+        void a_cache_with_no_key_prefix_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.payload.redis.key-prefix=").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.payload.redis.key-prefix");
+                    });
+        }
+
+        /**
+         * The fetch happens inside the run, and the run must stop before its claim can be reclaimed.
+         * A fallback whose own worst case outlasts the processing deadline therefore guarantees the
+         * thing the deadline exists to prevent: a runner still waiting on a socket while another
+         * runner takes its request.
+         */
+        @Test
+        void a_fallback_that_can_outlast_the_processing_deadline_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.claim.processing-deadline=1m",
+                    "informantregister.payload.fallback.read-timeout=30s").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.payload.fallback")
+                                .hasMessageContaining(
+                                        "informantregister.claim.processing-deadline");
+                    });
+        }
+
+        @Test
+        void a_fallback_that_finishes_inside_the_processing_deadline_should_start() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY)
+                    .run(context -> assertThat(context).hasNotFailed());
         }
     }
 }
