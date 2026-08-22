@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
+- 2026-08-23 — **The startup time budget now covers the whole payload fetch** (second Story 1
+  review round):
+  - the budget counted the query-side attempts only, so the two cache reads in front of them — the
+    dated key and its legacy undated twin, each able to spend a connect and a command timeout —
+    were time a run could spend beyond the deadline the budget exists to hold it to. They are
+    counted now, and the fetch must be *strictly* shorter than the processing deadline: a fetch
+    that fills it exactly leaves the rest of the run nothing, which is the reading
+    `DistributionPipeline` and the lease rule already take of that bound;
+  - the cache and query-side settings are asked of the live source only. STUB builds neither
+    client, so a local stub run is no longer refused startup over a cache address and an attempt
+    count that nothing in it will read — the same scope the system-user identity rule already had.
 - 2026-08-22 — **Post-review hardening of the payload adapter** (Story 1 review, findings
   re-verified against the function-app source before fixing):
   - the composite adapter no longer catches every `RuntimeException` the cache can raise. The
