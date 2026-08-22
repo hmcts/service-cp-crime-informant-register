@@ -51,12 +51,46 @@ public class LettuceHearingPayloadCache implements HearingPayloadCache, AutoClos
 
     @Override
     public Optional<JsonNode> read(final String key) {
-        LOG.trace("client={} mapper={} connection={}", client, objectMapper, connection);
-        return Optional.empty();
+        final String cached = connection().sync().get(key);
+        if (cached == null || cached.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            final JsonNode parsed = objectMapper.readTree(cached);
+            if (parsed == null || parsed.isNull() || parsed.isMissingNode()) {
+                return Optional.empty();
+            }
+            return Optional.of(parsed);
+        } catch (JacksonException unparseable) {
+            // The key exists and its value is not a payload. Reported as a miss, exactly as the
+            // function app reports it, so the query side still gets its turn — and logged, because a
+            // cache the producer is corrupting is not something to discover from a traffic graph.
+            LOG.warn("A cached hearing payload could not be parsed; treating it as absent.",
+                    unparseable);
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Returns the connection, opening one when there is not a usable one.
+     *
+     * <p>Opened on first read rather than at construction: a cache that is down must not stop the
+     * service from starting, because the query side can still answer and the processed log still
+     * needs to record what happened. Once open, Lettuce's own reconnection keeps it that way; this
+     * only has to notice a connection that has been closed for good.
+     */
+    private synchronized StatefulRedisConnection<String, String> connection() {
+        if (connection == null || !connection.isOpen()) {
+            connection = client.connect();
+        }
+        return connection;
     }
 
     @Override
-    public void close() {
-        // Lifecycle arrives with the implementation.
+    public synchronized void close() {
+        if (connection != null) {
+            connection.close();
+            connection = null;
+        }
     }
 }
