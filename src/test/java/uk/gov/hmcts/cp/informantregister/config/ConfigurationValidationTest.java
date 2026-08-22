@@ -411,5 +411,81 @@ class ConfigurationValidationTest {
             runner.withPropertyValues(CONNECTION_STRING_PROPERTY)
                     .run(context -> assertThat(context).hasNotFailed());
         }
+
+        /**
+         * The fallback is not the whole fetch. Two cache reads precede it — the dated key and the
+         * legacy undated twin, registered deviation 4 — and each of them can spend its connect and
+         * command timeouts before the query side is asked at all. A budget that counts only the
+         * HTTP half licences a fetch that overruns the deadline by everything the cache cost.
+         */
+        @Test
+        void a_fetch_whose_cache_reads_push_it_past_the_deadline_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.claim.processing-deadline=2m",
+                    "informantregister.payload.redis.connect-timeout=5s",
+                    "informantregister.payload.redis.command-timeout=5s",
+                    "informantregister.payload.fallback.max-attempts=1",
+                    "informantregister.payload.fallback.connect-timeout=5s",
+                    // 105s of query side alone fits inside 120s; the 20s of cache reads in front of
+                    // it does not.
+                    "informantregister.payload.fallback.read-timeout=100s").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.payload")
+                                .hasMessageContaining(
+                                        "informantregister.claim.processing-deadline");
+                    });
+        }
+
+        /**
+         * A fetch that fills the deadline exactly leaves the rest of the run nothing, and the run
+         * only checks the deadline once the fetch has returned. The deadline is a bound that is
+         * reached rather than passed — the same reading {@code DistributionPipeline} takes of it,
+         * and the same reading the lease rule above takes.
+         */
+        @Test
+        void a_fetch_that_exactly_fills_the_deadline_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.claim.processing-deadline=2m",
+                    "informantregister.payload.redis.connect-timeout=5s",
+                    "informantregister.payload.redis.command-timeout=5s",
+                    "informantregister.payload.fallback.max-attempts=1",
+                    "informantregister.payload.fallback.connect-timeout=5s",
+                    // 20s of cache reads plus 100s of query side is the deadline to the second.
+                    "informantregister.payload.fallback.read-timeout=95s").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.payload")
+                                .hasMessageContaining(
+                                        "informantregister.claim.processing-deadline");
+                    });
+        }
+
+        @Test
+        void a_fetch_that_finishes_one_second_inside_the_deadline_should_start() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.claim.processing-deadline=2m",
+                    "informantregister.payload.redis.connect-timeout=5s",
+                    "informantregister.payload.redis.command-timeout=5s",
+                    "informantregister.payload.fallback.max-attempts=1",
+                    "informantregister.payload.fallback.connect-timeout=5s",
+                    "informantregister.payload.fallback.read-timeout=94s")
+                    .run(context -> assertThat(context).hasNotFailed());
+        }
+
+        /**
+         * The cache and the query side belong to the live source, and STUB selects neither bean.
+         * Holding a local stub run to settings nothing will read is the same mistake the identity
+         * rule already avoids ({@link PayloadIdentity#stub_mode_without_an_identity_should_start}):
+         * it fails a run that is configured exactly as it means to be.
+         */
+        @Test
+        void stub_mode_should_not_be_held_to_the_live_payload_settings() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.payload.mode=STUB",
+                    "informantregister.payload.redis.host=",
+                    "informantregister.payload.fallback.max-attempts=0")
+                    .run(context -> assertThat(context).hasNotFailed());
+        }
     }
 }
