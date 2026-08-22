@@ -62,6 +62,33 @@ class HearingDatesTest {
         }
 
         @Test
+        @DisplayName("reads a slash-separated day as a UTC day, as moment's Date fallback does")
+        void reads_a_slash_separated_day_as_a_utc_day() {
+            // `moment.tz` has no ISO match for "2020/06/19", so it falls through to `new Date(...)`
+            // and the result is read as UTC before being converted to London — an hour later than
+            // the same day written with hyphens. Verified against the vendored moment-timezone in
+            // `cpp-context-azure-legalaidagency`, and independent of the host time zone.
+            assertThat(dates.localDateTime("2020/06/19")).isEqualTo("2020-06-19T01:00:00Z");
+        }
+
+        @Test
+        @DisplayName("shifts a slash-separated winter day by nothing, because London is UTC then")
+        void reads_a_slash_separated_winter_day_unshifted() {
+            assertThat(dates.localDateTime("2020/01/19")).isEqualTo("2020-01-19T00:00:00Z");
+        }
+
+        @Test
+        @DisplayName("refuses a value it cannot read at all, classified rather than raw")
+        void refuses_a_value_it_cannot_read() {
+            // The refusal itself is deviations-register entry 5: the legacy formats the literal
+            // string "Invalid date" into the register instead. What must not happen is an
+            // unclassified parse error, which the pipeline would read as transient and retry until
+            // the delivery budget ran out on a payload no redelivery can change.
+            assertThatThrownBy(() -> dates.localDateTime("not a date"))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
+
+        @Test
         @DisplayName("falls back to the clock when there is no value at all")
         void falls_back_to_the_clock_when_absent() {
             // moment.tz(undefined, zone) is "now" — which is why a hearing shared without a shared
@@ -85,6 +112,12 @@ class HearingDatesTest {
         @DisplayName("gives the day of a bare day unchanged")
         void gives_the_day_of_a_bare_day_unchanged() {
             assertThat(dates.localDate("2020-01-20")).isEqualTo("2020-01-20");
+        }
+
+        @Test
+        @DisplayName("gives the day of a slash-separated day unchanged")
+        void gives_the_day_of_a_slash_separated_day_unchanged() {
+            assertThat(dates.localDate("2020/06/19")).isEqualTo("2020-06-19");
         }
     }
 

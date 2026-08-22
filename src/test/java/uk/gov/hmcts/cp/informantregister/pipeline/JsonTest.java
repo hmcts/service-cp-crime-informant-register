@@ -190,6 +190,112 @@ class JsonTest {
         }
     }
 
+    @Nested
+    @DisplayName("dereferencedArray")
+    class DereferencedArray {
+
+        @Test
+        @DisplayName("gives the elements of an array field")
+        void gives_the_elements_of_an_array_field() {
+            assertThat(Json.dereferencedArray(tree("{\"f\":[1,2,3]}"), "f")).hasSize(3);
+        }
+
+        @Test
+        @DisplayName("gives no elements for an empty array, which is a legal thing to iterate")
+        void gives_no_elements_for_an_empty_array() {
+            assertThat(Json.dereferencedArray(tree("{\"f\":[]}"), "f")).isEmpty();
+        }
+
+        @Test
+        @DisplayName("refuses a missing field, because `undefined.forEach` throws")
+        void refuses_a_missing_field() {
+            assertThatThrownBy(() -> Json.dereferencedArray(tree("{}"), "f"))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
+
+        @Test
+        @DisplayName("refuses an explicit null, because `null.forEach` throws")
+        void refuses_an_explicit_null() {
+            assertThatThrownBy(() -> Json.dereferencedArray(tree("{\"f\":null}"), "f"))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
+
+        @Test
+        @DisplayName("refuses a value that is not an array")
+        void refuses_a_value_that_is_not_an_array() {
+            assertThatThrownBy(() -> Json.dereferencedArray(tree("{\"f\":{}}"), "f"))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
+
+        @Test
+        @DisplayName("refuses an absent parent, because the dereference itself throws")
+        void refuses_an_absent_parent() {
+            assertThatThrownBy(() -> Json.dereferencedArray(null, "f"))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
+
+        @Test
+        @DisplayName("names the field it refused and never quotes what was in it")
+        void names_the_field_it_refused() {
+            assertThatThrownBy(() ->
+                    Json.dereferencedArray(tree("{\"f\":\"a defendant name\"}"), "f"))
+                    .hasMessageContaining("f")
+                    .hasMessageNotContaining("a defendant name");
+        }
+
+        @Test
+        @DisplayName("classifies a refusal as non-transient, so no redelivery is spent on it")
+        void classifies_a_refusal_as_non_transient() {
+            assertThatThrownBy(() -> Json.dereferencedArray(tree("{}"), "f"))
+                    .asInstanceOf(throwable(TransformationFailedException.class))
+                    .satisfies(failure -> {
+                        assertThat(failure.classification())
+                                .isEqualTo(FailureClassification.NON_TRANSIENT);
+                        assertThat(failure.reason()).isEqualTo(ReasonCode.TRANSFORMATION_FAILED);
+                    });
+        }
+    }
+
+    @Nested
+    @DisplayName("nonEmptyArray")
+    class NonEmptyArray {
+
+        @Test
+        @DisplayName("is true for an array with elements in it")
+        void is_true_for_an_array_with_elements() {
+            assertThat(Json.nonEmptyArray(tree("{\"f\":[1]}"), "f")).isTrue();
+        }
+
+        @Test
+        @DisplayName("is false for an empty array, because `[].length > 0` is false")
+        void is_false_for_an_empty_array() {
+            assertThat(Json.nonEmptyArray(tree("{\"f\":[]}"), "f")).isFalse();
+        }
+
+        @Test
+        @DisplayName("is false for a missing field and for an explicit null")
+        void is_false_for_a_missing_field_and_an_explicit_null() {
+            assertThat(Json.nonEmptyArray(tree("{}"), "f")).isFalse();
+            assertThat(Json.nonEmptyArray(tree("{\"f\":null}"), "f")).isFalse();
+        }
+
+        @Test
+        @DisplayName("is false — never a refusal — for a truthy value that is not an array")
+        void is_false_for_a_truthy_value_that_is_not_an_array() {
+            // `({}).length` is `undefined`, and `undefined > 0` is false. The legacy therefore
+            // skips this branch quietly and carries on with the rest of the hearing; refusing here
+            // would lose a register the legacy produces.
+            assertThat(Json.nonEmptyArray(tree("{\"f\":{}}"), "f")).isFalse();
+            assertThat(Json.nonEmptyArray(tree("{\"f\":\"xy\"}"), "f")).isFalse();
+        }
+
+        @Test
+        @DisplayName("is false for an absent parent")
+        void is_false_for_an_absent_parent() {
+            assertThat(Json.nonEmptyArray(null, "f")).isFalse();
+        }
+    }
+
     /**
      * Whether field {@code f} of the given object is truthy.
      *

@@ -102,17 +102,17 @@ final class Json {
      * transformation cannot read into a legitimate empty business result, complete the request, and
      * leave nothing to replay. So it is refused, non-transiently, and the delivery is parked where
      * support can see it. The register's content is untouched by that; only the handling of a payload
-     * that has no register in it changes, which is deviations-register entry 2.
+     * that has no register in it changes, which is deviations-register entry 5.
      *
      * <p>Callers that need to distinguish "absent" from "empty" — because the legacy code branches on
      * truthiness before iterating — must ask {@link #truthy(JsonNode, String)} separately. This
      * method is for the iteration itself, which is the same either way.
      *
-     * <p>The looser half is deliberate and bounded: where the legacy dereferences an array with no
-     * {@code || []} guard at all it would also throw on an <em>absent</em> field, and this method
-     * still answers "nothing to iterate" there. Tightening that needs a per-call-site audit against
-     * the legacy source, since the two forms appear side by side, and it is not what this method
-     * decides.
+     * <p>Use this method <strong>only</strong> where the legacy guards the iteration — with
+     * {@code || []}, or with an {@code if} on the same field. Where it dereferences the array with no
+     * guard at all, an absent field throws there too, and {@link #dereferencedArray} is the method
+     * that says so. The per-call-site audit those two forms need has been done; each call site names
+     * the legacy line it reproduces.
      *
      * @param node  the object to read; may be {@code null}
      * @param field the field name
@@ -131,5 +131,55 @@ final class Json {
                     "hearing field '" + field + "' is not an array");
         }
         return value.valueStream().toList();
+    }
+
+    /**
+     * The elements of an array field the legacy dereferences <strong>without</strong> a guard, as
+     * {@code parent.field.forEach} would iterate them.
+     *
+     * <p>The difference from {@link #array} is the absent case, and it decides whether a register
+     * exists. {@code undefined.forEach} is a {@code TypeError}: where the legacy writes
+     * {@code prosecutionCase.defendants.forEach(...)} with no {@code || []} and no enclosing
+     * {@code if}, a payload missing that field kills the whole hearing and no register is produced
+     * for anybody. Reading it as "nothing to iterate" would carry on and emit a register the legacy
+     * never sent — to a real prosecuting authority — which is the one direction a bug-for-bug port
+     * must never drift in (`.claude/rules/design_rules.md`, "Parity and the Deviations Register").
+     *
+     * <p>So this refuses an absent field, an explicit null, and a value that is not an array alike:
+     * all three are the same {@code TypeError} in the legacy. An <em>empty</em> array is not refused
+     * — iterating one is legal and yields nothing.
+     *
+     * @param node  the object being dereferenced; may be {@code null}, which is itself a refusal
+     * @param field the field name
+     * @return the elements, never {@code null}
+     * @throws TransformationFailedException if the field cannot be iterated
+     */
+    static List<JsonNode> dereferencedArray(final JsonNode node, final String field) {
+        final JsonNode value = at(node, field);
+        if (value == null || !value.isArray()) {
+            // The field name is this service's own vocabulary, so it is safe to name. The value is
+            // the producer's, and may be defendant detail, so it is never quoted.
+            throw new TransformationFailedException(
+                    "hearing field '" + field + "' cannot be iterated");
+        }
+        return value.valueStream().toList();
+    }
+
+    /**
+     * Whether a field would satisfy {@code parent.field && parent.field.length > 0}.
+     *
+     * <p>The second half is the reason this is not {@code !array(node, field).isEmpty()}. A truthy
+     * value that is <em>not</em> an array has no {@code length}, and {@code undefined > 0} is
+     * {@code false} — so the legacy skips the guarded block quietly and carries on with the rest of
+     * the hearing. Refusing there, as {@link #array} would, would lose a register the legacy
+     * produces.
+     *
+     * @param node  the object to read; may be {@code null}
+     * @param field the field name
+     * @return whether the field is an array with at least one element
+     */
+    static boolean nonEmptyArray(final JsonNode node, final String field) {
+        final JsonNode value = at(node, field);
+        return value != null && value.isArray() && !value.isEmpty();
     }
 }

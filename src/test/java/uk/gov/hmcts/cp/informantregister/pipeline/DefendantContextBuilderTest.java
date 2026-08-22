@@ -191,6 +191,36 @@ class DefendantContextBuilderTest {
         }
 
         @Test
+        @DisplayName("recorded on an application whose judicialResults is not an array are skipped")
+        void recorded_on_an_application_with_an_unreadable_results_field_are_skipped() {
+            // `if (courtApplication.judicialResults && courtApplication.judicialResults.length > 0)`
+            // — DefendantContextBaseService.js:189. `({}).length` is `undefined` and
+            // `undefined > 0` is false, so the legacy skips this level and carries on with the rest
+            // of the application. Refusing the hearing here would lose a register the legacy sends.
+            final RegisterResult result = onlyResult("""
+                {"courtApplications":[{"id":"app-1",
+                 "applicant":{"prosecutingAuthority":{"prosecutionAuthorityId":"auth-1"}},
+                 "subject":{"masterDefendant":{"masterDefendantId":"master-1"}},
+                 "judicialResults":{},
+                 "courtApplicationCases":[{"prosecutionCaseId":"case-9",
+                  "offences":[{"id":"off-1",
+                   "judicialResults":[{"orderedDate":"2020-01-20"}]}]}]}]}""");
+
+            assertThat(result.level()).isEqualTo(ResultLevel.OFFENCE);
+            assertThat(result.offenceId()).isEqualTo("off-1");
+        }
+
+        @Test
+        @DisplayName("recorded on an application with an empty judicialResults array are skipped")
+        void recorded_on_an_application_with_an_empty_results_array_are_skipped() {
+            assertThat(results("""
+                {"courtApplications":[{"id":"app-1",
+                 "applicant":{"prosecutingAuthority":{"prosecutionAuthorityId":"auth-1"}},
+                 "subject":{"masterDefendant":{"masterDefendantId":"master-1"}},
+                 "judicialResults":[]}]}""")).isEmpty();
+        }
+
+        @Test
         @DisplayName("recorded on a linked case's offence are tagged at offence level, not application")
         void recorded_on_a_linked_case_offence_are_tagged_at_offence_level() {
             // isRegister is true for this flow, which is what chooses OFFENCE over APPLICATION.
@@ -318,7 +348,7 @@ class DefendantContextBuilderTest {
             // site as non-transient and propagates out of the transformation carrying that
             // classification — no redelivery can turn this payload into a register, so none is spent
             // on it. Ending the swallow is the one thing this port is sanctioned to change
-            // (deviations-register entry 2).
+            // (deviations-register entry 5).
             assertThatThrownBy(() -> build("""
                 {"prosecutionCases":[{"id":"case-1","prosecutionCaseIdentifier":{},
                  "defendants":[{"id":"def-1","masterDefendantId":"master-1","offences":[],
@@ -343,6 +373,84 @@ class DefendantContextBuilderTest {
                  "defendantJudicialResults":[{"masterDefendantId":"a-stranger",
                   "judicialResult":{"orderedDate":"2020-01-20"}}]}"""))
                     .hasMessageNotContaining("a-stranger");
+        }
+    }
+
+    @Nested
+    @DisplayName("arrays the legacy dereferences without a guard")
+    class UnguardedDereferences {
+
+        @Test
+        @DisplayName("refuse a prosecution case carrying no defendants at all")
+        void refuse_a_prosecution_case_with_no_defendants() {
+            // `prosecutionCase.defendants.forEach(...)` — DefendantContextBaseService.js:62, no
+            // `|| []` and no enclosing `if`. The legacy throws and the hearing produces nothing;
+            // reading the absent field as an empty list would gather a defendant set the legacy
+            // never reached and could emit a register to an authority it never wrote one for.
+            assertRefused("""
+                {"prosecutionCases":[{"id":"case-1","prosecutionCaseIdentifier":{}}]}""");
+        }
+
+        @Test
+        @DisplayName("refuse a defendant carrying no offences at all")
+        void refuse_a_defendant_with_no_offences() {
+            // `defendant.offences.forEach(...)` — DefendantContextBaseService.js:101.
+            assertRefused("""
+                {"prosecutionCases":[{"id":"case-1","prosecutionCaseIdentifier":{},
+                 "defendants":[{"id":"def-1","masterDefendantId":"master-1",
+                  "defendantCaseJudicialResults":[]}]}]}""");
+        }
+
+        @Test
+        @DisplayName("refuse a defendant with no offences even when a case result names one")
+        void refuse_a_defendant_with_no_offences_on_the_title_lookup() {
+            // `defendant.offences.find(...)` — DefendantContextBaseService.js:86, reached only when
+            // the case-level result names an offence, and unguarded there too.
+            assertRefused("""
+                {"prosecutionCases":[{"id":"case-1","prosecutionCaseIdentifier":{},
+                 "defendants":[{"id":"def-1","masterDefendantId":"master-1",
+                  "defendantCaseJudicialResults":[{"orderedDate":"2020-01-20",
+                   "offenceId":"off-1"}]}]}]}""");
+        }
+
+        @Test
+        @DisplayName("refuse an application court order carrying no offences at all")
+        void refuse_a_court_order_with_no_offences() {
+            // `courtApplication.courtOrder.courtOrderOffences.forEach(...)` —
+            // DefendantContextBaseService.js:160. The `if` above it guards `courtOrder`, not
+            // `courtOrderOffences`.
+            assertRefused("""
+                {"courtApplications":[{"id":"app-1",
+                 "applicant":{"prosecutingAuthority":{"prosecutionAuthorityId":"auth-1"}},
+                 "subject":{"masterDefendant":{"masterDefendantId":"master-1"}},
+                 "courtOrder":{"id":"order-1"}}]}""");
+        }
+
+        @Test
+        @DisplayName("leave a court order the legacy never dereferences alone")
+        void leave_an_absent_court_order_alone() {
+            // The same `if (courtApplication.courtOrder)` means an application with no court order
+            // at all is simply skipped — that one the legacy does guard.
+            assertThat(build("""
+                {"courtApplications":[{"id":"app-1",
+                 "applicant":{"prosecutingAuthority":{"prosecutionAuthorityId":"auth-1"}},
+                 "subject":{"masterDefendant":{"masterDefendantId":"master-1"}}}]}"""))
+                    .hasSize(1);
+        }
+
+        /**
+         * Asserts that a hearing is refused as a classified, non-transient transformation failure.
+         *
+         * @param hearing the hearing as JSON text
+         */
+        private void assertRefused(final String hearing) {
+            assertThatThrownBy(() -> build(hearing))
+                    .asInstanceOf(throwable(TransformationFailedException.class))
+                    .satisfies(failure -> {
+                        assertThat(failure.classification())
+                                .isEqualTo(FailureClassification.NON_TRANSIENT);
+                        assertThat(failure.reason()).isEqualTo(ReasonCode.TRANSFORMATION_FAILED);
+                    });
         }
     }
 

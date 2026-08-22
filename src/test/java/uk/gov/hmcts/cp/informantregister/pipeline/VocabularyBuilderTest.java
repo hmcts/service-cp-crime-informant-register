@@ -244,6 +244,23 @@ class VocabularyBuilderTest {
                     .satisfies(failure -> assertThat(failure.classification())
                             .isEqualTo(FailureClassification.NON_TRANSIENT));
         }
+
+        @Test
+        @DisplayName("refuse a hearing whose court centre is an explicit null, as the legacy does")
+        void refuse_a_hearing_whose_court_centre_is_an_explicit_null() {
+            // `!!this.hearingObj.courtCentre.welshCourtCentre` — VocabularyService.js:160. A JSON
+            // null dereferences exactly as a missing field does: `TypeError`, hearing lost. Reading
+            // it as "not Welsh" would mark the hearing englishCourtHearing and emit a register the
+            // legacy never produced.
+            assertThatThrownBy(() -> vocabularyOf("""
+                {"courtCentre":null,
+                 "prosecutionCases":[{"id":"case-1","prosecutionCaseIdentifier":{},
+                 "defendants":[{"id":"def-1","masterDefendantId":"master-1","offences":[],
+                  "defendantCaseJudicialResults":[{"orderedDate":"2020-01-20"}]}]}]}"""))
+                    .asInstanceOf(throwable(TransformationFailedException.class))
+                    .satisfies(failure -> assertThat(failure.classification())
+                            .isEqualTo(FailureClassification.NON_TRANSIENT));
+        }
     }
 
     /**
