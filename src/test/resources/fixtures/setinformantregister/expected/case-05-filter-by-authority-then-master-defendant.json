@@ -1,0 +1,41 @@
+[
+  {
+    "registerDate": "2021-06-15T10:30:00Z",
+    "prosecutionAuthorityId": "prosecution-auth-id-1",
+    "registerDefendants": [
+      {
+        "defendantIds": [
+          null,
+          null
+        ],
+        "results": [],
+        "cases": [
+          null,
+          null
+        ],
+        "applications": [],
+        "masterDefendantId": "master-defendant-id-1",
+        "vocabulary": {
+          "custodyLocationIsPolice": false,
+          "custodyLocationIsPrison": false,
+          "atleastOneCustodialResult": false,
+          "allNonCustodialResults": true,
+          "atleastOneNonCustodialResult": true,
+          "appearedInPerson": false,
+          "appearedByVideoLink": false,
+          "isCpsProsecuted": false,
+          "anyAppearance": false,
+          "inCustody": false,
+          "youthDefendant": false,
+          "adultDefendant": true,
+          "adultOrYouthDefendant": true,
+          "welshCourtHearing": false,
+          "englishCourtHearing": true,
+          "anyCourtHearing": true,
+          "prosecutorMajorCreditor": [],
+          "nonProsecutorMajorCreditor": []
+        }
+      }
+    ]
+  }
+]

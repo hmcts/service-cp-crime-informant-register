@@ -1,0 +1,70 @@
+[
+  {
+    "registerDate": "2021-06-15T10:30:00Z",
+    "prosecutionAuthorityId": "prosecution-auth-id-1",
+    "registerDefendants": [
+      {
+        "defendantIds": [
+          "master-defendant-id-1"
+        ],
+        "results": [],
+        "cases": [],
+        "applications": [
+          null
+        ],
+        "masterDefendantId": "master-defendant-id-1",
+        "vocabulary": {
+          "custodyLocationIsPolice": false,
+          "custodyLocationIsPrison": false,
+          "atleastOneCustodialResult": false,
+          "allNonCustodialResults": true,
+          "atleastOneNonCustodialResult": true,
+          "appearedInPerson": false,
+          "appearedByVideoLink": false,
+          "isCpsProsecuted": false,
+          "anyAppearance": false,
+          "inCustody": false,
+          "youthDefendant": false,
+          "adultDefendant": true,
+          "adultOrYouthDefendant": true,
+          "welshCourtHearing": false,
+          "englishCourtHearing": true,
+          "anyCourtHearing": true,
+          "prosecutorMajorCreditor": [],
+          "nonProsecutorMajorCreditor": []
+        }
+      },
+      {
+        "defendantIds": [
+          "master-defendant-id-2"
+        ],
+        "results": [],
+        "cases": [],
+        "applications": [
+          null
+        ],
+        "masterDefendantId": "master-defendant-id-2",
+        "vocabulary": {
+          "custodyLocationIsPolice": false,
+          "custodyLocationIsPrison": false,
+          "atleastOneCustodialResult": false,
+          "allNonCustodialResults": true,
+          "atleastOneNonCustodialResult": true,
+          "appearedInPerson": false,
+          "appearedByVideoLink": false,
+          "isCpsProsecuted": false,
+          "anyAppearance": false,
+          "inCustody": false,
+          "youthDefendant": false,
+          "adultDefendant": true,
+          "adultOrYouthDefendant": true,
+          "welshCourtHearing": false,
+          "englishCourtHearing": true,
+          "anyCourtHearing": true,
+          "prosecutorMajorCreditor": [],
+          "nonProsecutorMajorCreditor": []
+        }
+      }
+    ]
+  }
+]

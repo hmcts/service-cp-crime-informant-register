@@ -131,6 +131,33 @@ public class IdempotencyGuard {
     }
 
     /**
+     * Records a run that failed in a way no redelivery can change, parking it at once.
+     *
+     * <p>The delivery budget is irrelevant here and deliberately not consulted. A transformation
+     * error or a contract rejection reads the same on every delivery, so abandoning it back to the
+     * broker would spend four more deliveries reaching the same answer and then park it under
+     * {@code DELIVERY_LIMIT_EXHAUSTED} — a reason that tells support the service ran out of tries
+     * rather than that the payload was unusable (`design_rules.md`, "Processing State Machine":
+     * non-transient goes straight to FAILED and the dead-letter queue).
+     *
+     * <p>The row is written by the same statement an exhaustion uses, so the identity of this
+     * delivery is stamped onto it: a redelivery of the same message re-parks without re-running,
+     * while a deliberate resubmission under a fresh identity replays. That is the behaviour a
+     * parked request already has, and a non-transient failure is not a different kind of parking.
+     */
+    public GuardDecision recordNonTransientFailure(final RunClaim claim, final ReasonCode reason) {
+        final GuardDecision decision;
+        if (repository.recordFailed(claim, reason.code())) {
+            LOG.info("Request parked; no redelivery could change it. source={} requestId={} reason={}",
+                    claim.source(), claim.requestId(), reason.code());
+            decision = new GuardDecision.DeadLetter(DeadLetterReason.NON_TRANSIENT, reason);
+        } else {
+            decision = rejectStaleRunner(claim);
+        }
+        return decision;
+    }
+
+    /**
      * Records a run that failed on the final permitted delivery, parking the request with the
      * identity of the delivery that exhausted it.
      *
