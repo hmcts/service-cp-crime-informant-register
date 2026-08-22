@@ -36,6 +36,7 @@ import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterHearing;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterHearingVenue;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.SubmissionFailedException;
+import uk.gov.hmcts.cp.informantregister.support.CapturedLog;
 import uk.gov.hmcts.cp.informantregister.support.ResultsCommandSchemas;
 
 /**
@@ -279,6 +280,33 @@ class ResultsCommandGatewayTest {
                     .isEqualTo(FailureClassification.TRANSIENT);
 
             assertThat(results.getAllServeEvents()).hasSize(MAX_ATTEMPTS);
+        }
+
+        /**
+         * A transport failure that is classified and retried must still leave behind what it was.
+         *
+         * <p>Connect refused, read timed out and connection reset are three different
+         * investigations — a wrong host, a slow Results, a mesh dropping the route — and the
+         * exception is the only place the difference exists. Recording the type alone classifies
+         * the failure and loses the cause, which is a swallow with a log line in front of it: the
+         * bounded reason code the pipeline settles on is deliberately incapable of carrying it, so
+         * if this line does not, nothing does.
+         */
+        @Test
+        void a_transport_failure_should_be_recorded_with_its_cause_and_not_only_its_type() {
+            results.stubFor(post(urlEqualTo(PATH))
+                    .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
+
+            try (CapturedLog log = CapturedLog.of(ResultsCommandGateway.class)) {
+                assertThatThrownBy(() -> gateway().post(body()))
+                        .isInstanceOf(SubmissionFailedException.class);
+
+                assertThat(log.renderings())
+                        .as("the classification is kept, and so is what was classified")
+                        .anyMatch(line -> line.contains("did not reach a verdict")
+                                && line.contains("ResourceAccessException")
+                                && line.contains("I/O error"));
+            }
         }
 
         @Test

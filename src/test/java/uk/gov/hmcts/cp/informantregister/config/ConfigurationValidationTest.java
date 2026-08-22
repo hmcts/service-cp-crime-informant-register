@@ -6,6 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -232,6 +233,123 @@ class ConfigurationValidationTest {
             // "both set".
             runner.withPropertyValues("informantregister.servicebus.connection-string=",
                     NAMESPACE_PROPERTY).run(context -> assertThat(context).hasNotFailed());
+        }
+    }
+
+    /**
+     * The retry policy must be capable of making the call it exists to make.
+     *
+     * <p>These settings fail in the same quiet way the timing rules do. A {@code max-attempts} of
+     * zero attempts no POST at all: the loop that would send the register never runs, every hearing
+     * comes back transient, and the queue fills with deliveries that were never even tried — the
+     * silent non-delivery this service exists to remove, wearing a retry policy's clothes. A
+     * negative wait reaches {@code Thread.sleep} and throws from inside the retry, and a ceiling
+     * below the first wait is a bound that shortens the very back-off it is meant to bound.
+     */
+    @Nested
+    @DisplayName("the retry policy must be able to make the call")
+    class RetryPolicy {
+
+        @Test
+        void no_attempts_at_all_should_fail_startup_rather_than_post_nothing() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.results.max-attempts=0").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.results.max-attempts");
+                    });
+        }
+
+        @Test
+        void a_negative_attempt_count_should_fail_startup_the_same_way() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.results.max-attempts=-1").run(context ->
+                            assertThat(context).hasFailed());
+        }
+
+        @Test
+        void a_single_attempt_should_start_because_no_retry_is_a_policy_too() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.results.max-attempts=1").run(context ->
+                            assertThat(context).hasNotFailed());
+        }
+
+        @Test
+        void a_negative_initial_backoff_should_fail_startup_rather_than_throw_mid_retry() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.results.initial-backoff=-1s").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.results.initial-backoff");
+                    });
+        }
+
+        @Test
+        void a_ceiling_below_the_first_wait_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.results.initial-backoff=10s",
+                    "informantregister.results.max-backoff=5s").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.results.max-backoff")
+                                .hasMessageContaining("informantregister.results.initial-backoff");
+                    });
+        }
+
+        @Test
+        void the_shipped_defaults_should_satisfy_their_own_rules() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY)
+                    .run(context -> assertThat(context).hasNotFailed());
+        }
+    }
+
+    /**
+     * What the shipped {@code application.yaml} actually binds.
+     *
+     * <p>Asserted against the real file rather than against property values a test invents, because
+     * the failure this covers is a documented environment variable that reaches nothing. A comment
+     * naming {@code RESULTS_SYSTEM_USER_ID} is not a binding, and a deployment that sets it and
+     * still fails to start with "system-user-id is required" is a deployment nobody can debug from
+     * the configuration in front of them.
+     */
+    @Nested
+    @DisplayName("the shipped application.yaml")
+    class ShippedConfiguration {
+
+        private final ApplicationContextRunner shipped = runner
+                .withInitializer(new ConfigDataApplicationContextInitializer());
+
+        @Test
+        void the_identity_should_arrive_from_the_environment_variable_the_file_documents() {
+            shipped.withSystemProperties("RESULTS_SYSTEM_USER_ID=b6c8b0a4-1f2e-4a3b-9c4d-5e6f70819234")
+                    .run(context -> {
+                        assertThat(context).hasNotFailed();
+                        assertThat(context.getBean(InformantRegisterProperties.class)
+                                .results().systemUserId())
+                                .isEqualTo("b6c8b0a4-1f2e-4a3b-9c4d-5e6f70819234");
+                    });
+        }
+
+        @Test
+        void the_endpoint_should_arrive_from_the_environment_variable_the_file_documents() {
+            shipped.withSystemProperties("RESULTS_BASE_URL=http://results.internal:8080")
+                    .run(context -> {
+                        assertThat(context).hasNotFailed();
+                        assertThat(context.getBean(InformantRegisterProperties.class)
+                                .results().baseUrl())
+                                .isEqualTo("http://results.internal:8080");
+                    });
+        }
+
+        @Test
+        void an_unset_identity_should_stay_unset_so_a_local_run_borrows_nobodys() {
+            shipped.run(context -> {
+                assertThat(context).hasNotFailed();
+                assertThat(context.getBean(InformantRegisterProperties.class)
+                        .results().systemUserId())
+                        .as("absent is absent; the gateway refuses to start on it, which is the point")
+                        .isNullOrEmpty();
+            });
         }
     }
 }
