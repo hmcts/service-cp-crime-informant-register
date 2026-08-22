@@ -10,6 +10,7 @@ import java.time.ZoneOffset;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
 
 /**
  * The legacy date behaviour, pinned including the parts of it that are wrong.
@@ -114,14 +115,15 @@ class HearingDatesTest {
         @DisplayName("refuses a value with no leading date rather than inventing an order")
         void refuses_a_value_with_no_leading_date() {
             assertThatThrownBy(() -> dates.orderingKey("not a date"))
-                    .isInstanceOf(IllegalArgumentException.class);
+                    .isInstanceOf(TransformationFailedException.class)
+                    .hasMessage("Invalid date format");
         }
 
         @Test
         @DisplayName("refuses an absent value rather than ordering it as now")
         void refuses_an_absent_value() {
             assertThatThrownBy(() -> dates.orderingKey(null))
-                    .isInstanceOf(IllegalArgumentException.class);
+                    .isInstanceOf(TransformationFailedException.class);
         }
     }
 }

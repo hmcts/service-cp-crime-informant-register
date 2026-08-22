@@ -1,6 +1,8 @@
 package uk.gov.hmcts.cp.informantregister.pipeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.InstanceOfAssertFactories.throwable;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -8,6 +10,9 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
+import uk.gov.hmcts.cp.informantregister.domain.FailureClassification;
+import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
+import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
 
 /**
  * JavaScript's truthiness rules, which the ported transformation branches on throughout.
@@ -130,9 +135,52 @@ class JsonTest {
         }
 
         @Test
-        @DisplayName("gives nothing to iterate for a field that is not an array")
-        void gives_nothing_to_iterate_for_a_non_array() {
-            assertThat(Json.array(tree("{\"f\":\"not an array\"}"), "f")).isEmpty();
+        @DisplayName("gives nothing to iterate for an explicit null, as `|| []` does")
+        void gives_nothing_to_iterate_for_an_explicit_null() {
+            assertThat(Json.array(tree("{\"f\":null}"), "f")).isEmpty();
+        }
+
+        @Test
+        @DisplayName("gives nothing to iterate for a falsy field, as `|| []` does")
+        void gives_nothing_to_iterate_for_a_falsy_field() {
+            assertThat(Json.array(tree("{\"f\":\"\"}"), "f")).isEmpty();
+        }
+
+        @Test
+        @DisplayName("refuses an object where the legacy would iterate")
+        void refuses_an_object_where_the_legacy_would_iterate() {
+            // `({}).forEach` is not a function: the legacy throws a TypeError here, and the whole
+            // hearing produces nothing. Answering "no elements" instead would turn a payload the
+            // transformation cannot read into a legitimate empty business result.
+            assertThatThrownBy(() -> Json.array(tree("{\"f\":{}}"), "f"))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
+
+        @Test
+        @DisplayName("refuses a non-empty string where the legacy would iterate")
+        void refuses_a_string_where_the_legacy_would_iterate() {
+            assertThatThrownBy(() -> Json.array(tree("{\"f\":\"not an array\"}"), "f"))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
+
+        @Test
+        @DisplayName("names the field it refused and never quotes what was in it")
+        void names_the_field_it_refused() {
+            assertThatThrownBy(() -> Json.array(tree("{\"f\":\"a defendant name\"}"), "f"))
+                    .hasMessageContaining("f")
+                    .hasMessageNotContaining("a defendant name");
+        }
+
+        @Test
+        @DisplayName("classifies a refusal as non-transient, so no redelivery is spent on it")
+        void classifies_a_refusal_as_non_transient() {
+            assertThatThrownBy(() -> Json.array(tree("{\"f\":{}}"), "f"))
+                    .asInstanceOf(throwable(TransformationFailedException.class))
+                    .satisfies(failure -> {
+                        assertThat(failure.classification())
+                                .isEqualTo(FailureClassification.NON_TRANSIENT);
+                        assertThat(failure.reason()).isEqualTo(ReasonCode.TRANSFORMATION_FAILED);
+                    });
         }
 
         @Test

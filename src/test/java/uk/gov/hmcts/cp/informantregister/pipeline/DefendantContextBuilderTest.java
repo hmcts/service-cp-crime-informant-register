@@ -2,6 +2,7 @@ package uk.gov.hmcts.cp.informantregister.pipeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.InstanceOfAssertFactories.throwable;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -13,8 +14,11 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
+import uk.gov.hmcts.cp.informantregister.domain.FailureClassification;
+import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterResult;
 import uk.gov.hmcts.cp.informantregister.domain.ResultLevel;
+import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
 
 /**
  * The four passes that gather a hearing's judicial results under their defendants.
@@ -309,16 +313,35 @@ class DefendantContextBuilderTest {
         @DisplayName("fail the hearing when they name a defendant that appears nowhere else")
         void fail_the_hearing_when_the_defendant_appears_nowhere_else() {
             // The legacy dereferences the missing context and throws, and the activity swallows it
-            // so the hearing silently produces nothing. Here it propagates and the message is
-            // dead-lettered as a transformation failure — the swallow is the one thing this port is
-            // sanctioned to change.
+            // so the hearing silently produces nothing. Here the failure is classified at the throw
+            // site as non-transient and propagates out of the transformation carrying that
+            // classification — no redelivery can turn this payload into a register, so none is spent
+            // on it. Ending the swallow is the one thing this port is sanctioned to change
+            // (deviations-register entry 2).
             assertThatThrownBy(() -> build("""
                 {"prosecutionCases":[{"id":"case-1","prosecutionCaseIdentifier":{},
                  "defendants":[{"id":"def-1","masterDefendantId":"master-1","offences":[],
                   "defendantCaseJudicialResults":[]}]}],
                  "defendantJudicialResults":[{"masterDefendantId":"a-stranger",
                   "judicialResult":{"orderedDate":"2020-01-20"}}]}"""))
-                    .isInstanceOf(IllegalStateException.class);
+                    .asInstanceOf(throwable(TransformationFailedException.class))
+                    .satisfies(failure -> {
+                        assertThat(failure.classification())
+                                .isEqualTo(FailureClassification.NON_TRANSIENT);
+                        assertThat(failure.reason()).isEqualTo(ReasonCode.TRANSFORMATION_FAILED);
+                    });
+        }
+
+        @Test
+        @DisplayName("never quote the identity they could not place")
+        void never_quote_the_identity_they_could_not_place() {
+            assertThatThrownBy(() -> build("""
+                {"prosecutionCases":[{"id":"case-1","prosecutionCaseIdentifier":{},
+                 "defendants":[{"id":"def-1","masterDefendantId":"master-1","offences":[],
+                  "defendantCaseJudicialResults":[]}]}],
+                 "defendantJudicialResults":[{"masterDefendantId":"a-stranger",
+                  "judicialResult":{"orderedDate":"2020-01-20"}}]}"""))
+                    .hasMessageNotContaining("a-stranger");
         }
     }
 
