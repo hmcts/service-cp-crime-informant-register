@@ -11,6 +11,7 @@ import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterResult;
 import uk.gov.hmcts.cp.informantregister.domain.ResultLevel;
+import uk.gov.hmcts.cp.informantregister.support.LegacyFixtures;
 
 /**
  * The court-extract filter's decision table, pinned directly.
@@ -127,6 +128,90 @@ class CourtExtractFilterTest {
     }
 
     /**
+     * The JUnit twin of the legacy {@code RegisterFragmentService} Jest suite.
+     *
+     * <p>That suite declares four cases. Three of them assert only that an export
+     * ({@code getLatestOrderedDate}, {@code getHearingDate},
+     * {@code filterResultsAvailableForCourtExtract}) is an instance of {@code Function}, which is a
+     * statement about the module's shape and not about any behaviour a port could differ on; a Java
+     * twin of one would be tautologically true, which the constitution's TDD principle rejects on
+     * sight. The three functions themselves are covered by behaviour: the filter here, and
+     * {@code getLatestOrderedDate} and {@code getHearingDate} by the nineteen goldens in
+     * {@link RegisterBuilderParityTest}, whose hearing dates are derived through both.
+     *
+     * <p>The fourth case is the substantive one and is twinned below, against the same fixture, copied
+     * byte-identical.
+     */
+    @Nested
+    @DisplayName("RegisterFragmentService — legacy Jest twins")
+    class LegacyJestTwins {
+
+        @Test
+        @DisplayName("should filter results and prompts for court extract based on "
+                + "isAvailableForCourtExtract, publishedForNows and courtExtract flags")
+        void should_filter_results_and_prompts_for_court_extract() {
+            final DefendantContext defendant = new DefendantContext();
+            for (final JsonNode judicialResult : fixture()) {
+                defendant.addResults(List.of(result(judicialResult)));
+            }
+
+            CourtExtractFilter.apply(List.of(defendant));
+
+            final List<RegisterResult> kept = defendant.results();
+            assertThat(kept).hasSize(3);
+            assertThat(kept).allSatisfy(result -> {
+                assertThat(Json.truthy(result.judicialResult(), "isAvailableForCourtExtract"))
+                        .isTrue();
+                assertThat(Json.truthy(result.judicialResult(), "publishedForNows")).isFalse();
+            });
+
+            assertThat(prompts(kept.get(0))).hasSize(1);
+            assertThat(courtExtract(kept.get(0), 0)).isEqualTo("Y");
+
+            assertThat(prompts(kept.get(1))).hasSize(1);
+            assertThat(courtExtract(kept.get(1), 0)).isEqualTo("y");
+
+            assertThat(prompts(kept.get(2))).hasSize(3);
+            assertThat(courtExtract(kept.get(2), 0)).isNull();
+            assertThat(Json.truthy(prompts(kept.get(2)).get(0), "isAvailableForCourtExtract"))
+                    .isTrue();
+            assertThat(courtExtract(kept.get(2), 1)).isEqualTo("Y");
+            assertThat(courtExtract(kept.get(2), 2)).isEqualTo("Y");
+        }
+
+        /**
+         * The prompts a surviving result still carries.
+         *
+         * @param result the surviving result
+         * @return its prompts
+         */
+        private JsonNode prompts(final RegisterResult result) {
+            return result.judicialResult().get("judicialResultPrompts");
+        }
+
+        /**
+         * The {@code courtExtract} value of one surviving prompt.
+         *
+         * @param result the surviving result
+         * @param index  the prompt's position
+         * @return the value, or {@code null} where the prompt carries none
+         */
+        private String courtExtract(final RegisterResult result, final int index) {
+            return Json.text(prompts(result).get(index), "courtExtract");
+        }
+
+        /**
+         * The legacy fixture, copied byte-identical from
+         * {@code NowsHelper/service/test/judicial-results-for-court-extract.json}.
+         *
+         * @return the judicial results the Jest case builds its defendant from
+         */
+        private JsonNode fixture() {
+            return LegacyFixtures.read("judicial-results-for-court-extract.json");
+        }
+    }
+
+    /**
      * Runs the filter over a single result and returns what survived.
      *
      * @param judicialResult the judicial result as JSON text
@@ -161,7 +246,17 @@ class CourtExtractFilterTest {
      * @return the gathered result
      */
     private RegisterResult result(final String judicialResult) {
+        return result(mapper.readTree(judicialResult));
+    }
+
+    /**
+     * Wraps an already-parsed judicial result as the kind of gathered result the filter operates on.
+     *
+     * @param judicialResult the judicial result
+     * @return the gathered result
+     */
+    private RegisterResult result(final JsonNode judicialResult) {
         return new RegisterResult(null, null, null, null, ResultLevel.OFFENCE, null,
-                mapper.readTree(judicialResult), null, null);
+                judicialResult, null, null);
     }
 }

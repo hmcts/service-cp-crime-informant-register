@@ -4,6 +4,7 @@ import java.util.List;
 import tools.jackson.databind.JsonNode;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterResult;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterVocabulary;
+import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
 
 /**
  * Computes the vocabulary flags for one defendant.
@@ -72,7 +73,8 @@ final class VocabularyBuilder {
 
         final JsonNode courtCentre = Json.at(hearing, "courtCentre");
         if (courtCentre == null) {
-            throw new IllegalStateException("hearing carries no court centre");
+            // Classified: a hearing with no court centre reads the same on every delivery.
+            throw new TransformationFailedException("hearing carries no court centre");
         }
         final boolean welshCourtHearing = Json.truthy(courtCentre, "welshCourtCentre");
 

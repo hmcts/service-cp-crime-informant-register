@@ -2,6 +2,7 @@ package uk.gov.hmcts.cp.informantregister.pipeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.InstanceOfAssertFactories.throwable;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -13,7 +14,9 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
+import uk.gov.hmcts.cp.informantregister.domain.FailureClassification;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterVocabulary;
+import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
 
 /**
  * The vocabulary flags, including the ones this flow can never set.
@@ -237,7 +240,127 @@ class VocabularyBuilderTest {
                 {"prosecutionCases":[{"id":"case-1","prosecutionCaseIdentifier":{},
                  "defendants":[{"id":"def-1","masterDefendantId":"master-1","offences":[],
                   "defendantCaseJudicialResults":[{"orderedDate":"2020-01-20"}]}]}]}"""))
-                    .isInstanceOf(IllegalStateException.class);
+                    .asInstanceOf(throwable(TransformationFailedException.class))
+                    .satisfies(failure -> assertThat(failure.classification())
+                            .isEqualTo(FailureClassification.NON_TRANSIENT));
+        }
+    }
+
+    /**
+     * The JUnit twins of the legacy {@code VocabularyService} Jest suite.
+     *
+     * <p>Three of that suite's six cases are twinned here. The other three cannot be:
+     *
+     * <ul>
+     *   <li>{@code Should set the correct flag for non prosecutor major creditors} and
+     *       {@code Should set the correct flag for prosecutor major creditors} are written against
+     *       the <em>four</em>-argument constructor, with a major-creditor map and a compliance
+     *       enforcement list. The informant register constructs the service with <em>two</em>
+     *       arguments, which is what makes both creditor lists unconditionally empty here — parity,
+     *       not an unfinished port, and pinned as such above. Twinning those two would mean building
+     *       a creditor branch this flow never enters.</li>
+     *   <li>{@code Should set custody location info with both application and prosecution case in
+     *       the hearing} gathers its defendant with {@code (hearing, true, false)} — the plain
+     *       register mode, which this port does not have — and calls
+     *       {@code getCustodyLocationInfo()} directly rather than {@code getVocabularyInfo()}.</li>
+     * </ul>
+     *
+     * <p><strong>How the input is reconstructed, and why it has to be.</strong> Each Jest case pairs
+     * a mocked hearing with a <em>separately</em> mocked {@code DefendantContextBase} that the
+     * hearing would not produce — the mocked hearing's defendants carry no results at all, while the
+     * mocked context carries two. This port has no way to hand a vocabulary a context that did not
+     * come from the hearing, so the hearing below carries both halves: the mocked hearing's custody,
+     * attendance, court centre and prosecutor, and the two ordered-on-2020-05-11 results and youth
+     * flag of the mocked context. Every asserted value is the Jest case's, unaltered; only the way
+     * the input is assembled differs, because the legacy's shape is not reproducible here.
+     */
+    @Nested
+    @DisplayName("VocabularyService — legacy Jest twins")
+    class LegacyJestTwins {
+
+        @Test
+        @DisplayName("Should set the correct police custody")
+        void should_set_the_correct_police_custody() {
+            assertMockedHearing(vocabularyOf(mockedHearing("Police Station", "false")), true, false);
+        }
+
+        @Test
+        @DisplayName("Should set the correct prison custody")
+        void should_set_the_correct_prison_custody() {
+            assertMockedHearing(vocabularyOf(mockedHearing("Prison", "false")), false, true);
+        }
+
+        @Test
+        @DisplayName("Should set the correct cps flag")
+        void should_set_the_correct_cps_flag() {
+            final RegisterVocabulary vocabulary = vocabularyOf(mockedHearing("Prison", "true"));
+
+            assertThat(vocabulary.welshCourtHearing()).isTrue();
+            assertThat(vocabulary.englishCourtHearing()).isFalse();
+            assertThat(vocabulary.anyCourtHearing()).isTrue();
+            assertThat(vocabulary.isCpsProsecuted()).isTrue();
+        }
+
+        /**
+         * The sixteen flags the two custody cases assert, which differ only in where the defendant
+         * is held.
+         *
+         * @param vocabulary the computed vocabulary
+         * @param police     the expected {@code custodyLocationIsPolice}
+         * @param prison     the expected {@code custodyLocationIsPrison}
+         */
+        private void assertMockedHearing(
+                final RegisterVocabulary vocabulary, final boolean police, final boolean prison) {
+
+            assertThat(vocabulary.custodyLocationIsPolice()).isEqualTo(police);
+            assertThat(vocabulary.custodyLocationIsPrison()).isEqualTo(prison);
+            assertThat(vocabulary.atleastOneCustodialResult()).isFalse();
+            assertThat(vocabulary.appearedInPerson()).isTrue();
+            assertThat(vocabulary.appearedByVideoLink()).isFalse();
+            assertThat(vocabulary.allNonCustodialResults()).isTrue();
+            assertThat(vocabulary.atleastOneNonCustodialResult()).isTrue();
+            assertThat(vocabulary.anyAppearance()).isTrue();
+            assertThat(vocabulary.inCustody()).isTrue();
+            assertThat(vocabulary.youthDefendant()).isTrue();
+            assertThat(vocabulary.adultDefendant()).isFalse();
+            assertThat(vocabulary.adultOrYouthDefendant()).isTrue();
+            assertThat(vocabulary.welshCourtHearing()).isTrue();
+            assertThat(vocabulary.englishCourtHearing()).isFalse();
+            assertThat(vocabulary.anyCourtHearing()).isTrue();
+            assertThat(vocabulary.isCpsProsecuted()).isFalse();
+        }
+
+        /**
+         * The Jest suite's {@code getMockedHearingResulted}, carrying the results and youth flag its
+         * separately-mocked {@code DefendantContextBase} supplies — see the class comment.
+         *
+         * @param custody the custody location, as {@code LocationTypeEnum} spells it
+         * @param isCps   the raw JSON value of the second case's {@code prosecutor.isCps}
+         * @return the hearing as JSON text
+         */
+        private String mockedHearing(final String custody, final String isCps) {
+            return """
+                {"prosecutionCases":[
+                  {"id":"c10e3b71-6a6d-45ef-9b62-34df4d54971a","prosecutionCaseIdentifier":{},
+                   "defendants":[{"id":"6647df67-a065-4d07-90ba-a8daa064ecc4",
+                    "masterDefendantId":"6647df67-a065-4d07-90ba-a8daa064ecc4","isYouth":true,
+                    "personDefendant":{"custodialEstablishment":{"custody":"%s"}},
+                    "offences":[],
+                    "defendantCaseJudicialResults":[
+                     {"orderedDate":"2020-05-11"},{"orderedDate":"2020-05-11"}]}]},
+                  {"id":"07e0a2b1-6dfe-4c5f-9f6f-9d5f2d3d7a4c","prosecutionCaseIdentifier":{},
+                   "prosecutor":{"prosecutorId":"cf73207f-3ced-488a-82a0-3fba79c2ce81",
+                    "prosecutorCode":"TFL","prosecutorName":"TFL12348","isCps":%s},
+                   "defendants":[{"id":"6647df67-a065-4d07-90ba-a8daa064ecc4",
+                    "masterDefendantId":"6647df67-a065-4d07-90ba-a8daa064ecc4","isYouth":true,
+                    "personDefendant":{"custodialEstablishment":{"custody":"%s"}},
+                    "offences":[],"defendantCaseJudicialResults":[]}]}],
+                 "defendantAttendance":[{
+                  "defendantId":"6647df67-a065-4d07-90ba-a8daa064ecc4",
+                  "attendanceDays":[{"attendanceType":"IN_PERSON","day":"2020-05-11"}]}],
+                 "courtCentre":{"id":"6647df67-a065-4d07-90ba-a8daa064ecd9",
+                  "name":"Lavender Hill","welshCourtCentre":true}}"""
+                    .formatted(custody, isCps, custody);
         }
     }
 

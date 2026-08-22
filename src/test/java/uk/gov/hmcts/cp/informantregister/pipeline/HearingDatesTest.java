@@ -126,4 +126,63 @@ class HearingDatesTest {
                     .isInstanceOf(TransformationFailedException.class);
         }
     }
+
+    /**
+     * The JUnit twins of the legacy {@code DateService} Jest suite.
+     *
+     * <p>That suite declares eight cases across five functions; the informant register reaches three
+     * of those functions, and only those three are ported. The twins below carry the Jest names and
+     * the Jest values verbatim:
+     *
+     * <ul>
+     *   <li>{@code parse} → {@link HearingDates#orderingKey}</li>
+     *   <li>{@code getLocalDate} → {@link HearingDates#localDate}</li>
+     *   <li>{@code getLocalDateTime} → {@link HearingDates#localDateTime}, twice</li>
+     * </ul>
+     *
+     * <p>The remaining four cases cover {@code isGreater} (two cases), {@code getLocalTime} and
+     * {@code formatDateAndGetLocalDateTime}. Nothing on the informant-register path calls any of
+     * them — {@code SetInformantRegister} and {@code RegisterFragmentService} use {@code parse},
+     * {@code getLocalDate} and {@code getLocalDateTime} and nothing else — so they are deliberately
+     * not ported. Twinning them would mean writing production code no hearing can reach in order to
+     * have something to assert against, which buys a green tick and a maintenance liability. The
+     * omission is recorded here rather than left to be noticed.
+     *
+     * <p>Two of the Jest cases assert against {@code moment-timezone} rather than against a literal,
+     * so the literal is computed here the way the Jest expression computes it:
+     * {@code moment.tz('2020-06-19T09:00:00.000Z', 'Europe/London')} is 10:00 on a June morning,
+     * British Summer Time.
+     */
+    @Nested
+    @DisplayName("DateService — legacy Jest twins")
+    class LegacyJestTwins {
+
+        /** The instant three of the four twinned Jest cases are written around. */
+        private static final String JUNE_MORNING = "2020-06-19T09:00:00.000Z";
+
+        @Test
+        @DisplayName("it should return the correct date")
+        void it_should_return_the_correct_date() {
+            // The Jest case builds `${2020}-${10}-${29}` and asserts the parsed year, month and day.
+            assertThat(dates.orderingKey("2020-10-29")).isEqualTo(LocalDate.of(2020, 10, 29));
+        }
+
+        @Test
+        @DisplayName("should return local date")
+        void should_return_local_date() {
+            assertThat(dates.localDate(JUNE_MORNING)).isEqualTo("2020-06-19");
+        }
+
+        @Test
+        @DisplayName("should return local date time")
+        void should_return_local_date_time() {
+            assertThat(dates.localDateTime(JUNE_MORNING)).isEqualTo("2020-06-19T10:00:00Z");
+        }
+
+        @Test
+        @DisplayName("should return local date time when time missing")
+        void should_return_local_date_time_when_time_missing() {
+            assertThat(dates.localDateTime("2020-06-19")).isEqualTo("2020-06-19T00:00:00Z");
+        }
+    }
 }

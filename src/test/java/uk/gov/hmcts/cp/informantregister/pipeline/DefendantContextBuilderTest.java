@@ -19,6 +19,7 @@ import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterResult;
 import uk.gov.hmcts.cp.informantregister.domain.ResultLevel;
 import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
+import uk.gov.hmcts.cp.informantregister.support.LegacyFixtures;
 
 /**
  * The four passes that gather a hearing's judicial results under their defendants.
@@ -391,6 +392,153 @@ class DefendantContextBuilderTest {
                  "defendants":[{"id":"def-1","masterDefendantId":"master-1",
                   "offences":[],"defendantCaseJudicialResults":[]}]}]}""")
                     .get(0).freeze().isYouthDefendant()).isNull();
+        }
+    }
+
+    /**
+     * The JUnit twins of the legacy {@code DefendantContextBaseService} Jest suite.
+     *
+     * <p>That suite declares eleven cases, and they do not all describe the same service: the legacy
+     * constructor takes {@code (hearingObj, isRegister = false, isInformantRegister = false)} and the
+     * flags change how court applications are gathered. This port is the informant register's
+     * gathering and nothing else — {@code SetInformantRegister} constructs the service
+     * {@code (hearingObj, true, true)}, so that is the only mode {@link DefendantContextBuilder}
+     * has.
+     *
+     * <p>Four cases are twinned below, verbatim in name and expectation:
+     *
+     * <ul>
+     *   <li>the two written against {@code (hearing, true, true)} — the mode this port <em>is</em>;
+     *   </li>
+     *   <li>two whose fixtures contain no {@code courtApplications} at all. The flags are read only
+     *       inside the court-application pass ({@code DefendantContextBaseService.js}, the
+     *       {@code isEligible} guard and the two {@code if (this.isRegister)} branches under it), so
+     *       on those fixtures every mode gathers identically and the Jest expectation holds for this
+     *       one. That was read from the source, not assumed.</li>
+     * </ul>
+     *
+     * <p>The other five are written against modes this port does not have — the plain register mode
+     * {@code (hearing, true)} and the default NOWs mode over fixtures that do carry court
+     * applications. A twin of one of those would have to build a code path the informant register
+     * never takes, purely to have something to compare against. They are named here so the gap is
+     * recorded rather than silently absent: {@code should return latest ordered date from court
+     * application}, {@code should return latest ordered date from both prosecution case and court
+     * application}, {@code should return results for a defendant at application level from linked
+     * application}, and the two {@code application ... level judicial results} pairs' non-informant
+     * halves.
+     */
+    @Nested
+    @DisplayName("DefendantContextBaseService — legacy Jest twins")
+    class LegacyJestTwins {
+
+        @Test
+        @DisplayName("should return latest ordered date from prosecution case")
+        void should_return_latest_ordered_date_from_prosecution_case() {
+            final List<DefendantContext> gathered =
+                    gather("hearing-results-from-prosecution-case-for-ordered-date.json");
+
+            assertThat(gathered).hasSize(2);
+            assertThat(gathered.get(0).freeze().orderedDate()).isEqualTo("2020-04-19");
+            assertThat(gathered.get(1).freeze().orderedDate()).isEqualTo("2020-04-17");
+        }
+
+        @Test
+        @DisplayName("should return results for a defendant at appropriate level for prosecution "
+                + "case")
+        void should_return_results_at_appropriate_level_for_prosecution_case() {
+            final List<DefendantContext> gathered =
+                    gather("hearing-results-for-prosecution-case.json");
+
+            assertThat(gathered).hasSize(1);
+            final DefendantContext defendant = gathered.get(0);
+            final List<RegisterResult> results = defendant.results();
+
+            assertThat(results).hasSize(5);
+            assertResult(results.get(0), "509ae32f-2083-43d3-885d-35da2a769f7d", ResultLevel.CASE);
+            assertResult(results.get(1), "34a84855-821e-4261-bb0e-2c9656fa1ac0",
+                    ResultLevel.OFFENCE);
+            assertResult(results.get(2), "6f7c14a5-e81e-46a6-a4a3-9b2fb161dcae",
+                    ResultLevel.OFFENCE);
+            assertResult(results.get(3), "9eea9c9b-9528-4a17-a86c-fa7452c0b9f2",
+                    ResultLevel.DEFENDANT);
+            assertResult(results.get(4), "fe3d78c2-9901-458e-a282-572519eb8713",
+                    ResultLevel.DEFENDANT);
+
+            assertThat(defendant.defendantIds())
+                    .containsExactly("8bd0c5e1-49bb-46c5-ad30-315090b772cc");
+            assertThat(defendant.cases())
+                    .containsExactly("79683c78-2259-4fe3-bff4-9b305a33dfdc");
+            assertThat(defendant.masterDefendantId())
+                    .isEqualTo("8bd0c5e1-49bb-46c5-ad30-315090b772cc");
+            assertThat(defendant.youthDefendant()).isNotEqualTo(Boolean.TRUE);
+            assertThat(defendant.applications()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("should not consider results from application when applicant is not "
+                + "prosecuting authority from linked application for informant register")
+        void should_not_consider_results_from_an_ineligible_linked_application() {
+            final List<DefendantContext> gathered =
+                    gather("linked-application-not-eligible-for-registers.json");
+
+            assertThat(gathered).hasSize(2);
+            assertThat(gathered).allSatisfy(defendant -> {
+                assertThat(defendant.results()).hasSize(6);
+                assertThat(defendant.results())
+                        .allSatisfy(result -> assertThat(result.applicationId()).isNull());
+                assertThat(defendant.applications()).isEmpty();
+            });
+        }
+
+        @Test
+        @DisplayName("it should return DefendantContextService with application court order level "
+                + "judicial results for informant register")
+        void should_gather_application_court_order_level_results_for_informant_register() {
+            final List<DefendantContext> gathered = gather("application-court-order-level.json");
+
+            assertThat(gathered).hasSize(1);
+            final DefendantContext defendant = gathered.get(0);
+            final List<RegisterResult> results = defendant.results();
+
+            assertThat(results).hasSize(3);
+            assertResult(results.get(0), "d7718a03-9f5c-417c-9d33-16bd046c7b6d",
+                    ResultLevel.APPLICATION);
+            assertResult(results.get(1), "3c38631f-053e-4be6-aa93-0afaf80d03c1",
+                    ResultLevel.OFFENCE);
+            assertResult(results.get(2), "8d75084d-a1c7-45ab-899a-d9a165cb45d6",
+                    ResultLevel.OFFENCE);
+
+            assertThat(defendant.applications())
+                    .containsExactly("1ff65571-c05c-4610-9a3f-f2f3f1728119");
+            assertThat(defendant.freeze().orderedDate()).isEqualTo("2020-04-17");
+            assertThat(defendant.youthDefendant()).isNotEqualTo(Boolean.TRUE);
+        }
+
+        /**
+         * Asserts one gathered result's identity and level, as the Jest cases do.
+         *
+         * @param result           the gathered result
+         * @param judicialResultId the identity the Jest case names
+         * @param level            the level the Jest case names
+         */
+        private void assertResult(
+                final RegisterResult result, final String judicialResultId,
+                final ResultLevel level) {
+            assertThat(Json.text(result.judicialResult(), "judicialResultId"))
+                    .isEqualTo(judicialResultId);
+            assertThat(result.level()).isEqualTo(level);
+        }
+
+        /**
+         * Gathers the defendants of a legacy fixture, copied byte-identical from
+         * {@code NowsHelper/service/test/}.
+         *
+         * @param name the fixture file name
+         * @return the gathered contexts
+         */
+        private List<DefendantContext> gather(final String name) {
+            return new DefendantContextBuilder(
+                    LegacyFixtures.read(name), new HearingDates(FROZEN)).build();
         }
     }
 
