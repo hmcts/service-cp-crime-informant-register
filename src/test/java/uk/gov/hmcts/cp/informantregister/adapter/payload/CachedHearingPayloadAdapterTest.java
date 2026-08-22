@@ -25,6 +25,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -114,15 +115,19 @@ class CachedHearingPayloadAdapterTest {
     }
 
     @Nested
-    @DisplayName("legacy key")
-    class LegacyKey {
+    @DisplayName("legacy key — registered deviation 4")
+    class RegisteredDeviations {
 
         /**
-         * The producer publishes the payload under a dated key and a legacy undated twin (design doc
-         * §2.1; {@code doc/API_CONTRACTS.md} field semantics for {@code hearingDay}, which states the
-         * legacy form "is tried as a fallback"). Reading only the dated form would send every
-         * legacy-cached hearing to the query API, which answers — so the miss would cost a round trip
-         * and show up nowhere.
+         * Registered deviation 4. The function app builds one key from the hearing date it was given
+         * and reads it once; this reads the legacy undated twin as well, because the producer
+         * publishes the payload under both forms (design doc §2.1; {@code doc/API_CONTRACTS.md}
+         * field semantics for {@code hearingDay}; Option 2 page row 1, "both key forms"). Reading
+         * only the dated form would send every legacy-cached hearing to the query API, which
+         * answers — so the miss would cost a round trip and show up nowhere.
+         *
+         * <p>Asserted here rather than left implicit, because an unregistered difference from the
+         * function app fails the deviations gate whichever direction it runs in.
          */
         @Test
         void fetch_should_read_the_legacy_key_when_the_dated_key_is_absent() {
@@ -141,6 +146,23 @@ class CachedHearingPayloadAdapterTest {
             adapter.fetch(command());
 
             verifyNoInteractions(query);
+        }
+
+        /**
+         * The whole of the difference, stated as a count: two lookups where the function app makes
+         * one. Pinned so that removing the second — or adding a third — is a decision somebody has
+         * to take against this register entry rather than a quiet edit.
+         */
+        @Test
+        void fetch_should_read_exactly_the_two_registered_key_forms_and_no_others() {
+            when(cache.read(any())).thenReturn(Optional.empty());
+            when(query.fetch(any())).thenReturn(Optional.of(payload("from the query api")));
+
+            adapter.fetch(command());
+
+            verify(cache).read(DATED_KEY);
+            verify(cache).read(LEGACY_KEY);
+            verifyNoMoreInteractions(cache);
         }
     }
 
@@ -167,26 +189,47 @@ class CachedHearingPayloadAdapterTest {
         }
 
         /**
-         * A cache that throws is the same thing as a cache that has nothing, because that is what the
-         * function app does with it. Any other reading would make a cache outage stop the service
-         * from using a query side that is perfectly healthy.
+         * A cache that cannot answer is a cache with nothing in it, and the cache adapter is what
+         * says so — see {@link LettuceHearingPayloadCache}, which absorbs its own technology's
+         * failures and reports the miss. Here that arrives as an empty read, and the query side gets
+         * its turn exactly as it does for an absent key.
          */
         @Test
-        void fetch_should_fall_back_when_the_cache_itself_fails() {
+        void fetch_should_ask_the_query_side_when_the_cache_reported_nothing_because_it_is_down() {
             final JsonNode queried = payload("from the query api");
-            when(cache.read(DATED_KEY)).thenThrow(new IllegalStateException("cache is down"));
+            when(cache.read(any())).thenReturn(Optional.empty());
             when(query.fetch(any())).thenReturn(Optional.of(queried));
 
             assertThat(adapter.fetch(command())).isSameAs(queried);
         }
+    }
+
+    @Nested
+    @DisplayName("a failure that is not the cache's own")
+    class Unexpected {
+
+        /**
+         * Nothing is caught here. A cache implementation absorbs the failures of its own technology
+         * and reports them as a miss; anything else reaching this frame is a defect in this service,
+         * and turning it into a fallback would spend a query-side round trip hiding it. It escapes
+         * to the pipeline, which records it and releases the claim.
+         */
+        @Test
+        void fetch_should_let_an_unexpected_failure_out_rather_than_absorb_it() {
+            when(cache.read(DATED_KEY)).thenThrow(new IllegalStateException("a defect, not a miss"));
+
+            assertThatThrownBy(() -> adapter.fetch(command()))
+                    .isInstanceOf(IllegalStateException.class);
+        }
 
         @Test
-        void fetch_should_still_try_the_legacy_key_after_the_dated_read_failed() {
-            final JsonNode cached = payload("legacy");
-            when(cache.read(DATED_KEY)).thenThrow(new IllegalStateException("cache is down"));
-            when(cache.read(LEGACY_KEY)).thenReturn(Optional.of(cached));
+        void fetch_should_not_reach_the_query_side_after_an_unexpected_failure() {
+            when(cache.read(DATED_KEY)).thenThrow(new IllegalStateException("a defect, not a miss"));
 
-            assertThat(adapter.fetch(command())).isSameAs(cached);
+            assertThatThrownBy(() -> adapter.fetch(command()))
+                    .isInstanceOf(IllegalStateException.class);
+
+            verifyNoInteractions(query);
         }
     }
 
@@ -232,15 +275,6 @@ class CachedHearingPayloadAdapterTest {
 
             assertThatThrownBy(() -> adapter.fetch(command()))
                     .hasMessage(ReasonCode.PIPELINE_TRANSIENT_FAILURE.code());
-        }
-
-        @Test
-        void fetch_should_raise_the_same_failure_when_the_cache_failed_and_the_query_side_was_empty() {
-            when(cache.read(any())).thenThrow(new IllegalStateException("cache is down"));
-            when(query.fetch(any())).thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> adapter.fetch(command()))
-                    .isInstanceOf(PayloadUnavailableException.class);
         }
     }
 }

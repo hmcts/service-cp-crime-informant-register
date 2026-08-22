@@ -19,6 +19,7 @@ import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
+import uk.gov.hmcts.cp.informantregister.support.CapturedLog;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
@@ -52,6 +53,9 @@ class ResultsQueryHearingPayloadClientTest {
     private static final String PATH =
             "/results-query-api/query/api/rest/results/hearingDetails/internal/" + HEARING_ID;
     private static final String SYSTEM_USER_ID = "9f61bdbb-6f1a-4c0f-9a3d-6b8f0f1c2a44";
+
+    /** Stands in for the defendant detail a truncated response would have the parser quote back. */
+    private static final String DEFENDANT_MARKER = "DEFENDANTMARKERZQX7";
     private static final String PAYLOAD = """
             {"hearing":{"id":"1c9d3f7a-88b1-4d5e-9c33-0f2a6b4e77aa"},
              "sharedTime":"2026-08-21T08:00:00Z"}
@@ -207,6 +211,26 @@ class ResultsQueryHearingPayloadClientTest {
             respondWith(200, "<html>a gateway wrote this</html>");
 
             assertThat(client.fetch(command())).isEmpty();
+        }
+
+        /**
+         * A truncated response is the commonest way a hearing reaches a log index: the parser names
+         * the token it stopped on, and in a hearing document that token is a name, an address or a
+         * URN. The line therefore carries the failure's type and nothing the query side sent
+         * (constitution Principle VII).
+         */
+        @Test
+        void fetch_should_not_write_out_anything_a_malformed_response_contained() {
+            respondWith(200, "{\"hearing\":{\"defendant\": " + DEFENDANT_MARKER);
+
+            try (CapturedLog log = CapturedLog.of(ResultsQueryHearingPayloadClient.class)) {
+                assertThat(client.fetch(command())).isEmpty();
+
+                assertThat(log.renderings())
+                        .as("the parser's words quote the response it failed on")
+                        .noneMatch(line -> line.contains(DEFENDANT_MARKER));
+                assertThat(log.messages()).anyMatch(line -> line.contains("not JSON"));
+            }
         }
 
         /**
