@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- 2026-08-22 — **The submission leg: `add-informant-register` is actually POSTed.** The stub
+  submission client is replaced by `adapter/results/`, which posts one command per prosecuting
+  authority to the results-owned endpoint at the exact vendor media type, and by the
+  `processed_output` half of the processed log, which has existed since V1 and until now stayed
+  empty (no new migration — the schema was already complete).
+  - The row is claimed **before** the POST, carrying `request_digest` — SHA-256 of exactly the bytes
+    sent — and moved to `POSTED` or `FAILED` afterwards, so a POST whose outcome is never learned
+    still leaves evidence of what was attempted. The claim and the skip are one conditional upsert
+    rather than a read and then a write, because two deliveries of a request can be in flight and a
+    `SELECT` is stale the moment it returns. An authority already `POSTED` is skipped, so partial
+    progress survives a redelivery or a replay.
+  - Retry classification is the one sanctioned behaviour change (`doc/DEVIATIONS.md` #2): connect
+    and read failures, dropped connections and 5xx are retried with a doubling wait; 429 is retried
+    after the delay the server asked for, capped so a misconfigured server cannot park a run past
+    its claim; any other 4xx is a refusal, is never retried, and comes back `NON_TRANSIENT` under
+    the new bounded reason `SUBMISSION_REJECTED`. An **ambiguous** outcome is retried, preferring a
+    duplicate the 19:00 sweep absorbs over a loss nothing does — and no code or comment promises
+    more than that.
+  - `AuthoritySubmission` gains the request's key, because `processed_output` is keyed
+    `(source, request_id, prosecution_authority_id)` and an authority identifier alone cannot name
+    that row.
+  - Endpoint, identity and retry policy are typed configuration under `informantregister.results.*`.
+    `CJSCPPUID` is the one documented header; because the authorisation scheme is **not** documented
+    anywhere, any further header is configuration rather than a guess in code.
+  - WireMock joins the build for this: one exact path, one exact vendor media type and a body the
+    results-owned schema accepts are not assertable against a mocked HTTP client, which agrees with
+    whatever the code does.
+
 ### Fixed
 - 2026-08-21 — **Post-review hardening of the walking skeleton** (whole-`src/` review, findings
   independently re-verified before fixing):

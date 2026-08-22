@@ -5,13 +5,15 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import tools.jackson.databind.ObjectMapper;
+import uk.gov.hmcts.cp.informantregister.adapter.results.ResultsCommandGateway;
+import uk.gov.hmcts.cp.informantregister.adapter.results.ResultsRegisterSubmissionClient;
 import uk.gov.hmcts.cp.informantregister.adapter.stub.StubHearingPayloadSource;
-import uk.gov.hmcts.cp.informantregister.adapter.stub.StubRegisterSubmissionClient;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.application.HearingPayloadSource;
 import uk.gov.hmcts.cp.informantregister.application.IdempotencyGuard;
 import uk.gov.hmcts.cp.informantregister.application.RegisterSubmissionClient;
 import uk.gov.hmcts.cp.informantregister.inbound.DistributionCommandParser;
+import uk.gov.hmcts.cp.informantregister.persistence.ProcessedOutputRepository;
 
 /**
  * The application core and the adapters currently serving its ports.
@@ -55,10 +57,32 @@ public class PipelineConfig {
         return new StubHearingPayloadSource(properties, objectMapper);
     }
 
-    /** The submission port, stubbed until the Results adapter story lands. */
+    /**
+     * The {@code add-informant-register} transport, with its own retry policy.
+     *
+     * <p>A bean of its own rather than a field of the adapter, so the policy is configurable and
+     * visible at the wiring rather than buried a constructor deeper. The wait is
+     * {@link Thread#sleep(java.time.Duration)}; the suites substitute a recorder, which is the only
+     * reason it is a parameter at all.
+     */
     @Bean
-    public RegisterSubmissionClient registerSubmissionClient() {
-        return new StubRegisterSubmissionClient();
+    public ResultsCommandGateway resultsCommandGateway(final InformantRegisterProperties properties) {
+        return new ResultsCommandGateway(properties.results(), Thread::sleep);
+    }
+
+    /**
+     * The submission port.
+     *
+     * <p>The claim the skeleton made — that replacing a stub is a change to one method here and to
+     * nothing else — is being cashed in: the return type is unchanged, the pipeline is untouched,
+     * and the adapter behind it now writes {@code processed_output} and POSTs.
+     */
+    @Bean
+    public RegisterSubmissionClient registerSubmissionClient(
+            final ProcessedOutputRepository outputs,
+            final ResultsCommandGateway gateway,
+            final ObjectMapper objectMapper) {
+        return new ResultsRegisterSubmissionClient(outputs, gateway, objectMapper);
     }
 
     /** The use-case orchestrator, wired against ports only. */

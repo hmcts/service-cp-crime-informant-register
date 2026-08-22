@@ -296,6 +296,62 @@ class ResultsCommandGatewayTest {
         }
     }
 
+    @Nested
+    @DisplayName("configuration and shutdown")
+    class Edges {
+
+        @Test
+        void an_unconfigured_endpoint_should_fail_at_startup_rather_than_post_somewhere_else() {
+            final InformantRegisterProperties.Results noEndpoint =
+                    new InformantRegisterProperties.Results(
+                            " ", IDENTITY, Map.of(), MAX_ATTEMPTS, INITIAL_BACKOFF, MAX_BACKOFF,
+                            Duration.ofSeconds(2), Duration.ofSeconds(5));
+
+            assertThatThrownBy(() -> new ResultsCommandGateway(noEndpoint, pause))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("base-url");
+        }
+
+        @Test
+        void an_absent_identity_should_be_omitted_rather_than_sent_as_the_word_null() {
+            results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(202)));
+            final ResultsCommandGateway anonymous = new ResultsCommandGateway(
+                    new InformantRegisterProperties.Results(
+                            "http://localhost:" + results.port(), null, Map.of(), MAX_ATTEMPTS,
+                            INITIAL_BACKOFF, MAX_BACKOFF, Duration.ofSeconds(2), Duration.ofSeconds(5)),
+                    pause);
+
+            anonymous.post(body());
+
+            results.verify(postRequestedFor(urlEqualTo(PATH)).withoutHeader("CJSCPPUID"));
+        }
+
+        @Test
+        void an_interrupted_wait_should_give_up_transient_with_the_interrupt_restored() {
+            results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(500)));
+            final ResultsCommandGateway interruptible = new ResultsCommandGateway(
+                    new InformantRegisterProperties.Results(
+                            "http://localhost:" + results.port(), IDENTITY, Map.of(), MAX_ATTEMPTS,
+                            INITIAL_BACKOFF, MAX_BACKOFF, Duration.ofSeconds(2), Duration.ofSeconds(5)),
+                    duration -> {
+                        throw new InterruptedException("shutting down");
+                    });
+
+            try {
+                assertThatThrownBy(() -> interruptible.post(body()))
+                        .isInstanceOf(SubmissionFailedException.class)
+                        .extracting(failure -> ((SubmissionFailedException) failure).classification())
+                        .isEqualTo(FailureClassification.TRANSIENT);
+
+                assertThat(Thread.currentThread().isInterrupted())
+                        .as("an interrupt is a shutdown, and swallowing it would hide one")
+                        .isTrue();
+            } finally {
+                Thread.interrupted();
+            }
+        }
+    }
+
     /** A minimal document, which is all the transport leg needs: valid bytes with a valid shape. */
     private static byte[] body() {
         final InformantRegisterDefendant defendant = new InformantRegisterDefendant(

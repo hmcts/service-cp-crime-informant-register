@@ -18,7 +18,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import uk.gov.hmcts.cp.informantregister.adapter.stub.StubHearingPayloadSource;
-import uk.gov.hmcts.cp.informantregister.adapter.stub.StubRegisterSubmissionClient;
+import uk.gov.hmcts.cp.informantregister.adapter.results.ResultsRegisterSubmissionClient;
 import uk.gov.hmcts.cp.informantregister.domain.CompletionReason;
 import uk.gov.hmcts.cp.informantregister.domain.RequestStatus;
 import uk.gov.hmcts.cp.informantregister.support.CapturedLog;
@@ -75,7 +75,7 @@ class WalkingSkeletonIT {
     @BeforeEach
     void captureTheStubLogs() {
         payloadStubLog = CapturedLog.of(StubHearingPayloadSource.class);
-        submissionStubLog = CapturedLog.of(StubRegisterSubmissionClient.class);
+        submissionStubLog = CapturedLog.of(ResultsRegisterSubmissionClient.class);
     }
 
     @AfterEach
