@@ -10,8 +10,9 @@ import org.springframework.stereotype.Component;
  *
  * <p>Everything checked here fails quietly in production and loudly at startup, so startup is where
  * it is made to fail: a run that can outlive its claim, a broker lock that can expire mid-run, an
- * ambiguous credential source, a payload source that cannot fetch anything, and a payload fetch
- * whose own worst case outlasts the run it happens inside.
+ * ambiguous credential source, a payload source that cannot fetch anything, a payload fetch whose
+ * own worst case outlasts the run it happens inside, and a submission policy that cannot make the
+ * call it exists to make.
  *
  * <p>The payload rules are the ones a healthy-looking pod hides. A live source with no identity, a
  * fallback with no attempts and a cache with no address all produce a service that consumes
@@ -50,11 +51,17 @@ public class PropertiesValidator implements InitializingBean {
             "informantregister.servicebus.connection-string";
     private static final String NAMESPACE = "informantregister.servicebus.namespace";
     private static final String PAYLOAD_MODE = "informantregister.payload.mode";
-    private static final String SYSTEM_USER_ID = "informantregister.system-user-id";
+    private static final String SYSTEM_USER_ID = "informantregister.results.system-user-id";
     private static final String FALLBACK = "informantregister.payload.fallback";
-    private static final String MAX_ATTEMPTS = FALLBACK + ".max-attempts";
+    private static final String FALLBACK_MAX_ATTEMPTS = FALLBACK + ".max-attempts";
     private static final String RETRY_INTERVAL = FALLBACK + ".retry-interval";
     private static final String REDIS = "informantregister.payload.redis";
+    private static final String RESULTS_MAX_ATTEMPTS = "informantregister.results.max-attempts";
+    private static final String INITIAL_BACKOFF = "informantregister.results.initial-backoff";
+    private static final String MAX_BACKOFF = "informantregister.results.max-backoff";
+
+    /** The first attempt is the POST itself, so a policy that permits fewer never sends one. */
+    private static final int MINIMUM_ATTEMPTS = 1;
 
     private final InformantRegisterProperties properties;
 
@@ -79,6 +86,7 @@ public class PropertiesValidator implements InitializingBean {
         validateLockOutlivesTheRun(properties);
         validateExactlyOneCredentialSource(properties);
         validateThePayloadSourceCanFetch(properties);
+        validateTheRetryPolicyCanPost(properties);
     }
 
     private static void validateRunFinishesBeforeTheClaimExpires(
@@ -164,7 +172,7 @@ public class PropertiesValidator implements InitializingBean {
      */
     private static void validateTheLiveSourceHasAnIdentity(
             final InformantRegisterProperties properties) {
-        if (!hasText(properties.systemUserId())) {
+        if (!hasText(properties.results().systemUserId())) {
             throw new IllegalStateException(
                     SYSTEM_USER_ID + " must be set when " + PAYLOAD_MODE + " is LIVE, because the"
                             + " payload fallback cannot be used without an identity to authorise"
@@ -190,7 +198,7 @@ public class PropertiesValidator implements InitializingBean {
             final InformantRegisterProperties.Fallback fallback) {
         if (fallback.maxAttempts() < 1) {
             throw new IllegalStateException(
-                    MAX_ATTEMPTS + " (" + fallback.maxAttempts() + ") must be at least 1 — at zero"
+                    FALLBACK_MAX_ATTEMPTS + " (" + fallback.maxAttempts() + ") must be at least 1 — at zero"
                             + " every cache miss skips a query side that could have answered, and"
                             + " the request is retried to the dead-letter queue instead");
         }
@@ -244,6 +252,37 @@ public class PropertiesValidator implements InitializingBean {
             throw new IllegalStateException(
                     setting + " (" + value + ") must be positive — a timeout that never expires is"
                             + " a run that never ends");
+        }
+    }
+
+    /**
+     * The retry policy has to be able to make the call it exists to make.
+     *
+     * <p>{@code max-attempts} below one is the one that matters: the loop that POSTs the register
+     * never runs, every hearing is handed back as an unresolved transient failure, and the queue
+     * fills with deliveries that were never attempted — silent non-delivery wearing a retry policy's
+     * clothes, and unobservable except as a queue that will not drain. A negative wait reaches
+     * {@link Thread#sleep(java.time.Duration)} and throws from inside the retry, and a ceiling below
+     * the first wait shortens the very back-off it exists to bound.
+     */
+    private static void validateTheRetryPolicyCanPost(final InformantRegisterProperties properties) {
+        final InformantRegisterProperties.Results results = properties.results();
+        if (results.maxAttempts() < MINIMUM_ATTEMPTS) {
+            throw new IllegalStateException(
+                    RESULTS_MAX_ATTEMPTS + " (" + results.maxAttempts() + ") must be at least "
+                            + MINIMUM_ATTEMPTS + ": a policy with no attempts posts no register at "
+                            + "all and hands every hearing back unsent");
+        }
+        if (results.initialBackoff().isNegative()) {
+            throw new IllegalStateException(
+                    INITIAL_BACKOFF + " (" + results.initialBackoff() + ") must not be negative: a "
+                            + "negative wait throws from inside the retry rather than being taken");
+        }
+        if (results.maxBackoff().compareTo(results.initialBackoff()) < 0) {
+            throw new IllegalStateException(
+                    MAX_BACKOFF + " (" + results.maxBackoff() + ") must be at least "
+                            + INITIAL_BACKOFF + " (" + results.initialBackoff() + "), or the ceiling "
+                            + "shortens the very wait it exists to bound");
         }
     }
 

@@ -1,6 +1,7 @@
 package uk.gov.hmcts.cp.informantregister.config;
 
 import java.time.Duration;
+import java.util.Map;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
@@ -12,15 +13,13 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * The two credential settings are the deliberate exception: neither has a default, because a service
  * that invents a broker address is a service that can talk to the wrong broker.
  *
- * @param consumer     whether intake runs at all
- * @param servicebus   broker connection and consumer settings
- * @param claim        the single-runner claim's timings
- * @param store        processed-log store probing
- * @param stub         test-only control over the stub adapters
- * @param payload      where the hearing payload is read from
- * @param results      the results context this service reads from and posts to
- * @param systemUserId the system user identity downstream contexts authorise against; a secret,
- *                     mounted from Key Vault, and therefore without a default
+ * @param consumer   whether intake runs at all
+ * @param servicebus broker connection and consumer settings
+ * @param claim      the single-runner claim's timings
+ * @param store      processed-log store probing
+ * @param stub       test-only control over the stub adapters
+ * @param payload    where the hearing payload is read from
+ * @param results    the results context this service reads from and posts to
  */
 @ConfigurationProperties(prefix = "informantregister")
 public record InformantRegisterProperties(
@@ -30,8 +29,7 @@ public record InformantRegisterProperties(
         @DefaultValue Store store,
         @DefaultValue Stub stub,
         @DefaultValue Payload payload,
-        @DefaultValue Results results,
-        String systemUserId) {
+        @DefaultValue Results results) {
 
     /**
      * Master switch for the Service Bus consumer.
@@ -80,6 +78,55 @@ public record InformantRegisterProperties(
      * @param probeInterval store-health probe interval, driving start and resume
      */
     public record Store(@DefaultValue("10s") Duration probeInterval) {
+    }
+
+    /**
+     * The results context: the query API the payload fallback reads from, and the command API this
+     * service POSTs {@code add-informant-register} to.
+     *
+     * <p>One base URL for both of its APIs, because they are one deployment behind one internal mesh
+     * host; the context roots are part of each call's path and belong with the client that makes it.
+     * One identity for both, for the same reason — {@code CJSCPPUID} is what either API authorises
+     * against.
+     *
+     * <p>{@code baseUrl} and {@code systemUserId} follow the broker credentials' rule and carry no
+     * default here: an endpoint a service invents is an endpoint it can talk to by mistake, and the
+     * identity is a secret that arrives from Key Vault. The local development value in
+     * {@code application.yaml} is the Results command API's own declared {@code baseUri}, not a
+     * value chosen here.
+     *
+     * <p>{@code headers} exists because the identity requirement is documented and the
+     * <em>authorisation</em> requirement is not. {@code doc/API_CONTRACTS.md} names {@code CJSCPPUID}
+     * and nothing else, while the command's access-control rules on the Results side require the
+     * caller to be in a named user group. Rather than guess at a scheme, every additional header is
+     * configuration: whatever the mesh turns out to need can be supplied without a code change, and
+     * nothing is invented in the meantime.
+     *
+     * @param maxAttempts     total POST attempts per authority, the first included
+     * @param initialBackoff  the first wait between retryable attempts; doubled each time
+     * @param maxBackoff      the ceiling on any wait, a {@code Retry-After} the server asked for
+     *                        included, so a hostile or mistaken header cannot park a run past its
+     *                        claim
+     * @param connectTimeout  how long to wait for the connection
+     * @param readTimeout     how long to wait for the response once connected
+     * @param baseUrl         scheme, host and port of the Results context, no path
+     * @param systemUserId    the {@code CJSCPPUID} identity; a secret, never logged
+     * @param headers         any further headers the mesh requires, name to value
+     */
+    public record Results(
+            String baseUrl,
+            String systemUserId,
+            Map<String, String> headers,
+            @DefaultValue("4") int maxAttempts,
+            @DefaultValue("500ms") Duration initialBackoff,
+            @DefaultValue("20s") Duration maxBackoff,
+            @DefaultValue("5s") Duration connectTimeout,
+            @DefaultValue("30s") Duration readTimeout) {
+
+        /** Freezes the header map, and treats an unconfigured one as none rather than as absent. */
+        public Results {
+            headers = headers == null ? Map.of() : Map.copyOf(headers);
+        }
     }
 
     /**
@@ -151,16 +198,5 @@ public record InformantRegisterProperties(
             @DefaultValue("1s") Duration retryInterval,
             @DefaultValue("5s") Duration connectTimeout,
             @DefaultValue("30s") Duration readTimeout) {
-    }
-
-    /**
-     * The results context.
-     *
-     * <p>One base URL for both of its APIs, because they are one deployment behind one internal mesh
-     * host; the context roots are part of each call's path and belong with the client that makes it.
-     *
-     * @param baseUrl the results context base URL; a LOCAL development default
-     */
-    public record Results(@DefaultValue("http://localhost:8080") String baseUrl) {
     }
 }

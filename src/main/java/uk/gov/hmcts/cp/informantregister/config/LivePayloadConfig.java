@@ -111,7 +111,7 @@ public class LivePayloadConfig {
                         .requestFactory(requestFactory(fallback.connectTimeout(),
                                 fallback.readTimeout()))
                         .build(),
-                properties.systemUserId(),
+                properties.results().systemUserId(),
                 objectMapper,
                 fallback.maxAttempts(),
                 fallback.retryInterval());

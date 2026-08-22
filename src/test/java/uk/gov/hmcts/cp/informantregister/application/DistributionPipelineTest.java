@@ -1,11 +1,14 @@
 package uk.gov.hmcts.cp.informantregister.application;
 
+import java.lang.reflect.RecordComponent;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -23,6 +26,10 @@ import uk.gov.hmcts.cp.informantregister.domain.DeliveryIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
 import uk.gov.hmcts.cp.informantregister.domain.FailureClassification;
 import uk.gov.hmcts.cp.informantregister.domain.GuardDecision;
+import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDefendant;
+import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDocument;
+import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterHearing;
+import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterHearingVenue;
 import uk.gov.hmcts.cp.informantregister.domain.PayloadUnavailableException;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.RunClaim;
@@ -116,6 +123,24 @@ class DistributionPipelineTest {
     private static JsonNode payload() {
         final ObjectMapper mapper = JacksonConfig.contractObjectMapper();
         return mapper.readTree("{\"hearing\":{\"id\":\"stub\"}}");
+    }
+
+    /** A minimal outbound document: the port contract's shape, not its content. */
+    private static InformantRegisterDocument document() {
+        final InformantRegisterDefendant defendant = new InformantRegisterDefendant(
+                "SMITH, John", null, "1 High Street", null, null, null, null,
+                null, null, null, null, null, null, null);
+        final InformantRegisterHearing session =
+                new InformantRegisterHearing("Court 1", "10:00:00Z", List.of(defendant));
+        final InformantRegisterHearingVenue venue =
+                new InformantRegisterHearingVenue(null, "Bristol Magistrates' Court", List.of(session));
+        return new InformantRegisterDocument(
+                ZonedDateTime.parse("2026-08-20T11:00:00Z"),
+                ZonedDateTime.parse("2026-08-19T10:00:00Z"),
+                UUID.fromString("11111111-2222-4333-8444-555555555555"),
+                UUID.fromString("3f4a2b1c-5d6e-4f70-8912-a3b4c5d6e7f8"),
+                "CPS", null, null, null,
+                "informant-register-CPS-20260820.pdf", null, venue, null);
     }
 
     private void guardAdmitsTheDelivery() {
@@ -478,6 +503,126 @@ class DistributionPipelineTest {
         }
     }
 
+    // --- a failure that says whether it is worth retrying (design rules, state machine) --------
+
+    /**
+     * What the pipeline does with a failure that carries its own classification.
+     *
+     * <p>A submission failure is one of the two kinds there are — the class above covers a
+     * transformation that cannot read its payload. The Results command refusing a body is not
+     * worth a redelivery, while a 5xx or an unresolved outcome is. Everything else the run can meet
+     * is transient by construction.
+     *
+     * <p><strong>Why the failure is raised at the payload port.</strong> The classified failure's
+     * production source is the submission port, and that port cannot be reached from any test yet —
+     * the transformation is not wired into the run, so it produces an empty authority set and
+     * submits nothing (spec
+     * FR-010), which the suite above asserts. What is under test here is the run frame's handling of
+     * a classified failure, and the frame does not care which line of the run raised it; injecting
+     * it at the port that can be reached tests the branch that exists rather than mocking a
+     * transformation that does not.
+     */
+    @Nested
+    @DisplayName("a failure that carries its classification")
+    class ClassifiedRunFailure {
+
+        private final SubmissionFailedException refused = new SubmissionFailedException(
+                FailureClassification.NON_TRANSIENT, ReasonCode.SUBMISSION_REJECTED);
+        private final SubmissionFailedException unresolved = new SubmissionFailedException(
+                FailureClassification.TRANSIENT, ReasonCode.PIPELINE_TRANSIENT_FAILURE);
+
+        private final GuardDecision parked = new GuardDecision.DeadLetter(
+                DeadLetterReason.NON_TRANSIENT, ReasonCode.SUBMISSION_REJECTED);
+
+        private DeliveryIdentity theRunFailsWith(
+                final SubmissionFailedException failure, final boolean lastChance) {
+            final DeliveryIdentity identity = new DeliveryIdentity(MESSAGE_ID, OWNER, lastChance);
+            when(guard.admit(command, identity)).thenReturn(new GuardDecision.Run(claim));
+            when(payloadSource.fetch(command)).thenThrow(failure);
+            return identity;
+        }
+
+        @Test
+        void should_park_a_refusal_at_once_though_the_queue_would_deliver_it_again() {
+            final DeliveryIdentity identity = theRunFailsWith(refused, false);
+            when(guard.recordNonTransientFailure(claim, ReasonCode.SUBMISSION_REJECTED))
+                    .thenReturn(parked);
+
+            final GuardDecision decision = pipeline.process(command, identity);
+
+            assertThat(decision).isEqualTo(parked);
+            verify(guard).recordNonTransientFailure(claim, ReasonCode.SUBMISSION_REJECTED);
+            verify(guard, never()).recordTransientFailure(any(), any());
+            verify(guard, never()).recordExhaustion(any(), any());
+        }
+
+        @Test
+        void should_report_the_reason_the_failure_carried_rather_than_a_catch_all() {
+            final DeliveryIdentity identity = theRunFailsWith(refused, false);
+            when(guard.recordNonTransientFailure(claim, ReasonCode.SUBMISSION_REJECTED))
+                    .thenReturn(parked);
+
+            pipeline.process(command, identity);
+
+            verify(guard, never())
+                    .recordNonTransientFailure(claim, ReasonCode.UNEXPECTED_FAILURE);
+            assertThat(counter(ProcessingMetrics.PROCESSING_FAILURES,
+                    ProcessingMetrics.CLASSIFICATION_TAG, "non-transient")).isEqualTo(1.0);
+        }
+
+        @Test
+        void should_count_a_parked_refusal_as_a_failed_request() {
+            final DeliveryIdentity identity = theRunFailsWith(refused, false);
+            when(guard.recordNonTransientFailure(claim, ReasonCode.SUBMISSION_REJECTED))
+                    .thenReturn(parked);
+
+            pipeline.process(command, identity);
+
+            assertThat(counter(ProcessingMetrics.PROCESSED,
+                    ProcessingMetrics.OUTCOME_TAG, "failed")).isEqualTo(1.0);
+        }
+
+        @Test
+        void should_not_count_a_parking_a_superseded_runner_was_refused() {
+            final DeliveryIdentity identity = theRunFailsWith(refused, false);
+            when(guard.recordNonTransientFailure(claim, ReasonCode.SUBMISSION_REJECTED))
+                    .thenReturn(new GuardDecision.Abandon(ReasonCode.STALE_RUNNER));
+
+            pipeline.process(command, identity);
+
+            assertThat(counter(ProcessingMetrics.PROCESSED,
+                    ProcessingMetrics.OUTCOME_TAG, "failed")).isZero();
+        }
+
+        @Test
+        void should_hand_back_an_unresolved_submission_while_deliveries_remain() {
+            final DeliveryIdentity identity = theRunFailsWith(unresolved, false);
+            final GuardDecision handedBack =
+                    new GuardDecision.Abandon(ReasonCode.PIPELINE_TRANSIENT_FAILURE);
+            when(guard.recordTransientFailure(claim, ReasonCode.PIPELINE_TRANSIENT_FAILURE))
+                    .thenReturn(handedBack);
+
+            final GuardDecision decision = pipeline.process(command, identity);
+
+            assertThat(decision).isEqualTo(handedBack);
+            verify(guard, never()).recordNonTransientFailure(any(), any());
+        }
+
+        @Test
+        void should_park_an_unresolved_submission_on_the_final_permitted_delivery() {
+            final DeliveryIdentity identity = theRunFailsWith(unresolved, true);
+            final GuardDecision exhausted = new GuardDecision.DeadLetter(
+                    DeadLetterReason.EXHAUSTED, ReasonCode.DELIVERY_LIMIT_EXHAUSTED);
+            when(guard.recordExhaustion(claim, ReasonCode.PIPELINE_TRANSIENT_FAILURE))
+                    .thenReturn(exhausted);
+
+            final GuardDecision decision = pipeline.process(command, identity);
+
+            assertThat(decision).isEqualTo(exhausted);
+            verify(guard, never()).recordNonTransientFailure(any(), any());
+        }
+    }
+
     // --- the enforced processing deadline (data-model invariant 8) -----------------------------
 
     @Nested
@@ -601,12 +746,30 @@ class DistributionPipelineTest {
 
         @Test
         void an_authority_submission_should_carry_the_authority_and_its_document_untouched() {
-            final JsonNode document = payload();
+            final InformantRegisterDocument document = document();
 
-            final AuthoritySubmission submission = new AuthoritySubmission("PA-1", document);
+            final AuthoritySubmission submission =
+                    new AuthoritySubmission("RESULTS", UUID.randomUUID(), "PA-1", document);
 
             assertThat(submission.prosecutionAuthorityId()).isEqualTo("PA-1");
             assertThat(submission.document()).isSameAs(document);
+        }
+
+        /**
+         * What goes out is typed, and the compiler is what enforces it.
+         *
+         * <p>Principle IV is not symmetrical: the hearing payload crosses this service as a tree
+         * because it is owned elsewhere, while the {@code add-informant-register} body is typed
+         * because the contract is closed — {@code additionalProperties: false} — and a field the
+         * service cannot name is then a field it cannot send.
+         */
+        @Test
+        void an_authority_submission_should_carry_a_typed_document_not_an_arbitrary_tree() {
+            assertThat(AuthoritySubmission.class.getRecordComponents())
+                    .filteredOn(component -> "document".equals(component.getName()))
+                    .singleElement()
+                    .extracting(RecordComponent::getType)
+                    .isEqualTo(InformantRegisterDocument.class);
         }
     }
 }

@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import uk.gov.hmcts.cp.informantregister.application.IdempotencyGuard;
 import uk.gov.hmcts.cp.informantregister.persistence.ProcessedLogProbe;
+import uk.gov.hmcts.cp.informantregister.persistence.ProcessedOutputRepository;
 import uk.gov.hmcts.cp.informantregister.persistence.ProcessedRequestRepository;
 
 /**
@@ -43,6 +44,17 @@ public class ProcessedLogConfig {
     @Bean
     public ProcessedLogProbe processedLogProbe(final JdbcClient jdbcClient) {
         return new ProcessedLogProbe(jdbcClient);
+    }
+
+    /**
+     * The per-authority half of the log.
+     *
+     * <p>No lease and no other setting: its statements are keyed and conditional on state alone, and
+     * every timestamp in them comes from the database.
+     */
+    @Bean
+    public ProcessedOutputRepository processedOutputRepository(final JdbcClient jdbcClient) {
+        return new ProcessedOutputRepository(jdbcClient);
     }
 
     /** The {@code (source, requestId)} idempotency guard. */

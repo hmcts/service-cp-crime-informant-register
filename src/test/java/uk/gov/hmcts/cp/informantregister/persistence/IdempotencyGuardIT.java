@@ -217,6 +217,62 @@ class IdempotencyGuardIT {
         }
     }
 
+    // --- RECEIVED / RETRYING -> FAILED, whatever the budget ----------------------------------
+
+    /**
+     * A failure no redelivery could change ends the request there and then.
+     *
+     * <p>The Results command refusing a body is the case: the next delivery would send the same
+     * bytes to the same refusal, so the remaining budget buys nothing and only delays the
+     * dead-letter support acts on. The row is parked under this delivery's identity exactly as an
+     * exhausted one is, so a redelivery of it re-parks while a deliberate resubmission replays.
+     */
+    @Nested
+    @DisplayName("a run that fails in a way no redelivery could fix")
+    class RunFailsNonTransiently {
+
+        @Test
+        void should_park_the_request_at_once_and_ask_for_dead_lettering_under_its_own_reason() {
+            final RunClaim claim = admitted("msg-4");
+
+            final GuardDecision decision =
+                    guard.recordNonTransientFailure(claim, ReasonCode.SUBMISSION_REJECTED);
+
+            assertThat(decision).isEqualTo(new GuardDecision.DeadLetter(
+                    DeadLetterReason.NON_TRANSIENT, ReasonCode.SUBMISSION_REJECTED));
+            final Row row = row();
+            assertThat(row.status()).isEqualTo("FAILED");
+            assertThat(row.failureReason()).isEqualTo("SUBMISSION_REJECTED");
+            assertThat(row.exhaustedMessageId()).isEqualTo("msg-4");
+            assertThat(row.claimOwner()).isNull();
+            assertThat(row.claimToken()).isNull();
+            assertThat(row.claimExpiresAt()).isNull();
+        }
+
+        @Test
+        void should_leave_a_parked_request_replayable_under_a_fresh_identity() {
+            guard.recordNonTransientFailure(admitted("msg-4"), ReasonCode.SUBMISSION_REJECTED);
+
+            final GuardDecision decision = guard.admit(command, delivery("msg-5"));
+
+            assertThat(decision).isInstanceOf(GuardDecision.Run.class);
+            assertThat(row().status()).isEqualTo("RECEIVED");
+        }
+
+        @Test
+        void should_refuse_the_write_from_a_runner_whose_claim_was_reclaimed() {
+            final RunClaim superseded = admitted("msg-4");
+            ProcessedLogTestSupport.expireClaim(command.source(), command.requestId());
+            guard.admit(command, delivery("msg-5", OTHER_OWNER));
+
+            final GuardDecision decision =
+                    guard.recordNonTransientFailure(superseded, ReasonCode.SUBMISSION_REJECTED);
+
+            assertThat(decision).isEqualTo(new GuardDecision.Abandon(ReasonCode.STALE_RUNNER));
+            assertThat(row().status()).isEqualTo("RECEIVED");
+        }
+    }
+
     // --- RECEIVED / RETRYING -> FAILED -------------------------------------------------------
 
     @Nested

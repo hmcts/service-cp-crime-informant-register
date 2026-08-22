@@ -64,6 +64,34 @@ informantregister:
     # How often the store is probed, driving the gated start and the resume after an outage.
     probe-interval: 10s
 
+  results:
+    # The results context, for both of its APIs — the query API the payload fallback reads from and
+    # the command API the register is POSTed to. One deployment behind one internal mesh host, so
+    # the context roots belong to each call's path rather than here.
+    # LOCAL DEFAULT ONLY, and not a value chosen here: it is the baseUri the Results command API's own
+    # RAML declares. Deployed environments set RESULTS_BASE_URL to the internal mesh host.
+    base-url: ${RESULTS_BASE_URL:http://localhost:8080}
+    # The CJSCPPUID identity. A secret: it arrives from Key Vault through the Secrets Store CSI
+    # driver, so what is written here is the binding and never a value — the empty default leaves a
+    # local run with no identity to borrow.
+    # It is REQUIRED. The command is refused without it, so the service refuses to start without it
+    # rather than dead-letter every hearing it is given, one 403 at a time — a local run that has no
+    # identity to use has nothing to post with either. Named here rather than left to relaxed
+    # binding: a variable a comment documents and no key reads is a deployment that sets it
+    # correctly and still fails to start.
+    system-user-id: ${RESULTS_SYSTEM_USER_ID:}
+    # Retry policy for the POST. Connect and read failures, 5xx and 429 are retried; any other 4xx is
+    # a refusal and is never retried. The numbers are this service's own: the contract documents that
+    # back-off happens, not how much of it, so they are configuration rather than constants.
+    max-attempts: 4
+    initial-backoff: 500ms
+    # The ceiling on any wait, a server-supplied Retry-After included. Worst case must stay well
+    # inside informantregister.claim.processing-deadline, or a run would still be waiting when its
+    # claim is reclaimed.
+    max-backoff: 20s
+    connect-timeout: 5s
+    read-timeout: 30s
+
   stub:
     # NONE | TRANSIENT. Test and local profiles only: it is deliberately not a field in the message
     # and not an HTTP endpoint, either of which would be a production fault-injection surface.
@@ -72,7 +100,8 @@ informantregister:
   payload:
     # LIVE | STUB. LIVE is the cache-with-query-fallback adapter and is what an environment that
     # says nothing gets: a service that has to be told to fetch payloads is a service that will one
-    # day be deployed not fetching them. It requires informantregister.system-user-id, without which
+    # day be deployed not fetching them. It requires informantregister.results.system-user-id,
+    # without which
     # its fallback cannot authorise. STUB is for local runs and for the container suites whose
     # subject is settlement and the processed log rather than the payload; startup refuses it
     # wherever the deployed credential source (servicebus.namespace) is in use.
@@ -100,15 +129,6 @@ informantregister:
       # Shorter than the processing deadline on purpose: a read that outlives the deadline outlives
       # the claim behind it, and then two runners believe they own the same request.
       read-timeout: 30s
-
-  results:
-    # The results context, for both of its APIs — one deployment behind one internal mesh host, so
-    # the context roots belong to each call's path rather than here. LOCAL development default.
-    base-url: http://localhost:8080
-
-  # system-user-id: the identity downstream contexts authorise against (CJSCPPUID). A secret,
-  # mounted from Key Vault, and deliberately without a default — a service that invents one talks to
-  # another context as somebody it is not.
 
 # Application Insights is configured by the Java agent (lib/applicationinsights.json).
 # The per-environment connection string is supplied as APPLICATIONINSIGHTS_CONNECTION_STRING,

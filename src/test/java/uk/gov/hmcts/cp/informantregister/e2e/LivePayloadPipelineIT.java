@@ -99,7 +99,7 @@ class LivePayloadPipelineIT {
         registry.add("informantregister.payload.redis.host", RedisTestSupport::host);
         registry.add("informantregister.payload.redis.port", RedisTestSupport::port);
         registry.add("informantregister.results.base-url", queryApi::baseUrl);
-        registry.add("informantregister.system-user-id",
+        registry.add("informantregister.results.system-user-id",
                 () -> "9f61bdbb-6f1a-4c0f-9a3d-6b8f0f1c2a44");
         // The legacy interval is a second, and a parked request spends it on every attempt of every
         // delivery. What is under test here is the settlement, not the wait.

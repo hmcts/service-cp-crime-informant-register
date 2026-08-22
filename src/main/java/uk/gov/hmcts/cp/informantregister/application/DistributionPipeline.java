@@ -58,6 +58,10 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * recorded FAILED, with the identity of the delivery that exhausted the budget, and the message is
  * parked. The transport adapter reads that fact from the delivery and carries it in, because the
  * processed log cannot know it — the budget belongs to the message, not to the request.
+ *
+ * <p>Payload unavailability is transient by construction and a deadline is not a fault at all, so
+ * neither is ever parked for being unretryable, and a failure nothing anticipated is treated as
+ * transient because "unknown" is not the same as "hopeless".
  */
 public class DistributionPipeline {
 
@@ -129,8 +133,11 @@ public class DistributionPipeline {
             outcome = failed(claim, unavailable.classification(), unavailable.reason(), lastChance);
         } catch (TransformationFailedException unreadable) {
             outcome = failed(claim, unreadable.classification(), unreadable.reason(), lastChance);
-        } catch (SubmissionFailedException rejected) {
-            outcome = failed(claim, rejected.classification(), rejected.reason(), lastChance);
+        } catch (SubmissionFailedException submission) {
+            // Both of these say whether they are worth retrying, so they are asked rather than
+            // assumed: a payload the transformation cannot read reads the same on every delivery,
+            // a refused body is refused on every delivery, and the delivery budget is finite.
+            outcome = failed(claim, submission.classification(), submission.reason(), lastChance);
         } catch (RuntimeException unexpected) {
             LOG.error("Run failed unexpectedly; recording it so the claim is released. "
                             + "source={} requestId={} type={}",
@@ -189,9 +196,13 @@ public class DistributionPipeline {
      * Records a failed run — loudly, and with a bounded reason rather than whatever the layer
      * beneath had to say about it.
      *
-     * <p>A failure the throw site classified {@code NON_TRANSIENT} is parked here and now: no
-     * redelivery can change it, so the delivery count is not consulted at all, and the row carries
-     * the reason the port named rather than an exhaustion the service never reached.
+     * <p><strong>A failure the throw site classified {@code NON_TRANSIENT} is parked here and
+     * now</strong>, whatever the delivery budget says: no redelivery can change it — the same
+     * payload reads the same way, the same bytes meet the same refusal — so the delivery count is
+     * not consulted at all, the remaining deliveries would buy nothing and would delay by four
+     * back-offs the dead-letter support acts on, and the row carries the reason the port named
+     * rather than an exhaustion the service never reached (design rules, "Processing State
+     * Machine").
      *
      * <p>A transient failure means two different things depending on whether the queue will deliver
      * the message again. With deliveries remaining it is recorded RETRYING and the delivery is handed
@@ -215,14 +226,16 @@ public class DistributionPipeline {
                 claim.source(), claim.requestId(), classification.label(), reason.code(), lastChance);
         metrics.pipelineFailed(classification);
 
-        final GuardDecision outcome;
-        if (classification == FailureClassification.NON_TRANSIENT) {
-            outcome = guard.recordNonTransientFailure(claim, reason);
-        } else if (lastChance) {
-            outcome = guard.recordExhaustion(claim, reason);
-        } else {
-            outcome = guard.recordTransientFailure(claim, reason);
-        }
+        return switch (classification) {
+            case NON_TRANSIENT -> parked(guard.recordNonTransientFailure(claim, reason));
+            case TRANSIENT -> lastChance
+                    ? parked(guard.recordExhaustion(claim, reason))
+                    : guard.recordTransientFailure(claim, reason);
+        };
+    }
+
+    /** Counts a parking the guard accepted, and only one it accepted. */
+    private GuardDecision parked(final GuardDecision outcome) {
         if (outcome instanceof GuardDecision.DeadLetter) {
             metrics.requestSettled(RequestOutcome.FAILED);
         }

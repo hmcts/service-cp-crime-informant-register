@@ -106,11 +106,17 @@ class PayloadSourceWiringTest {
             });
         }
 
+        /**
+         * The endpoint has no default in code for the same reason the identity has none: an endpoint
+         * a service invents is an endpoint it can talk to by mistake. The local development value is
+         * the Results command API's own declared {@code baseUri} and lives in {@code
+         * application.yaml}, where {@code ConfigurationValidationTest.ShippedConfiguration} pins it.
+         */
         @Test
-        void the_results_base_url_should_fall_back_to_the_local_development_default() {
+        void the_results_base_url_should_have_no_default() {
             runner.run(context -> assertThat(
                     context.getBean(InformantRegisterProperties.class).results().baseUrl())
-                    .isEqualTo("http://localhost:8080"));
+                    .isNull());
         }
 
         /**
@@ -121,7 +127,7 @@ class PayloadSourceWiringTest {
         @Test
         void the_system_user_identity_should_have_no_default() {
             runner.run(context -> assertThat(
-                    context.getBean(InformantRegisterProperties.class).systemUserId()).isNull());
+                    context.getBean(InformantRegisterProperties.class).results().systemUserId()).isNull());
         }
 
         @Test
@@ -133,7 +139,7 @@ class PayloadSourceWiringTest {
                             "informantregister.payload.redis.key-prefix=INT_",
                             "informantregister.payload.fallback.max-attempts=5",
                             "informantregister.results.base-url=http://results.internal",
-                            "informantregister.system-user-id=a-system-user")
+                            "informantregister.results.system-user-id=a-system-user")
                     .run(context -> {
                         final InformantRegisterProperties properties =
                                 context.getBean(InformantRegisterProperties.class);
@@ -144,7 +150,7 @@ class PayloadSourceWiringTest {
                         assertThat(properties.payload().fallback().maxAttempts()).isEqualTo(5);
                         assertThat(properties.results().baseUrl())
                                 .isEqualTo("http://results.internal");
-                        assertThat(properties.systemUserId()).isEqualTo("a-system-user");
+                        assertThat(properties.results().systemUserId()).isEqualTo("a-system-user");
                     });
         }
     }
