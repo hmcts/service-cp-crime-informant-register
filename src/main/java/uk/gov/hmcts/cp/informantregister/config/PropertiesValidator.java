@@ -31,6 +31,17 @@ public class PropertiesValidator implements InitializingBean {
      */
     public static final Duration RENEWAL_MARGIN = Duration.ofSeconds(30);
 
+    /**
+     * How many cache reads one payload fetch makes, and therefore how many of them the run's time
+     * budget has to cover.
+     *
+     * <p>Two: the dated key and the legacy undated twin, which
+     * {@link uk.gov.hmcts.cp.informantregister.adapter.payload.CachedHearingPayloadAdapter} reads in
+     * turn before the query side is asked at all (registered deviation 4). A budget that counts only
+     * the query side licences a fetch that overruns the deadline by everything the cache cost.
+     */
+    private static final int CACHE_READS_PER_FETCH = 2;
+
     private static final String LEASE = "informantregister.claim.lease";
     private static final String PROCESSING_DEADLINE = "informantregister.claim.processing-deadline";
     private static final String RENEW_DURATION =
@@ -68,7 +79,6 @@ public class PropertiesValidator implements InitializingBean {
         validateLockOutlivesTheRun(properties);
         validateExactlyOneCredentialSource(properties);
         validateThePayloadSourceCanFetch(properties);
-        validateTheFallbackFinishesInsideTheRun(properties);
     }
 
     private static void validateRunFinishesBeforeTheClaimExpires(
@@ -112,6 +122,12 @@ public class PropertiesValidator implements InitializingBean {
      * <p>Three separate ways a deployment can look healthy and fetch nothing: the stub selected
      * where the service is deployed, a live source with no identity to authorise its fallback with,
      * and a cache or fallback configured out of existence.
+     *
+     * <p>Each rule is asked of the source actually selected. The cache and the query side belong to
+     * the live adapter, and STUB builds neither of them ({@link LivePayloadConfig},
+     * {@link StubPayloadConfig}), so holding a stub run to settings nothing will read would fail a
+     * local run that is configured exactly as it means to be — the same reason the identity is the
+     * live source's requirement and nobody else's.
      */
     private static void validateThePayloadSourceCanFetch(
             final InformantRegisterProperties properties) {
@@ -120,9 +136,10 @@ public class PropertiesValidator implements InitializingBean {
             validateTheStubIsNotDeployed(properties);
         } else {
             validateTheLiveSourceHasAnIdentity(properties);
+            validateTheCacheIsAddressable(payload.redis());
+            validateTheFallbackIsAttempted(payload.fallback());
+            validateTheFetchFinishesInsideTheRun(properties);
         }
-        validateTheCacheIsAddressable(payload.redis());
-        validateTheFallbackIsAttempted(payload.fallback());
     }
 
     /**
@@ -188,25 +205,37 @@ public class PropertiesValidator implements InitializingBean {
     /**
      * The fetch happens inside the run, and the run must finish before its claim can be reclaimed.
      *
-     * <p>So the fallback's own worst case — every attempt spending its connect and read timeouts,
-     * with an interval between them — has to fit inside the processing deadline. A configuration
-     * where it does not guarantees exactly what the deadline exists to prevent: a runner still
-     * waiting on a socket while another runner takes its request.
+     * <p>So the whole fetch's worst case has to fit inside the processing deadline: the two cache
+     * reads that come first, each able to spend its connect and command timeouts, and then every
+     * fallback attempt spending its connect and read timeouts with an interval between them. A
+     * configuration where it does not guarantees exactly what the deadline exists to prevent: a
+     * runner still waiting on a socket while another runner takes its request.
+     *
+     * <p>Strictly shorter, not merely no longer. The run measures the deadline before the fetch and
+     * tests it after, so a fetch that fills the deadline exactly leaves the rest of the run nothing
+     * and can only end at {@code PROCESSING_DEADLINE_EXCEEDED} — the same reading of the bound that
+     * {@code DistributionPipeline} takes, and that the lease rule above takes.
      */
-    private static void validateTheFallbackFinishesInsideTheRun(
+    private static void validateTheFetchFinishesInsideTheRun(
             final InformantRegisterProperties properties) {
+        final InformantRegisterProperties.Redis redis = properties.payload().redis();
         final InformantRegisterProperties.Fallback fallback = properties.payload().fallback();
         final Duration deadline = properties.claim().processingDeadline();
-        final Duration worstCase = fallback.connectTimeout()
+        final Duration cacheReads = redis.connectTimeout()
+                .plus(redis.commandTimeout())
+                .multipliedBy(CACHE_READS_PER_FETCH);
+        final Duration queryReads = fallback.connectTimeout()
                 .plus(fallback.readTimeout())
                 .multipliedBy(fallback.maxAttempts())
                 .plus(fallback.retryInterval().multipliedBy(fallback.maxAttempts() - 1L));
-        if (worstCase.compareTo(deadline) > 0) {
+        final Duration worstCase = cacheReads.plus(queryReads);
+        if (worstCase.compareTo(deadline) >= 0) {
             throw new IllegalStateException(
-                    "The " + FALLBACK + " settings allow a payload read of up to " + worstCase
-                            + ", which is longer than " + PROCESSING_DEADLINE + " (" + deadline
-                            + ") — a run must be able to stop itself while its claim is still its"
-                            + " own");
+                    "The payload settings allow a fetch of up to " + worstCase + " — " + REDIS
+                            + " reads of " + cacheReads + " ahead of " + FALLBACK + " attempts of "
+                            + queryReads + " — which is not strictly shorter than "
+                            + PROCESSING_DEADLINE + " (" + deadline + "); a run must be able to stop"
+                            + " itself while its claim is still its own");
         }
     }
 

@@ -23,7 +23,9 @@ import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
  * <p>Two keys are read, not one. The producer publishes the payload under a dated key and a legacy
  * undated twin (design doc §2.1, {@code doc/API_CONTRACTS.md}), and both are read here; the function
  * app reads exactly one, built from the hearing date it was given. That is registered deviation 4
- * ({@code doc/DEVIATIONS.md}).
+ * ({@code doc/DEVIATIONS.md}). Both reads are time the run spends before the query side is asked, so
+ * {@code PropertiesValidator} budgets two of them against the processing deadline; a third lookup
+ * here is a change to that budget as well as to this method.
  *
  * <p>Where it deliberately parts company with the function app is the end of the chain. There, a
  * hearing that neither source could supply returned {@code null}, the orchestrator's
