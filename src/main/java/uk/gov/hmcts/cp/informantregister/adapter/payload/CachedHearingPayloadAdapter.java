@@ -1,11 +1,13 @@
 package uk.gov.hmcts.cp.informantregister.adapter.payload;
 
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import uk.gov.hmcts.cp.informantregister.application.HearingPayloadSource;
 import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
 import uk.gov.hmcts.cp.informantregister.domain.PayloadUnavailableException;
+import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 
 /**
  * The payload source as the function app arranges it: the cache first, the query side after it.
@@ -47,7 +49,57 @@ public class CachedHearingPayloadAdapter implements HearingPayloadSource {
 
     @Override
     public JsonNode fetch(final DistributionCommand command) {
-        LOG.trace("cache={} query={} prefix={}", cache, query, keyPrefix);
-        return null;
+        final Optional<JsonNode> dated = read(
+                HearingPayloadCacheKey.cacheKey(keyPrefix, command.hearingId(),
+                        command.hearingDay()),
+                command);
+        if (dated.isPresent()) {
+            return dated.get();
+        }
+
+        final Optional<JsonNode> legacy = read(
+                HearingPayloadCacheKey.cacheKey(keyPrefix, command.hearingId(), null), command);
+        if (legacy.isPresent()) {
+            return legacy.get();
+        }
+
+        LOG.info("Hearing payload not cached; querying the results query API. "
+                        + "requestId={} hearingId={} hearingDay={}",
+                command.requestId(), command.hearingId(), command.hearingDay());
+        return query.fetch(command)
+                .orElseThrow(() -> unavailable(command));
+    }
+
+    /**
+     * Reads one key, treating a cache that cannot answer as a cache with nothing in it.
+     *
+     * <p>The failure is logged at WARN with its cause, so a cache outage is visible rather than
+     * inferred from a rise in query-side traffic. It is not rethrown, because the query side can
+     * still answer and the function app's own behaviour here is to carry on.
+     */
+    private Optional<JsonNode> read(final String key, final DistributionCommand command) {
+        try {
+            return cache.read(key);
+        } catch (RuntimeException unreadable) {
+            LOG.warn("Hearing payload cache could not be read; continuing to the query API. "
+                            + "requestId={} hearingId={}",
+                    command.requestId(), command.hearingId(), unreadable);
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Builds the failure for a payload no source supplied.
+     *
+     * <p>Transient by construction — {@link PayloadUnavailableException} fixes the classification —
+     * and carrying the bounded reason code only, because the value reaches the processed log, the
+     * dead-letter description and the log index.
+     */
+    private PayloadUnavailableException unavailable(final DistributionCommand command) {
+        LOG.error("Hearing payload unavailable from the cache and the query API. "
+                        + "requestId={} hearingId={} hearingDay={} reason={}",
+                command.requestId(), command.hearingId(), command.hearingDay(),
+                ReasonCode.PIPELINE_TRANSIENT_FAILURE.code());
+        return new PayloadUnavailableException(ReasonCode.PIPELINE_TRANSIENT_FAILURE);
     }
 }
