@@ -9,6 +9,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterResult;
 import uk.gov.hmcts.cp.informantregister.domain.ResultLevel;
+import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
 
 /**
  * Gathers every judicial result in a hearing under the defendant it belongs to.
@@ -443,7 +444,11 @@ final class DefendantContextBuilder {
             }
 
             if (context == null) {
-                throw new IllegalStateException(
+                // Classified at the throw site, as the error-handling rules require: no redelivery
+                // will introduce the missing defendant, so the delivery is parked rather than
+                // retried. The identity is not quoted — it is producer-supplied and reaches the
+                // dead-letter description and the log index.
+                throw new TransformationFailedException(
                         "defendant-level result names a defendant with no gathered context");
             }
             context.addResults(results);

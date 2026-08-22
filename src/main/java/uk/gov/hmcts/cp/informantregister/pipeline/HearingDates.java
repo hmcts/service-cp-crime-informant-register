@@ -10,6 +10,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
 
 /**
  * The date handling of the legacy {@code NowsHelper/service/DateService.js}, ported as written.
@@ -108,12 +109,14 @@ public final class HearingDates {
      *
      * @param value the value to order by
      * @return the calendar date to order by
-     * @throws IllegalArgumentException if no leading calendar date can be read
+     * @throws TransformationFailedException if no leading calendar date can be read
      */
     public LocalDate orderingKey(final String value) {
         final Matcher matcher = value == null ? null : LEADING_DATE.matcher(value);
         if (matcher == null || !matcher.find()) {
-            throw new IllegalArgumentException("Invalid date format");
+            // The legacy message, kept verbatim, but classified: a date this cannot read reads the
+            // same way on every redelivery, so the delivery is parked rather than retried.
+            throw new TransformationFailedException("Invalid date format");
         }
         return LocalDate.of(
                 Integer.parseInt(matcher.group(1)),

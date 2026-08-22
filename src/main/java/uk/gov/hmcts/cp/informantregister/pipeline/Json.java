@@ -3,6 +3,7 @@ package uk.gov.hmcts.cp.informantregister.pipeline;
 import java.util.Collections;
 import java.util.List;
 import tools.jackson.databind.JsonNode;
+import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
 
 /**
  * Reads a canonical hearing tree with JavaScript's semantics rather than Java's.
@@ -89,20 +90,45 @@ final class Json {
     }
 
     /**
-     * The elements of an array field, or an empty list when the field is absent or not an array.
+     * The elements of an array field, exactly as {@code (parent.field || []).forEach} would iterate
+     * them.
+     *
+     * <p>That expression has two halves and this method reproduces both. A <strong>falsy</strong>
+     * field — absent, JSON {@code null}, {@code false}, {@code 0} or an empty string — is replaced by
+     * an empty array and iterates over nothing. A <strong>truthy value that is not an array</strong>
+     * is not: {@code ({}).forEach} is not a function, so the legacy throws a {@code TypeError}, the
+     * activity handler swallows it, and the hearing produces nothing at all. Returning "no elements"
+     * for that case would be the one answer the legacy never gives — it would turn a payload the
+     * transformation cannot read into a legitimate empty business result, complete the request, and
+     * leave nothing to replay. So it is refused, non-transiently, and the delivery is parked where
+     * support can see it. The register's content is untouched by that; only the handling of a payload
+     * that has no register in it changes, which is deviations-register entry 2.
      *
      * <p>Callers that need to distinguish "absent" from "empty" — because the legacy code branches on
      * truthiness before iterating — must ask {@link #truthy(JsonNode, String)} separately. This
      * method is for the iteration itself, which is the same either way.
      *
+     * <p>The looser half is deliberate and bounded: where the legacy dereferences an array with no
+     * {@code || []} guard at all it would also throw on an <em>absent</em> field, and this method
+     * still answers "nothing to iterate" there. Tightening that needs a per-call-site audit against
+     * the legacy source, since the two forms appear side by side, and it is not what this method
+     * decides.
+     *
      * @param node  the object to read; may be {@code null}
      * @param field the field name
      * @return the elements, never {@code null}
+     * @throws TransformationFailedException if the field holds a truthy value that is not an array
      */
     static List<JsonNode> array(final JsonNode node, final String field) {
         final JsonNode value = at(node, field);
-        if (value == null || !value.isArray()) {
+        if (!truthy(value)) {
             return Collections.emptyList();
+        }
+        if (!value.isArray()) {
+            // The field name is this service's own vocabulary, so it is safe to name. The value is
+            // the producer's, and may be defendant detail, so it is never quoted.
+            throw new TransformationFailedException(
+                    "hearing field '" + field + "' is not an array");
         }
         return value.valueStream().toList();
     }
