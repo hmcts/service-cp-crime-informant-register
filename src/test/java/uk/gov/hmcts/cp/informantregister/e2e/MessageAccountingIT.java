@@ -133,6 +133,7 @@ class MessageAccountingIT {
         registry.add("spring.datasource.username", PostgresTestSupport::username);
         registry.add("spring.datasource.password", PostgresTestSupport::password);
         registry.add("informantregister.servicebus.connection-string", () -> connectionString);
+        ServiceTestSupport.stubPayloadSource(registry);
     }
 
     @BeforeEach

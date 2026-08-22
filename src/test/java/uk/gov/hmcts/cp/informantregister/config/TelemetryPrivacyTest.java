@@ -292,7 +292,15 @@ class TelemetryPrivacyTest {
                         Duration.ofMinutes(5), Duration.ofSeconds(60)),
                 new InformantRegisterProperties.Claim(Duration.ofMinutes(5), RUN_DEADLINE),
                 new InformantRegisterProperties.Store(Duration.ofSeconds(10)),
-                new InformantRegisterProperties.Stub(PayloadFailureMode.NONE));
+                new InformantRegisterProperties.Stub(PayloadFailureMode.NONE),
+                new InformantRegisterProperties.Payload(
+                        PayloadSourceMode.STUB,
+                        new InformantRegisterProperties.Redis("localhost", 6379, null, false,
+                                "INT_", Duration.ofSeconds(5), Duration.ofSeconds(5)),
+                        new InformantRegisterProperties.Fallback(3, Duration.ofSeconds(1),
+                                Duration.ofSeconds(5), Duration.ofSeconds(30))),
+                new InformantRegisterProperties.Results("http://localhost:8080"),
+                null);
     }
 
     // --- the configuration that makes correlation reach the index ---------------------------------

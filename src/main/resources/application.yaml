@@ -69,6 +69,47 @@ informantregister:
     # and not an HTTP endpoint, either of which would be a production fault-injection surface.
     payload-failure-mode: NONE
 
+  payload:
+    # LIVE | STUB. LIVE is the cache-with-query-fallback adapter and is what an environment that
+    # says nothing gets: a service that has to be told to fetch payloads is a service that will one
+    # day be deployed not fetching them. It requires informantregister.system-user-id, without which
+    # its fallback cannot authorise. STUB is for local runs and for the container suites whose
+    # subject is settlement and the processed log rather than the payload; startup refuses it
+    # wherever the deployed credential source (servicebus.namespace) is in use.
+    mode: LIVE
+    redis:
+      # LOCAL development defaults, matching the datasource above. Deployed environments override
+      # the address and mount the key from Key Vault through the Secrets Store CSI driver.
+      host: localhost
+      port: 6379
+      # password: deployed only, from Key Vault. Never committed.
+      # TLS is off for a developer's local server and on everywhere it is deployed — with
+      # certificates verified, which the function app disables (registered deviation 1).
+      ssl: false
+      # The prefix the producer writes the payload under. INT_ is this flow's; SJP hearings stay in
+      # the NOWs function app and are out of scope.
+      key-prefix: INT_
+      connect-timeout: 5s
+      command-timeout: 5s
+    fallback:
+      # The function app's DEFAULT_PUBLISH_RETRY_COUNT and DEFAULT_PUBLISH_RETRY_INTERVAL. Kept
+      # because the retry rule is ported rather than redesigned.
+      max-attempts: 3
+      retry-interval: 1s
+      connect-timeout: 5s
+      # Shorter than the processing deadline on purpose: a read that outlives the deadline outlives
+      # the claim behind it, and then two runners believe they own the same request.
+      read-timeout: 30s
+
+  results:
+    # The results context, for both of its APIs — one deployment behind one internal mesh host, so
+    # the context roots belong to each call's path rather than here. LOCAL development default.
+    base-url: http://localhost:8080
+
+  # system-user-id: the identity downstream contexts authorise against (CJSCPPUID). A secret,
+  # mounted from Key Vault, and deliberately without a default — a service that invents one talks to
+  # another context as somebody it is not.
+
 # Application Insights is configured by the Java agent (lib/applicationinsights.json).
 # The per-environment connection string is supplied as APPLICATIONINSIGHTS_CONNECTION_STRING,
 # mounted from Key Vault via the Secrets Store CSI driver; there is nothing to set here.
