@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatusCode;
@@ -38,6 +39,13 @@ import uk.gov.hmcts.cp.informantregister.domain.SubmissionFailedException;
  *       will be refused again and the delivery budget is finite.</li>
  * </ul>
  *
+ * <p><strong>Success is {@code 202 Accepted} and nothing else.</strong> The contract declares one
+ * success status, so any other 2xx is treated as a failure rather than as a lenient success: a 200
+ * from a proxy or a re-pointed route would otherwise mark the authority POSTED for a command that
+ * was never enqueued, and the register would be gone with the log saying it had been sent. It is not
+ * retried either — the body may already have been applied — so it is reported non-transient under
+ * its own code and parked where somebody can look at the endpoint.
+ *
  * <p><strong>An unknown outcome is retried, and that is not at-most-once.</strong> A POST that timed
  * out may have been applied. Retrying it can therefore create a duplicate register row — which the
  * 19:00 sweep absorbs, taking the latest row per hearing — while not retrying it can lose the
@@ -62,8 +70,18 @@ public class ResultsCommandGateway {
     public static final String IDENTITY_HEADER = "CJSCPPUID";
 
     private static final Logger LOG = LoggerFactory.getLogger(ResultsCommandGateway.class);
+    private static final int ACCEPTED = 202;
     private static final int TOO_MANY_REQUESTS = 429;
     private static final String RETRY_AFTER_HEADER = "Retry-After";
+
+    /**
+     * Delta-seconds, and short enough that the value cannot overflow a {@code long}.
+     *
+     * <p>Matching before parsing rather than parsing and catching: a header this client cannot act on
+     * is a value to be classified, not a failure to be caught, and the pattern says which forms are
+     * acted on without a {@code try} block having to imply it.
+     */
+    private static final Pattern DELTA_SECONDS = Pattern.compile("\\d{1,10}");
 
     private final RestClient restClient;
     private final String systemUserId;
@@ -78,13 +96,24 @@ public class ResultsCommandGateway {
      *
      * @param settings the Results endpoint, identity and retry policy
      * @param pause    how a wait between attempts is taken
-     * @throws IllegalArgumentException if no base URL is configured — a service that guesses at an
-     *                                  endpoint is a service that can post a register to the wrong one
+     * @throws IllegalArgumentException if no base URL or no identity is configured — a service that
+     *                                  guesses at an endpoint is a service that can post a register
+     *                                  to the wrong one, and a service that posts without
+     *                                  {@code CJSCPPUID} is a service every register is refused
+     *                                  from. Both are startup faults, not runtime ones: the bean is
+     *                                  built when the context refreshes, so a deployment missing
+     *                                  either fails to start instead of dead-lettering every hearing
+     *                                  it is given
      */
     public ResultsCommandGateway(
             final InformantRegisterProperties.Results settings, final SubmissionPause pause) {
-        if (settings.baseUrl() == null || settings.baseUrl().isBlank()) {
+        if (isBlank(settings.baseUrl())) {
             throw new IllegalArgumentException("informantregister.results.base-url is required");
+        }
+        if (isBlank(settings.systemUserId())) {
+            throw new IllegalArgumentException(
+                    "informantregister.results.system-user-id is required: CJSCPPUID is part of the "
+                            + "add-informant-register contract and an anonymous command is refused");
         }
         final SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(settings.connectTimeout());
@@ -118,9 +147,9 @@ public class ResultsCommandGateway {
             if (outcome.accepted()) {
                 return;
             }
-            if (outcome.refused()) {
+            if (outcome.refusal().isPresent()) {
                 throw new SubmissionFailedException(
-                        FailureClassification.NON_TRANSIENT, ReasonCode.SUBMISSION_REJECTED);
+                        FailureClassification.NON_TRANSIENT, outcome.refusal().get());
             }
             if (attempt < maxAttempts) {
                 waitFor(capped(outcome.retryAfter().orElse(backoff)));
@@ -148,9 +177,10 @@ public class ResultsCommandGateway {
                     .uri(INFORMANT_REGISTER_PATH)
                     .contentType(MediaType.parseMediaType(ADD_INFORMANT_REGISTER_MEDIA_TYPE))
                     .headers(headers -> {
-                        if (systemUserId != null && !systemUserId.isBlank()) {
-                            headers.add(IDENTITY_HEADER, systemUserId);
-                        }
+                        // Unconditional: the constructor has already refused to build a gateway
+                        // without an identity, so there is no anonymous request to guard against
+                        // here — and a branch would only make one look possible.
+                        headers.add(IDENTITY_HEADER, systemUserId);
                         extraHeaders.forEach(headers::add);
                     })
                     .body(body)
@@ -169,8 +199,16 @@ public class ResultsCommandGateway {
         final HttpStatusCode status = response.getStatusCode();
         final Outcome outcome;
 
-        if (status.is2xxSuccessful()) {
+        if (status.value() == ACCEPTED) {
             outcome = Outcome.ACCEPTED;
+        } else if (status.is2xxSuccessful()) {
+            // The contract's success is 202 and nothing else. A 200 or a 204 means something other
+            // than the command endpoint answered — a proxy, or a route that no longer reaches it —
+            // and calling it success would mark the authority POSTED for a command that was never
+            // enqueued, which is the silently lost register this service exists to prevent.
+            LOG.error("Results answered a success this contract does not define; the command cannot "
+                    + "be assumed enqueued. status={}", status.value());
+            outcome = Outcome.NOT_ACCEPTED;
         } else if (status.value() == TOO_MANY_REQUESTS) {
             LOG.warn("Results asked this service to slow down. attempt={}", attempt);
             outcome = Outcome.retryable(retryAfter(response));
@@ -191,24 +229,33 @@ public class ResultsCommandGateway {
     /**
      * The delay the server asked for, if it asked in a form this client can act on.
      *
-     * <p>Delta-seconds only. RFC 9110 also permits an HTTP-date, and this client does not read one:
-     * an unreadable header falls back to the exponential back-off rather than to a guess, which is
-     * the same outcome as no header at all and one less way to be wrong.
+     * <p>Delta-seconds only. RFC 9110 also permits an HTTP-date, and this client deliberately does
+     * not read one: acting on it would mean subtracting a remote clock's idea of now from this
+     * pod's, and a server whose clock is a few minutes ahead would park a run past the claim it
+     * holds. A header in any other form falls back to the exponential back-off, which is the same
+     * outcome as no header at all and is bounded by the same ceiling.
+     *
+     * <p>Nothing here is caught, because nothing here throws: the form is recognised before it is
+     * read, so an unusable header is classified rather than raised and absorbed.
      */
     private static Optional<Duration> retryAfter(final ClientHttpResponse response) {
         final String header = response.getHeaders().getFirst(RETRY_AFTER_HEADER);
-        Optional<Duration> asked = Optional.empty();
-        if (header != null) {
-            try {
-                final long seconds = Long.parseLong(header.trim());
-                if (seconds >= 0) {
-                    asked = Optional.of(Duration.ofSeconds(seconds));
-                }
-            } catch (NumberFormatException notDeltaSeconds) {
+        final String asked = header == null ? "" : header.trim();
+        final Optional<Duration> wait;
+        if (DELTA_SECONDS.matcher(asked).matches()) {
+            wait = Optional.of(Duration.ofSeconds(Long.parseLong(asked)));
+        } else {
+            if (!asked.isEmpty()) {
                 LOG.warn("Retry-After was not a number of seconds; using the back-off instead.");
             }
+            wait = Optional.empty();
         }
-        return asked;
+        return wait;
+    }
+
+    /** A blank setting counts as unset: an environment overrides a value, it does not delete a key. */
+    private static boolean isBlank(final String value) {
+        return value == null || value.isBlank();
     }
 
     /**
@@ -238,14 +285,25 @@ public class ResultsCommandGateway {
         }
     }
 
-    /** What one attempt came back as, and how long the server asked to be left alone for. */
-    private record Outcome(boolean accepted, boolean refused, Optional<Duration> retryAfter) {
+    /**
+     * What one attempt came back as, and how long the server asked to be left alone for.
+     *
+     * <p>An attempt is one of three things: accepted, worth another attempt, or over — and an
+     * attempt that is over carries the bounded code the failure is reported under, because the two
+     * ways it can be over are two different investigations.
+     */
+    private record Outcome(
+            boolean accepted, Optional<ReasonCode> refusal, Optional<Duration> retryAfter) {
 
-        private static final Outcome ACCEPTED = new Outcome(true, false, Optional.empty());
-        private static final Outcome REFUSED = new Outcome(false, true, Optional.empty());
+        private static final Outcome ACCEPTED =
+                new Outcome(true, Optional.empty(), Optional.empty());
+        private static final Outcome REFUSED = new Outcome(
+                false, Optional.of(ReasonCode.SUBMISSION_REJECTED), Optional.empty());
+        private static final Outcome NOT_ACCEPTED = new Outcome(
+                false, Optional.of(ReasonCode.SUBMISSION_NOT_ACCEPTED), Optional.empty());
 
         private static Outcome retryable(final Optional<Duration> retryAfter) {
-            return new Outcome(false, false, retryAfter);
+            return new Outcome(false, Optional.empty(), retryAfter);
         }
     }
 }

@@ -205,6 +205,44 @@ class ResultsCommandGatewayTest {
             assertThat(pause.waits).containsExactly(INITIAL_BACKOFF);
         }
 
+        /**
+         * RFC 9110 allows an HTTP-date and this client deliberately does not act on one: honouring
+         * it would mean measuring a remote clock against this pod's, and a server a few minutes
+         * ahead would park a run past the claim it holds. The fallback is the back-off, which is
+         * what no header at all would give and is bounded by the same ceiling.
+         */
+        @Test
+        void a_retry_after_as_an_http_date_should_fall_back_to_the_backoff_rather_than_a_remote_clock() {
+            results.stubFor(post(urlEqualTo(PATH)).inScenario("throttled")
+                    .whenScenarioStateIs(Scenario.STARTED)
+                    .willReturn(aResponse().withStatus(429)
+                            .withHeader("Retry-After", "Wed, 21 Oct 2026 07:28:00 GMT"))
+                    .willSetStateTo("up"));
+            results.stubFor(post(urlEqualTo(PATH)).inScenario("throttled")
+                    .whenScenarioStateIs("up")
+                    .willReturn(aResponse().withStatus(202)));
+
+            gateway().post(body());
+
+            assertThat(pause.waits).containsExactly(INITIAL_BACKOFF);
+        }
+
+        @Test
+        void a_retry_after_too_large_to_be_a_number_should_fall_back_rather_than_overflow() {
+            results.stubFor(post(urlEqualTo(PATH)).inScenario("throttled")
+                    .whenScenarioStateIs(Scenario.STARTED)
+                    .willReturn(aResponse().withStatus(429)
+                            .withHeader("Retry-After", "999999999999999999999"))
+                    .willSetStateTo("up"));
+            results.stubFor(post(urlEqualTo(PATH)).inScenario("throttled")
+                    .whenScenarioStateIs("up")
+                    .willReturn(aResponse().withStatus(202)));
+
+            gateway().post(body());
+
+            assertThat(pause.waits).containsExactly(INITIAL_BACKOFF);
+        }
+
         @Test
         void a_retry_after_beyond_the_ceiling_should_be_capped_so_a_run_outlives_its_claim() {
             results.stubFor(post(urlEqualTo(PATH)).inScenario("throttled")
@@ -284,6 +322,38 @@ class ResultsCommandGatewayTest {
             assertThat(results.getAllServeEvents()).hasSize(1);
         }
 
+        /**
+         * The contract declares one success, {@code 202 Accepted}. A 200 means something other than
+         * the command endpoint answered — a proxy, or a route that no longer reaches it — and
+         * calling it success would mark the authority POSTED for a command nothing enqueued: a
+         * register lost with the log saying it was sent, which is the failure mode this service
+         * exists to remove.
+         */
+        @Test
+        void a_success_the_contract_does_not_define_should_not_be_taken_for_an_accepted_command() {
+            results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(200)));
+
+            assertThatThrownBy(() -> gateway().post(body()))
+                    .isInstanceOf(SubmissionFailedException.class)
+                    .extracting(failure -> ((SubmissionFailedException) failure).reason())
+                    .isEqualTo(ReasonCode.SUBMISSION_NOT_ACCEPTED);
+        }
+
+        @Test
+        void a_success_the_contract_does_not_define_should_never_be_posted_a_second_time() {
+            results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(200)));
+
+            assertThatThrownBy(() -> gateway().post(body()))
+                    .isInstanceOf(SubmissionFailedException.class)
+                    .extracting(failure -> ((SubmissionFailedException) failure).classification())
+                    .isEqualTo(FailureClassification.NON_TRANSIENT);
+
+            assertThat(results.getAllServeEvents())
+                    .as("the body may already have been applied; a retry could duplicate the register")
+                    .hasSize(1);
+            assertThat(pause.waits).isEmpty();
+        }
+
         @Test
         void a_refusal_should_carry_a_bounded_code_and_none_of_the_servers_own_words() {
             results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(422)
@@ -312,18 +382,34 @@ class ResultsCommandGatewayTest {
                     .hasMessageContaining("base-url");
         }
 
+        /**
+         * {@code CJSCPPUID} is part of the contract, not an optional courtesy: without it the
+         * command is anonymous and Results refuses it. A service that starts anyway would
+         * dead-letter every hearing it was given, one 403 at a time, so the fault belongs at
+         * startup where a deployment fails on it.
+         */
         @Test
-        void an_absent_identity_should_be_omitted_rather_than_sent_as_the_word_null() {
-            results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(202)));
-            final ResultsCommandGateway anonymous = new ResultsCommandGateway(
+        void an_absent_identity_should_fail_at_startup_rather_than_post_anonymously() {
+            final InformantRegisterProperties.Results noIdentity =
                     new InformantRegisterProperties.Results(
                             "http://localhost:" + results.port(), null, Map.of(), MAX_ATTEMPTS,
-                            INITIAL_BACKOFF, MAX_BACKOFF, Duration.ofSeconds(2), Duration.ofSeconds(5)),
-                    pause);
+                            INITIAL_BACKOFF, MAX_BACKOFF, Duration.ofSeconds(2), Duration.ofSeconds(5));
 
-            anonymous.post(body());
+            assertThatThrownBy(() -> new ResultsCommandGateway(noIdentity, pause))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("system-user-id");
+        }
 
-            results.verify(postRequestedFor(urlEqualTo(PATH)).withoutHeader("CJSCPPUID"));
+        @Test
+        void a_blank_identity_should_be_refused_the_same_way_as_an_absent_one() {
+            final InformantRegisterProperties.Results blankIdentity =
+                    new InformantRegisterProperties.Results(
+                            "http://localhost:" + results.port(), "  ", Map.of(), MAX_ATTEMPTS,
+                            INITIAL_BACKOFF, MAX_BACKOFF, Duration.ofSeconds(2), Duration.ofSeconds(5));
+
+            assertThatThrownBy(() -> new ResultsCommandGateway(blankIdentity, pause))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("system-user-id");
         }
 
         @Test

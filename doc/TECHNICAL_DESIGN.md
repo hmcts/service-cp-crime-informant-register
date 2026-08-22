@@ -133,9 +133,12 @@ held, and its expiry is what the reclaim branch waits on. The branches that sett
 path that inserts a fresh `RECEIVED` record over an existing one: an existing non-terminal record is
 either contested (abandon) or reclaimed, never duplicated.
 
-In CRA-220 the only non-transient path is contract validation, which is settled before the state
-machine starts; the non-transient RUN branch above is exercised once the real submission adapter
-lands (non-429 4xx, transformation error).
+The non-transient RUN branch is taken on the delivery that meets the failure, whatever the delivery
+budget still allows: the Results command refusing a body refuses the same body next time, so the
+remaining deliveries would buy nothing and would only delay the dead-letter support acts on. Its
+sources are a non-429 4xx, a 2xx that is not the contract's `202 Accepted`, and — once the
+transformation lands — a transformation error. Contract validation is non-transient too, but it is
+settled before the state machine starts and so leaves no row.
 
 - **Request statuses:** `RECEIVED`, `RETRYING`, `COMPLETED`, `FAILED` (last two terminal).
 - Terminal is not the same as final: a resubmitted `FAILED` request is replayable (below); a
@@ -297,7 +300,7 @@ Everything `${ENV_VAR:default}` in `application.yaml`, bound to typed `@Configur
 | `informantregister.servicebus.max-delivery-count` | 5 | Broker dead-letter threshold (mirrors the queue setting) |
 | `informantregister.payload.redis.*` | — | Redis host/port/TLS (later story) |
 | `informantregister.results.base-url` | — | Results command API base; no default, the local value in `application.yaml` is the command API's own declared `baseUri` |
-| `informantregister.results.system-user-id` | — | `CJSCPPUID` identity; a secret, from Key Vault |
+| `informantregister.results.system-user-id` | — | `CJSCPPUID` identity; a secret, from Key Vault. **Required**: the gateway refuses to be built without one, so a deployment missing it fails to start rather than having every command refused |
 | `informantregister.results.headers.*` | — | Any further header the mesh requires; configuration because the authorisation scheme is undocumented |
 | `informantregister.results.max-attempts` / `initial-backoff` / `max-backoff` | 4 / 500ms / 20s | POST retry policy; `max-backoff` also caps a server-supplied `Retry-After` |
 | `informantregister.results.connect-timeout` / `read-timeout` | 5s / 30s | Worst case must stay inside `claim.processing-deadline` |

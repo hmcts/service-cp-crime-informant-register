@@ -70,7 +70,10 @@ informantregister:
     base-url: ${RESULTS_BASE_URL:http://localhost:8080}
     # The CJSCPPUID identity. A secret: it arrives from Key Vault through the Secrets Store CSI
     # driver and is deliberately absent here, so a local run cannot borrow a deployed identity.
-    # system-user-id: set from the environment only.
+    # system-user-id: set from the environment only (RESULTS_SYSTEM_USER_ID).
+    # It is REQUIRED. The command is refused without it, so the service refuses to start without it
+    # rather than dead-letter every hearing it is given, one 403 at a time — a local run that has no
+    # identity to use has nothing to post with either.
     # Retry policy for the POST. Connect and read failures, 5xx and 429 are retried; any other 4xx is
     # a refusal and is never retried. The numbers are this service's own: the contract documents that
     # back-off happens, not how much of it, so they are configuration rather than constants.

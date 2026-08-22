@@ -36,6 +36,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     whatever the code does.
 
 ### Fixed
+- 2026-08-22 — **Post-review hardening of the submission leg** (review of the story-3 change,
+  findings re-verified against the rules and the contract before fixing):
+  - a failure that carries a classification is now settled on it. A refusal from the Results command
+    was being caught as an unexpected runtime failure, recorded `UNEXPECTED_FAILURE` and retried to
+    exhaustion; it is now parked on the delivery that met it, under the reason it carried
+    (`SUBMISSION_REJECTED`) and the dead-letter category `non-transient`. The guard grew
+    `recordNonTransientFailure` for it, and the data model's transition table names the row;
+  - `POSTED` is terminal in `processed_output`, enforced by the statements rather than by
+    convention: a runner whose claim was reclaimed while it worked can no longer move an authority
+    the winner had already posted back to `FAILED`, which would have had the next delivery re-claim
+    it and POST a second, non-idempotent register;
+  - the adapter checks that its outcome writes landed and reports an overlap at ERROR instead of
+    discarding the affected-row count;
+  - `AuthoritySubmission` carries an `InformantRegisterDocument` rather than a `JsonNode`. The tree
+    was a placeholder for a document type that did not exist yet; it exists, and constitution
+    Principle IV asks the compiler — not a runtime schema check — to keep an unnameable field out of
+    a closed contract;
+  - `CJSCPPUID` is required. The gateway refuses to be built without one, so a deployment missing the
+    identity fails to start instead of dead-lettering every hearing it is given, one 403 at a time;
+  - success is `202 Accepted` and nothing else: any other 2xx is reported non-transient under the new
+    `SUBMISSION_NOT_ACCEPTED` rather than marking an authority POSTED for a command nothing enqueued
+    (`doc/DEVIATIONS.md` #2 extended to say so);
+  - `Retry-After` is matched before it is read, so an unusable header is classified rather than
+    raised and caught. The delta-seconds-only rule stands and is now pinned by a test: honouring an
+    HTTP-date would measure a remote clock against this pod's, and a server minutes ahead would park
+    a run past the claim it holds.
 - 2026-08-21 — **Post-review hardening of the walking skeleton** (whole-`src/` review, findings
   independently re-verified before fixing):
   - an unexpected exception inside an admitted run is now recorded through the guard (RETRYING, or

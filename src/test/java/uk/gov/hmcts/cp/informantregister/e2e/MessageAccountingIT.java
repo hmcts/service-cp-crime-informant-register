@@ -133,6 +133,10 @@ class MessageAccountingIT {
         registry.add("spring.datasource.username", PostgresTestSupport::username);
         registry.add("spring.datasource.password", PostgresTestSupport::password);
         registry.add("informantregister.servicebus.connection-string", () -> connectionString);
+        // CJSCPPUID. The service refuses to start without one, because a command sent
+        // anonymously is a command Results refuses; no suite here ever reaches Results.
+        registry.add("informantregister.results.system-user-id",
+                () -> ServiceTestSupport.SYSTEM_USER_ID);
     }
 
     @BeforeEach
