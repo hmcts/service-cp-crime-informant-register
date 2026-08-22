@@ -78,6 +78,13 @@ dependencies {
   // from the Spring Boot BOM.
   testRuntimeOnly 'com.microsoft.sqlserver:mssql-jdbc'
 
+  // HTTP stub for the outbound `add-informant-register` adapter's suites. The standalone,
+  // shaded artefact deliberately: the plain one drags its own Jetty and Jackson onto the test
+  // classpath beside Spring Boot's, and the resulting version fight is the kind that surfaces as a
+  // mystery at runtime rather than as a failed resolution. Not managed by any BOM on this build, so
+  // the version is declared here for dependabot to track.
+  testImplementation 'org.wiremock:wiremock-standalone:3.13.1'
+
   // Draft-07 validator for the dual-validation contract corpus (research §9).
   // testImplementation ONLY — it must never reach the runtime classpath. Not managed by any BOM on
   // this build, so the version is declared here for dependabot to track.

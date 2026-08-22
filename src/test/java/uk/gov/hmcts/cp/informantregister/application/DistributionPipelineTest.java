@@ -508,7 +508,8 @@ class DistributionPipelineTest {
         void an_authority_submission_should_carry_the_authority_and_its_document_untouched() {
             final JsonNode document = payload();
 
-            final AuthoritySubmission submission = new AuthoritySubmission("PA-1", document);
+            final AuthoritySubmission submission =
+                    new AuthoritySubmission("RESULTS", UUID.randomUUID(), "PA-1", document);
 
             assertThat(submission.prosecutionAuthorityId()).isEqualTo("PA-1");
             assertThat(submission.document()).isSameAs(document);

@@ -292,6 +292,9 @@ class TelemetryPrivacyTest {
                         Duration.ofMinutes(5), Duration.ofSeconds(60)),
                 new InformantRegisterProperties.Claim(Duration.ofMinutes(5), RUN_DEADLINE),
                 new InformantRegisterProperties.Store(Duration.ofSeconds(10)),
+                new InformantRegisterProperties.Results(
+                        null, null, null, 4, Duration.ofMillis(500), Duration.ofSeconds(20),
+                        Duration.ofSeconds(5), Duration.ofSeconds(30)),
                 new InformantRegisterProperties.Stub(PayloadFailureMode.NONE));
     }
 

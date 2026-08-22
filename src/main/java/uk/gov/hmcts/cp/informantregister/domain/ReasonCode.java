@@ -63,6 +63,16 @@ public enum ReasonCode {
     PIPELINE_TRANSIENT_FAILURE("PIPELINE_TRANSIENT_FAILURE"),
 
     /**
+     * The Results command API refused an {@code add-informant-register} body.
+     *
+     * <p>A 4xx other than 429: the request was understood and declined, so the same bytes will be
+     * declined again and a redelivery would only spend the budget. The status is not part of the
+     * code and the response body never is — both are the other side's words, and this code reaches
+     * a dead-letter description and the log index.
+     */
+    SUBMISSION_REJECTED("SUBMISSION_REJECTED"),
+
+    /**
      * The processed log could not be reached, so the delivery was not examined at all.
      *
      * <p>Distinct from every other failure here because it says nothing about the message. The

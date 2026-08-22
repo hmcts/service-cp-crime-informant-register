@@ -64,6 +64,25 @@ informantregister:
     # How often the store is probed, driving the gated start and the resume after an outage.
     probe-interval: 10s
 
+  results:
+    # LOCAL DEFAULT ONLY, and not a value chosen here: it is the baseUri the Results command API's own
+    # RAML declares. Deployed environments set RESULTS_BASE_URL to the internal mesh host.
+    base-url: ${RESULTS_BASE_URL:http://localhost:8080}
+    # The CJSCPPUID identity. A secret: it arrives from Key Vault through the Secrets Store CSI
+    # driver and is deliberately absent here, so a local run cannot borrow a deployed identity.
+    # system-user-id: set from the environment only.
+    # Retry policy for the POST. Connect and read failures, 5xx and 429 are retried; any other 4xx is
+    # a refusal and is never retried. The numbers are this service's own: the contract documents that
+    # back-off happens, not how much of it, so they are configuration rather than constants.
+    max-attempts: 4
+    initial-backoff: 500ms
+    # The ceiling on any wait, a server-supplied Retry-After included. Worst case must stay well
+    # inside informantregister.claim.processing-deadline, or a run would still be waiting when its
+    # claim is reclaimed.
+    max-backoff: 20s
+    connect-timeout: 5s
+    read-timeout: 30s
+
   stub:
     # NONE | TRANSIENT. Test and local profiles only: it is deliberately not a field in the message
     # and not an HTTP endpoint, either of which would be a production fault-injection surface.
