@@ -53,6 +53,28 @@ public class LivePayloadConfig {
     @Bean(destroyMethod = "shutdown")
     public RedisClient informantRegisterRedisClient(final InformantRegisterProperties properties) {
         final InformantRegisterProperties.Redis redis = properties.payload().redis();
+        final RedisClient client = RedisClient.create(cacheUri(redis));
+        client.setOptions(client.getOptions().mutate()
+                .socketOptions(client.getOptions().getSocketOptions().mutate()
+                        .connectTimeout(redis.connectTimeout())
+                        .build())
+                .build());
+        return client;
+    }
+
+    /**
+     * The address the cache is reached on, TLS included.
+     *
+     * <p>Separated from the client so the one security decision in it can be asserted. Certificates
+     * are verified wherever TLS is used: the function app connects with
+     * {@code rejectUnauthorized: false}, and registered deviation 1 is the decision not to port that.
+     * A deviation with nothing asserting it is a deviation that reverts silently, so
+     * {@code LivePayloadConfigTest} reads this back.
+     *
+     * @param redis the cache settings
+     * @return the URI the Lettuce client connects with
+     */
+    static RedisURI cacheUri(final InformantRegisterProperties.Redis redis) {
         final RedisURI.Builder uri = RedisURI.builder()
                 .withHost(redis.host())
                 .withPort(redis.port())
@@ -62,13 +84,7 @@ public class LivePayloadConfig {
         if (redis.password() != null && !redis.password().isBlank()) {
             uri.withPassword(redis.password().toCharArray());
         }
-        final RedisClient client = RedisClient.create(uri.build());
-        client.setOptions(client.getOptions().mutate()
-                .socketOptions(client.getOptions().getSocketOptions().mutate()
-                        .connectTimeout(redis.connectTimeout())
-                        .build())
-                .build());
-        return client;
+        return uri.build();
     }
 
     /** The payload cache. Closed at shutdown: the bean instance is {@link AutoCloseable}. */
