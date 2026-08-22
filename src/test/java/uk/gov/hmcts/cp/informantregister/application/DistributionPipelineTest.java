@@ -27,6 +27,7 @@ import uk.gov.hmcts.cp.informantregister.domain.PayloadUnavailableException;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.RunClaim;
 import uk.gov.hmcts.cp.informantregister.domain.SubmissionFailedException;
+import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -380,6 +381,100 @@ class DistributionPipelineTest {
                     .thenThrow(storeDied);
 
             assertThatThrownBy(() -> pipeline.process(command, delivery)).isSameAs(storeDied);
+        }
+    }
+
+    // --- a failure no redelivery can fix (design_rules.md, "Processing State Machine") ---------
+
+    /**
+     * The classification the ports carry is the branch, not the delivery count.
+     *
+     * <p>The state machine lists transformation errors and 4xx contract rejections as non-transient:
+     * they go straight to FAILED and the dead-letter queue. Deciding those on
+     * {@code finalPermittedDelivery} instead would abandon them back to the broker four more times,
+     * spending the whole delivery budget re-reading a payload that reads the same every time, and
+     * parking it at the end under {@code DELIVERY_LIMIT_EXHAUSTED} — a reason that says the service
+     * ran out of tries, not that the payload was unusable. Support reads that reason.
+     */
+    @Nested
+    @DisplayName("a failure the ports classify as non-transient")
+    class NonTransientRunFailure {
+
+        private final GuardDecision parked = new GuardDecision.DeadLetter(
+                DeadLetterReason.NON_TRANSIENT, ReasonCode.TRANSFORMATION_FAILED);
+
+        @Test
+        void should_park_the_request_at_once_although_deliveries_remain() {
+            when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
+            when(payloadSource.fetch(command))
+                    .thenThrow(new TransformationFailedException("unreadable hearing"));
+            when(guard.recordNonTransientFailure(claim, ReasonCode.TRANSFORMATION_FAILED))
+                    .thenReturn(parked);
+
+            final GuardDecision decision = pipeline.process(command, delivery);
+
+            verify(guard).recordNonTransientFailure(claim, ReasonCode.TRANSFORMATION_FAILED);
+            verify(guard, never()).recordTransientFailure(any(), any());
+            verify(guard, never()).recordExhaustion(any(), any());
+            assertThat(decision).isEqualTo(parked);
+        }
+
+        @Test
+        void should_carry_the_reason_a_submission_rejection_names_rather_than_a_generic_one() {
+            when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
+            when(payloadSource.fetch(command)).thenThrow(new SubmissionFailedException(
+                    FailureClassification.NON_TRANSIENT, ReasonCode.CONTRACT_VALIDATION_FAILED));
+            when(guard.recordNonTransientFailure(claim, ReasonCode.CONTRACT_VALIDATION_FAILED))
+                    .thenReturn(new GuardDecision.DeadLetter(
+                            DeadLetterReason.NON_TRANSIENT, ReasonCode.CONTRACT_VALIDATION_FAILED));
+
+            pipeline.process(command, delivery);
+
+            verify(guard).recordNonTransientFailure(claim, ReasonCode.CONTRACT_VALIDATION_FAILED);
+        }
+
+        @Test
+        void should_hand_back_a_submission_failure_that_says_it_is_worth_retrying() {
+            when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
+            when(payloadSource.fetch(command)).thenThrow(new SubmissionFailedException(
+                    FailureClassification.TRANSIENT, ReasonCode.PIPELINE_TRANSIENT_FAILURE));
+            when(guard.recordTransientFailure(claim, ReasonCode.PIPELINE_TRANSIENT_FAILURE))
+                    .thenReturn(new GuardDecision.Abandon(ReasonCode.PIPELINE_TRANSIENT_FAILURE));
+
+            pipeline.process(command, delivery);
+
+            verify(guard).recordTransientFailure(claim, ReasonCode.PIPELINE_TRANSIENT_FAILURE);
+            verify(guard, never()).recordNonTransientFailure(any(), any());
+        }
+
+        @Test
+        void should_count_the_parked_run_as_non_transient() {
+            when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
+            when(payloadSource.fetch(command))
+                    .thenThrow(new TransformationFailedException("unreadable hearing"));
+            when(guard.recordNonTransientFailure(claim, ReasonCode.TRANSFORMATION_FAILED))
+                    .thenReturn(parked);
+
+            pipeline.process(command, delivery);
+
+            assertThat(counter(ProcessingMetrics.PROCESSING_FAILURES,
+                    ProcessingMetrics.CLASSIFICATION_TAG, "non-transient")).isEqualTo(1.0);
+            assertThat(counter(ProcessingMetrics.PROCESSED,
+                    ProcessingMetrics.OUTCOME_TAG, "failed")).isEqualTo(1.0);
+        }
+
+        @Test
+        void should_never_complete_a_run_it_parked() {
+            when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
+            when(payloadSource.fetch(command))
+                    .thenThrow(new TransformationFailedException("unreadable hearing"));
+            when(guard.recordNonTransientFailure(claim, ReasonCode.TRANSFORMATION_FAILED))
+                    .thenReturn(parked);
+
+            pipeline.process(command, delivery);
+
+            verify(guard, never()).recordCompletion(any(), any());
+            verifyNoInteractions(submissionClient);
         }
     }
 
