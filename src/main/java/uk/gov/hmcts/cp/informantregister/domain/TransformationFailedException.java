@@ -12,9 +12,12 @@ package uk.gov.hmcts.cp.informantregister.domain;
  *
  * <p>The legacy swallows these: {@code setInformantRegisterHandler} catches everything, logs, and
  * returns {@code undefined}, so the orchestrator skips the rest of the flow and the hearing produces
- * nothing at all with no signal. Surfacing them instead is the sanctioned transport-reliability
- * change already on the deviations register (entry 2) — the register's <em>content</em> is
- * untouched; only what happens when it cannot be built at all is different.
+ * nothing at all with no signal. Surfacing them instead is <strong>deviations-register entry
+ * 5</strong>, which records this swallow specifically. It is not entry 2: that entry is about the
+ * final POST's swallowed errors, and reading it as covering the transformation's own would leave an
+ * observable handling change with no accurately scoped approval behind it. The register's
+ * <em>content</em> is untouched either way — only what happens when it cannot be built at all is
+ * different.
  *
  * <p>Like every other failure this service reports it carries a bounded {@link ReasonCode} and never
  * a fragment of the payload: the message names the shape that was wrong, never the value that was
