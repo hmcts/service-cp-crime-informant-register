@@ -56,6 +56,12 @@ dependencies {
   implementation 'com.azure:azure-messaging-servicebus'
   implementation 'com.azure:azure-identity'
 
+  // --- Payload source: Redis cache (Lettuce) + results-query-api fallback ---
+  // Lettuce directly rather than spring-boot-starter-data-redis: this service reads one string key
+  // and needs no template, repository or converter, and the starter's auto-configuration would add
+  // a health contributor and a connection factory nothing else here uses. Version from the Boot BOM.
+  implementation 'io.lettuce:lettuce-core'
+
   // --- Observability / Actuator / OTEL / Prometheus ---
   implementation 'org.springframework.boot:spring-boot-starter-actuator'
   implementation 'org.springframework.boot:spring-boot-starter-opentelemetry'
@@ -77,6 +83,10 @@ dependencies {
   // check opens a JDBC connection — without the driver the companion never reports started. Version
   // from the Spring Boot BOM.
   testRuntimeOnly 'com.microsoft.sqlserver:mssql-jdbc'
+
+  // HTTP stub for the results-query-api fallback suite. Standalone (shaded) so WireMock's own
+  // Jetty and Jackson 2 cannot collide with the Jackson 3 stack this service runs on.
+  testImplementation 'org.wiremock:wiremock-standalone:3.13.2'
 
   // Draft-07 validator for the dual-validation contract corpus (research §9).
   // testImplementation ONLY — it must never reach the runtime classpath. Not managed by any BOM on
