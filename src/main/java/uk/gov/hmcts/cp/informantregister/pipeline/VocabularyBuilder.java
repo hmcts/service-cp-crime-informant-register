@@ -237,10 +237,10 @@ final class VocabularyBuilder {
      */
     private boolean cpsProsecuted() {
         for (final JsonNode prosecutionCase : Json.array(hearing, "prosecutionCases")) {
-            final JsonNode isCps = Json.at(Json.at(prosecutionCase, "prosecutor"), "isCps");
+            final JsonNode cpsFlag = Json.at(Json.at(prosecutionCase, "prosecutor"), "isCps");
             // The legacy test is `=== true`, so only a real boolean true counts — a truthy
             // string or 1 does not.
-            if (isCps != null && isCps.isBoolean() && isCps.booleanValue()) {
+            if (cpsFlag != null && cpsFlag.isBoolean() && cpsFlag.booleanValue()) {
                 return true;
             }
         }

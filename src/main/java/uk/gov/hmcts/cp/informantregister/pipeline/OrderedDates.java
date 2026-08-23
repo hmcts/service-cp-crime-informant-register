@@ -45,6 +45,9 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  */
 final class OrderedDates {
 
+    /** The size at which {@code sort} returns its input without ever calling the comparator. */
+    private static final int SOLE_ELEMENT = 1;
+
     private OrderedDates() {
     }
 
@@ -68,7 +71,7 @@ final class OrderedDates {
             // Every element was `undefined`, so `sorted[0]` is `undefined` too.
             return null;
         }
-        if (compared.size() == 1) {
+        if (compared.size() == SOLE_ELEMENT) {
             // One element: `sort` returns it without ever calling the comparator, so an unreadable
             // date is carried rather than refused.
             return textOf(compared.getFirst());

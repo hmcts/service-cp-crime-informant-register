@@ -113,6 +113,9 @@ public final class HearingDates {
      */
     private static final int TWO_DIGIT_YEAR_PIVOT = 68;
 
+    /** The token width at which the pivot above applies; any other width is the year as written. */
+    private static final int TWO_DIGIT_YEAR_TOKEN_LENGTH = 2;
+
     private final Clock clock;
 
     /**
@@ -328,7 +331,7 @@ public final class HearingDates {
      */
     private static int inACentury(final String token) {
         final int year = Integer.parseInt(token);
-        if (token.length() != 2) {
+        if (token.length() != TWO_DIGIT_YEAR_TOKEN_LENGTH) {
             return year;
         }
         return year > TWO_DIGIT_YEAR_PIVOT ? year + 1900 : year + 2000;

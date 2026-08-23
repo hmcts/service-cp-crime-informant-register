@@ -102,7 +102,7 @@ final class DefendantContextBuilder {
                 context.defendantIds().add(Json.text(defendant, "id"));
 
                 if (Json.truthy(defendant, "defendantCaseJudicialResults")) {
-                    context.addResults(caseLevelResults(prosecutionCase, defendant, caseId));
+                    context.addResults(caseLevelResults(defendant, caseId));
                 }
                 context.addResults(offenceLevelResults(defendant, caseId, masterDefendantId));
 
@@ -117,13 +117,12 @@ final class DefendantContextBuilder {
     /**
      * Builds the results recorded against one defendant's case.
      *
-     * @param prosecutionCase   the prosecution case
-     * @param defendant         the defendant within it
+     * @param defendant         the defendant within the prosecution case
      * @param caseId            the prosecution case id
      * @return the case-level results
      */
     private List<RegisterResult> caseLevelResults(
-            final JsonNode prosecutionCase, final JsonNode defendant, final String caseId) {
+            final JsonNode defendant, final String caseId) {
 
         final List<RegisterResult> results = new ArrayList<>();
         for (final JsonNode judicialResult

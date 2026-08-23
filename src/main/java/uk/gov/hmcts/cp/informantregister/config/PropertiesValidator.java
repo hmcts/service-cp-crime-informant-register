@@ -328,9 +328,10 @@ public class PropertiesValidator implements InitializingBean {
 
     private static void validateTheFallbackIsAttempted(
             final InformantRegisterProperties.Fallback fallback) {
-        if (fallback.maxAttempts() < 1) {
+        if (fallback.maxAttempts() < MINIMUM_ATTEMPTS) {
             throw new IllegalStateException(
-                    FALLBACK_MAX_ATTEMPTS + " (" + fallback.maxAttempts() + ") must be at least 1 — at zero"
+                    FALLBACK_MAX_ATTEMPTS + " (" + fallback.maxAttempts() + MUST_BE_AT_LEAST
+                            + MINIMUM_ATTEMPTS + " — at zero"
                             + " every cache miss skips a query side that could have answered, and"
                             + " the request is retried to the dead-letter queue instead");
         }

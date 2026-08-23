@@ -144,7 +144,7 @@ public final class SubscriptionMatcher {
                     rules.match(criteriaFor(fragment, informantRegisterSubscriptions));
             LOG.debug("authority {} matched {} subscription(s) on hearing {}",
                     fragment.prosecutionAuthorityId(), subscriptions.size(), fragment.hearingId());
-            matched.add(RegisterFragmentWithSubscriptions.of(fragment, subscriptions));
+            matched.add(RegisterFragmentWithSubscriptions.carrying(fragment, subscriptions));
         }
         return List.copyOf(matched);
     }
@@ -159,7 +159,7 @@ public final class SubscriptionMatcher {
             final List<RegisterFragment> fragments) {
 
         return fragments.stream()
-                .map(fragment -> RegisterFragmentWithSubscriptions.of(fragment, null))
+                .map(fragment -> RegisterFragmentWithSubscriptions.carrying(fragment, null))
                 .toList();
     }
 
