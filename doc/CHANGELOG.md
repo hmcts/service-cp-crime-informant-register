@@ -7,6 +7,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
+- 2026-08-23 — **Downstream calls are attributed to the user who shared the results again.** The
+  legacy threads the hearing-resulted envelope's `userId` into the orchestration as `cjscppuid`
+  (`InformantRegisterEventGridTrigger/index.js:15`) and gives that one value to all three of a run's
+  outward calls (`InformantRegisterOrchestrator/index.js:13,31,46`): the payload read, the
+  now-subscriptions read (`ReferenceDataService.js:44`) and the `add-informant-register` POST
+  (`ProcessOutboundInformantRegister/index.js:21`). The thin queue message dropped it, so the port
+  had been calling under its own name. It no longer does.
+  - **Contract.** `userId` is added to `distribution-command.schema.json` as an **optional**
+    `uuid`; `additionalProperties` stays `false` and the required set is unchanged. Optional
+    because support replay tooling mints messages no person triggered and transition-window
+    producers send none — a required field would dead-letter both. A `userId` that *is* present
+    must be a canonical UUID: anything else, an explicit `null` included, is a contract violation
+    and dead-letters with a bounded reason that never quotes the value.
+  - **Threading.** `CallerIdentity` is resolved once per run from the command and handed to the
+    transformation and to every submission; the payload adapter reads it from the same command.
+    Each client falls back to its own configured system identity
+    (`informantregister.results.system-user-id`,
+    `informantregister.referencedata.system-user-id`) when the message names nobody, so an
+    environment that mounts one identity is still not asked for a second.
+  - **Not logged, not fingerprinted.** The identity leaves the service in `CJSCPPUID` and nowhere
+    else — no path, query, body or log line — and it is deliberately absent from
+    `RequestFingerprint`, so a replay of an attributed request is the same unit of work rather than
+    an idempotency collision.
+  - **Rollout order.** The consumer ships first: a closed contract rejects an unknown field, so
+    `cpp-context-results` must not send `userId` until this version is live in the target
+    environment.
+  - Restoring legacy behaviour needs no deviation entry; the one residue does. Deviations register
+    **#16**: a *replayed* message runs under the system identity, where a legacy Event Grid retry
+    re-delivered the original envelope and so kept the original user.
+  - Agreed by the owner of both sides — publisher and consumer are the same team —
+    **project-owner decision, 2026-08-23**.
 - 2026-08-23 — **`hearingStartTime` now says which hour of the day it means.** The one sanctioned
   departure from bug-for-bug parity in the transformation, taken as a project-owner decision:
   "for time lets use visually correct and semantically correct value - 14:30:00+01:00".
