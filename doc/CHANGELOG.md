@@ -7,6 +7,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- 2026-08-23 — **The aggregation mapper: a fragment becomes the command body that is sent for it.**
+  The last of the three transformation steps, ported from `OutboundInformantRegister/index.js` and
+  its eight-mapper tree into `pipeline/`, producing the typed `InformantRegisterDocument` that
+  already existed in `domain/`. Pure — a hearing tree, a fragment and its matched subscriptions in,
+  one document out — so the golden files alone decide whether the port is right.
+  - **Forty-five Jest cases have JUnit twins**, against byte-identical copies of the legacy's
+    fifteen fixtures, plus a Java translation of the `ModelObjects.js` builder six of those files
+    depend on. Where the Jest suite mocks a collaborator away, the twins do not: the fixture is
+    completed instead, and the case the mock was hiding gets its own assertion.
+  - **Whole-document golden parity** on the three activity-level cases, compared field for field
+    against output captured by invoking the real legacy handler. The transcribed Jest assertions
+    check the fields their author happened to name; the goldens check every field of every offence
+    of every case of every defendant.
+  - **The oddities are pinned, not tidied.** D8 (every case entry carries the defendant's whole
+    offence list, each offence still naming the case it really came from), D9 (`hearingStartTime`
+    and `registerDate` are London wall-clock time labelled `Z`, asserted as exact strings with a
+    January control beside them), D11 (duration dates are re-read as `DD/MM/YYYY` and anything else
+    becomes the literal `"Invalid dateZ"`), D17 (letter delivery is logged and ignored, and a
+    recipient with no address is dropped silently), s04 (a case reference is its URN when *truthy*,
+    not when non-null) and the file name's second reading of the register date, `undefined` included
+    when an authority has no code.
+  - **Five of the parity pack's coverage findings are answered rather than inherited** — BS-05
+    (cross-authority offence isolation, whose false leg the legacy suite never runs), BS-06
+    (organisation defendants, a whole defendant class with no assertion anywhere), BS-07
+    (application-level results, unexecuted repo-wide), BS-09 and BS-10 (every optional-value false
+    leg of the recipient and result-data mappers), BS-14 and BS-15. Each path is ported from the
+    source and covered by a deterministic case; none is left to the first real hearing to discover.
+  - Two new deviations, both **sign-off pending**: #9, an unmapped verdict code yields a verdict
+    with no type rather than a null one, which the closed contract cannot carry; and #10, a
+    register component that cannot be typed is parked and dead-lettered rather than POSTed for the
+    consumer's schema to reject. Neither changes a register that the legacy successfully sends.
+  - `HearingDates` gains `formattedLocalDateTime`, the `DateService.formatDateAndGetLocalDateTime`
+    port, whose every expectation was taken from the `moment` build vendored with the function app
+    rather than from a reading of what it ought to do.
 - 2026-08-22 — **The submission leg: `add-informant-register` is actually POSTed.** The stub
   submission client is replaced by `adapter/results/`, which posts one command per prosecuting
   authority to the results-owned endpoint at the exact vendor media type, and by the
