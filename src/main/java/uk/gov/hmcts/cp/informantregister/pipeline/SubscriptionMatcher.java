@@ -53,6 +53,11 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  *       fragments are returned untouched — with no {@code matchedSubscriptions} member at all, which
  *       is a different document from one carrying an empty array
  *       ({@code index.js:22-33}).</li>
+ *   <li><strong>A {@code null} among the subscriptions is not "one that matches nothing".</strong>
+ *       {@code index.js:28} reads a flag off every element of {@code nowSubscriptions}, so one null
+ *       entry means the legacy emits no register for any authority. Skipping it and matching the
+ *       rest would hand recipients a register the legacy never sent, so it is refused
+ *       ({@code doc/DEVIATIONS.md} entry 7).</li>
  * </ul>
  *
  * <p><strong>Callers must not hand this an empty fragment list.</strong> The legacy never can:
@@ -120,10 +125,13 @@ public final class SubscriptionMatcher {
             return unmatched(fragments);
         }
 
+        // `nowSubscriptions.filter(s => s.isInformantRegisterSubscription)` (index.js:28) reads a
+        // property off every element, so a null one is a TypeError there and a refusal here.
         final List<JsonNode> informantRegisterSubscriptions =
                 Json.array(subscriptionsMetadata, "nowSubscriptions").stream()
-                        .filter(subscription ->
-                                Json.truthy(subscription, "isInformantRegisterSubscription"))
+                        .filter(subscription -> Json.truthy(
+                                Json.dereferenced(subscription, "nowSubscriptions"),
+                                "isInformantRegisterSubscription"))
                         .toList();
 
         if (informantRegisterSubscriptions.isEmpty()) {

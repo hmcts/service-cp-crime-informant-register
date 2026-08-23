@@ -47,6 +47,15 @@ import uk.gov.hmcts.cp.informantregister.domain.UserGroupType;
  *       {@code null} takes a different branch from one that omits it.</li>
  * </ul>
  *
+ * <p><strong>A {@code null} element is refused, not treated as a non-match.</strong> Wherever the
+ * legacy reads a property off an array element — a candidate subscription, a child subscription, a
+ * judicial result, a judicial result prompt — a {@code null} there is a {@code TypeError} and the
+ * whole hearing produces nothing. {@link Json#dereferenced} reproduces that reach exactly, including
+ * where JavaScript's laziness means an element is never read: {@code some} and {@code find} stop at
+ * the first answer, {@code filter} completes the pass, and an empty reference-data list never runs
+ * its callback at all. Answering "no match" instead would emit recipients the legacy never emitted
+ * ({@code doc/DEVIATIONS.md} entry 7).
+ *
  * <p><strong>{@code matchCpsProsecuted} is not ported.</strong> The legacy declares it
  * ({@code SubscriptionsService.js:56-59}) and never calls it; the CPS check that does run is written
  * inline at {@code :125}. Porting the dead copy would suggest a second CPS rule exists.
@@ -64,6 +73,9 @@ public final class SubscriptionRules {
     /** The prompt type the legacy matches by substring rather than by equality. */
     private static final String NAME_ADDRESS = "NAMEADDRESS";
 
+    /** The judicial result's prompt list, read on four legacy lines between them. */
+    private static final String PROMPTS = "judicialResultPrompts";
+
     /**
      * The subscriptions the criteria match, in the order the legacy pushes them.
      *
@@ -73,7 +85,12 @@ public final class SubscriptionRules {
     public List<JsonNode> match(final SubscriptionCriteria criteria) {
         final List<JsonNode> matched = new ArrayList<>();
 
-        for (final JsonNode subscription : criteria.subscriptions()) {
+        for (final JsonNode candidate : criteria.subscriptions()) {
+
+            // `matchCourtHouse` reads `subscription.selectedCourtHouses` before anything else
+            // (SubscriptionsService.js:19, :53), so a null candidate is a TypeError there whatever
+            // the criteria say, and a refusal here.
+            final JsonNode subscription = Json.dereferenced(candidate, "subscriptions");
 
             if (courtHouseMatches(subscription, criteria.ouCode())
                     && vocabularyRulesMatch(subscription, criteria)) {
@@ -91,7 +108,13 @@ public final class SubscriptionRules {
                     || Json.truthy(subscription, "isEDTSubscription"))
                     && subscriptionRulesMatch(criteria, subscription)) {
                 matched.add(subscription);
-                for (final JsonNode child : Json.array(subscription, "childSubscriptions")) {
+                for (final JsonNode candidateChild
+                        : Json.array(subscription, "childSubscriptions")) {
+                    // Every path through `matchSubscriptionRules` reads a property off the child —
+                    // `excludedNOWS` when a NOW id is set (:64), `userGroupVariants` when a user
+                    // group is (:99), `applySubscriptionRules` otherwise (:116) — so a null child is
+                    // a TypeError on all of them.
+                    final JsonNode child = Json.dereferenced(candidateChild, "childSubscriptions");
                     if (subscriptionRulesMatch(criteria, child)) {
                         matched.add(child);
                     }
@@ -422,11 +445,16 @@ public final class SubscriptionRules {
         if (creditors == null || creditors.isEmpty()) {
             return false;
         }
-        for (final JsonNode result : criteria.judicialResults()) {
+        for (final JsonNode candidate : criteria.judicialResults()) {
+            // `for (var result of …) result.judicialResultTypeId` (:286) reads every result up to
+            // the one that answers, so a null before it is a TypeError and one after it is never
+            // reached.
+            final JsonNode result = Json.dereferenced(candidate, "judicialResults");
             if (!FINANCIAL_COMPENSATION.equals(Json.text(result, "judicialResultTypeId"))) {
                 continue;
             }
-            for (final JsonNode prompt : Json.dereferencedArray(result, "judicialResultPrompts")) {
+            for (final JsonNode element : Json.dereferencedArray(result, PROMPTS)) {
+                final JsonNode prompt = Json.dereferenced(element, PROMPTS);
                 if (CREDITOR_NAME.equals(Json.text(prompt, "promptReference"))
                         && NAME_ADDRESS.equals(Json.text(prompt, "type"))) {
                     return creditors.contains(Json.text(prompt, "value"));
@@ -549,6 +577,11 @@ public final class SubscriptionRules {
      * ({@code SubscriptionsService.js:212-230}). A {@code NAMEADDRESS} prompt matches by
      * case-insensitive <em>substring</em>; every other prompt matches by case-insensitive equality.
      *
+     * <p>The legacy's {@code filter} at {@code :213} is a <strong>complete</strong> pass over the
+     * judicial results before any matching runs, so a null result anywhere in the list refuses even
+     * when an earlier one would have matched. The two loops below therefore stay separate rather
+     * than folding into one.
+     *
      * @param judicialResults the register's judicial results
      * @param wanted          the prompts the subscription names
      * @return whether any prompt matches
@@ -556,18 +589,26 @@ public final class SubscriptionRules {
     private static boolean promptsMatch(
             final List<JsonNode> judicialResults, final List<JsonNode> wanted) {
 
-        for (final JsonNode judicialResult : judicialResults) {
-            if (!Json.truthy(judicialResult, "judicialResultPrompts")) {
-                continue;
+        final List<JsonNode> withPrompts = new ArrayList<>();
+        for (final JsonNode candidate : judicialResults) {
+            final JsonNode judicialResult = Json.dereferenced(candidate, "judicialResults");
+            if (Json.truthy(judicialResult, PROMPTS)) {
+                withPrompts.add(judicialResult);
             }
-            for (final JsonNode prompt : Json.array(judicialResult, "judicialResultPrompts")) {
+        }
+
+        for (final JsonNode judicialResult : withPrompts) {
+            for (final JsonNode element : Json.array(judicialResult, PROMPTS)) {
+                // `getMatchingPrompt` reads `judicialPrompt.type` first (:224). The enclosing
+                // `some` stops at the first match, so only the prompts actually reached are read.
+                final JsonNode prompt = Json.dereferenced(element, PROMPTS);
                 final String reference = Json.text(prompt, "promptReference");
                 if (reference == null || reference.isEmpty()) {
                     continue;
                 }
                 final boolean nameAddress = NAME_ADDRESS.equals(Json.text(prompt, "type"));
-                for (final JsonNode candidate : wanted) {
-                    if (referenceMatches(reference, candidate, nameAddress)) {
+                for (final JsonNode wantedPrompt : wanted) {
+                    if (referenceMatches(reference, wantedPrompt, nameAddress)) {
                         return true;
                     }
                 }
@@ -604,6 +645,12 @@ public final class SubscriptionRules {
      *
      * <p>Ports {@code checkForMatchedResults} ({@code SubscriptionsService.js:232-238}).
      *
+     * <p>The legacy reads {@code judicialResult.judicialResultTypeId} from <em>inside</em> the inner
+     * {@code resultsFromRefData.some(...)} callback ({@code :234-236}), so an empty reference-data
+     * list never runs it and never touches a judicial result at all. An empty list is reachable —
+     * the enclosing guard tests the field for truthiness, and {@code []} is truthy — so it is
+     * answered without reading anything, or a register the legacy produced would be refused here.
+     *
      * @param judicialResults the register's judicial results
      * @param wanted          the result type ids the subscription names
      * @return whether any result matches
@@ -611,7 +658,11 @@ public final class SubscriptionRules {
     private static boolean resultsMatch(
             final List<JsonNode> judicialResults, final List<JsonNode> wanted) {
 
-        for (final JsonNode judicialResult : judicialResults) {
+        if (wanted.isEmpty()) {
+            return false;
+        }
+        for (final JsonNode candidate : judicialResults) {
+            final JsonNode judicialResult = Json.dereferenced(candidate, "judicialResults");
             final String typeId = Json.text(judicialResult, "judicialResultTypeId");
             if (typeId != null && contains(wanted, typeId)) {
                 return true;
