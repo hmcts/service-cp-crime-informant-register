@@ -174,6 +174,44 @@ class RegisterTransformationChainTest {
     }
 
     @Nested
+    @DisplayName("a register date on the wrong side of BST midnight (D9)")
+    class QueryDateAcrossBritishSummerTime {
+
+        /**
+         * The one boundary where honouring the misleading {@code Z} moves the day.
+         *
+         * <p>The recording's shared time is {@code 2020-06-01T23:00:00Z}. {@code DateService.js:36-38}
+         * formats it in {@code Europe/London} — midnight on the 2nd, British Summer Time — and then
+         * appends a literal {@code Z}, so the register date reads {@code 2020-06-02T00:00:00Z}
+         * (defect D9). {@code ReferenceDataService.js:38} takes that at face value:
+         * {@code new Date(registerDate).toISOString().slice(0, 10)} is {@code 2020-06-02}, a day
+         * later than the instant the hearing was actually shared at.
+         */
+        private final ParityCase parityCase = ParityCase.load(
+                CORPUS, "mut__group-master-case__shared-time__bst-2300-utc");
+
+        @Test
+        @DisplayName("dates the query with the misleading Z, a day past the shared instant")
+        void dates_the_query_with_the_misleading_z() {
+            source.answers(parityCase.subscriptions());
+
+            chainFor(parityCase).transform(parityCase.hearing(), parityCase.sharedTime());
+
+            // The recording is the authority; the literals say out loud what it recorded, so a port
+            // that "corrected" the day would fail here with the correction visible rather than with
+            // two opaque dates.
+            assertThat(parityCase.sharedTime()).isEqualTo("2020-06-01T23:00:00Z");
+            assertThat(source.asked)
+                    .containsExactly(LocalDate.parse(parityCase.recordedRefdataQueryDate()))
+                    .containsExactly(LocalDate.of(2020, 6, 2));
+            assertThat(source.asked.getFirst())
+                    .as("reading the register date as London local would ask for the 1st, and would "
+                            + "address the register with a different day's reference data")
+                    .isNotEqualTo(LocalDate.of(2020, 6, 1));
+        }
+    }
+
+    @Nested
     @DisplayName("reference data that cannot be reached")
     class ReferenceDataUnavailable {
 
