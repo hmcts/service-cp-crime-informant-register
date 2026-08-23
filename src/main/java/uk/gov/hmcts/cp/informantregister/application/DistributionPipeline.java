@@ -189,11 +189,22 @@ public class DistributionPipeline {
     /**
      * Turns the fetched payload into one submission per prosecuting authority.
      *
-     * <p>The transformation is handed the payload the run fetched and the shared time the command
-     * carries, rendered as the wire form the legacy activity receives
-     * ({@code InformantRegisterOrchestrator/index.js:23} passes {@code hearingResultedObj.sharedTime}
-     * straight through). It is the command's value rather than a value re-read from the payload,
-     * because the command is this service's own closed contract and the payload is not.
+     * <p>The payload the source answers with is a wrapper, not a hearing — the {@code INT_} cache
+     * document is {@code {isReshare, hearingDay, sharedTime, hearing}} and the query-API answer is
+     * {@code {hearing, sharedTime}} — and this seam is the orchestrator-equivalent that opens it:
+     * {@code InformantRegisterOrchestrator/index.js:21-24} hands its first activity
+     * {@code hearingResultedObj.hearing} under {@code hearingResultedObj.sharedTime}, both read
+     * from the fetched document and neither from the queue message. The command's own
+     * {@code sharedTime} keeps the jobs that belong to this service's closed contract — the
+     * request fingerprint and the processed-log row — but the register is stamped with the
+     * payload's, exactly as the legacy stamps it.
+     *
+     * <p>A wrapper whose {@code hearing} is missing or {@code null} is refused as unreadable: the
+     * legacy throws there ({@code SetInformantRegister/index.js:29} reads {@code hearingObj.id})
+     * and its orchestrator swallows the run, which is precisely the class of silent loss
+     * deviations-register entry 7 converts to a non-transient refusal. A missing
+     * {@code sharedTime} is not an error — the legacy passes {@code undefined} through and the
+     * date service reads its clock ({@code HearingDates}, "absent input means now").
      *
      * <p>Order is carried, never re-derived: the documents come back in the order the legacy produces
      * its fragments, and each becomes exactly one submission in that order. Nothing downstream sorts,
@@ -206,7 +217,7 @@ public class DistributionPipeline {
      * command itself, so it reads the same field.
      *
      * @param command the request being run
-     * @param payload the hearing payload the source answered with
+     * @param payload the wrapped hearing payload the source answered with
      * @return the submissions, in the order they are to be made
      */
     private List<AuthoritySubmission> submissionsFor(
@@ -219,7 +230,7 @@ public class DistributionPipeline {
         // a register read as one caller and posted as another is attributable to nobody.
         final CallerIdentity identity = CallerIdentity.of(command);
 
-        return transformer.transform(payload, command.sharedTime().toString(), identity).stream()
+        return transformer.transform(hearingOf(payload), sharedTimeOf(payload), identity).stream()
                 .map(document -> new AuthoritySubmission(
                         command.source(),
                         command.requestId(),
@@ -227,6 +238,42 @@ public class DistributionPipeline {
                         document,
                         identity))
                 .toList();
+    }
+
+    /**
+     * The wrapper's {@code hearing} member — the node the legacy's activities receive.
+     *
+     * <p>Missing or {@code null} is a refusal, not a shrug: the legacy's first activity throws on
+     * it ({@code SetInformantRegister/index.js:29}) and the orchestrator's catch-all turns that
+     * into a silent success, which is the swallow entry 7 of the deviations register replaces
+     * with a parked, replayable failure. Any other shape is passed through untouched — the
+     * builder's own guard answers a hearing that carries no cases, exactly as the legacy's does.
+     *
+     * @param payload the wrapped payload the source answered with
+     * @return the hearing node
+     */
+    private static JsonNode hearingOf(final JsonNode payload) {
+        final JsonNode hearing = payload.path("hearing");
+        if (hearing.isMissingNode() || hearing.isNull()) {
+            throw new TransformationFailedException("payload carries no hearing");
+        }
+        return hearing;
+    }
+
+    /**
+     * The wrapper's {@code sharedTime}, as the wire carried it, or {@code null} when it carried
+     * none.
+     *
+     * <p>Null is not an error here: the legacy hands {@code undefined} straight through
+     * ({@code InformantRegisterOrchestrator/index.js:23}) and {@code moment.tz(undefined, zone)}
+     * is the current time, which {@code HearingDates} reproduces from its clock.
+     *
+     * @param payload the wrapped payload the source answered with
+     * @return the shared time text, or {@code null}
+     */
+    private static String sharedTimeOf(final JsonNode payload) {
+        final JsonNode sharedTime = payload.path("sharedTime");
+        return sharedTime.isMissingNode() || sharedTime.isNull() ? null : sharedTime.asText();
     }
 
     /**

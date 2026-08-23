@@ -131,7 +131,8 @@ class DistributionPipelineTest {
 
     private static JsonNode payload() {
         final ObjectMapper mapper = JacksonConfig.contractObjectMapper();
-        return mapper.readTree("{\"hearing\":{\"id\":\"stub\"}}");
+        return mapper.readTree("{\"isReshare\":false,\"hearingDay\":\"2026-08-21\","
+                + "\"sharedTime\":\"2026-08-21T07:45:00Z\",\"hearing\":{\"id\":\"stub\"}}");
     }
 
     /** A minimal outbound document: the port contract's shape, not its content. */
@@ -257,12 +258,14 @@ class DistributionPipelineTest {
     /**
      * What the run does once the transformation port actually produces something.
      *
-     * <p>The two ends of the seam are what matter. The transformation is handed the payload that was
-     * fetched and the shared time the command carries — not a payload re-read, and not the wall
-     * clock — and every document it produces becomes exactly one submission, in the order it
-     * produced them, keyed by the request the authority belongs to. Order is the half that is easy
-     * to lose: nothing downstream sorts, so the first authority the legacy names is the first
-     * authority POSTed.
+     * <p>The two ends of the seam are what matter. The payload the source answers with is a
+     * wrapper, and the transformation is handed what the legacy orchestrator hands its first
+     * activity ({@code InformantRegisterOrchestrator/index.js:21-24}): the wrapper's
+     * {@code hearing} member, under the wrapper's own {@code sharedTime} — not the wrapper
+     * itself, not the command's copy of the shared time, and not the wall clock. Every document
+     * it produces becomes exactly one submission, in the order it produced them, keyed by the
+     * request the authority belongs to. Order is the half that is easy to lose: nothing
+     * downstream sorts, so the first authority the legacy names is the first authority POSTed.
      */
     @Nested
     @DisplayName("a hearing the transformation produces authorities for")
@@ -277,13 +280,13 @@ class DistributionPipelineTest {
         }
 
         @Test
-        void should_transform_the_payload_it_fetched_under_the_shared_time_the_command_carries() {
+        void should_transform_the_unwrapped_hearing_under_the_shared_time_the_payload_carries() {
             transformationProduces(List.of(document()));
 
             pipeline.process(command, delivery);
 
             verify(transformer).transform(
-                    payload(), command.sharedTime().toString(), CallerIdentity.SYSTEM);
+                    payload().path("hearing"), "2026-08-21T07:45:00Z", CallerIdentity.SYSTEM);
         }
 
         @Test

@@ -95,9 +95,9 @@ class MessageAccountingIT {
 
     private static String connectionString;
 
-    /** Nothing that resembles hearing content: this increment handles no defendant data. */
+    /** The sources' wrapper shape around an empty hearing: nothing resembling hearing content. */
     private static final JsonNode PLACEHOLDER =
-            JacksonConfig.contractObjectMapper().readTree("{\"stub\":true}");
+            JacksonConfig.contractObjectMapper().readTree("{\"stub\":true,\"hearing\":{}}");
 
     @MockitoBean
     private HearingPayloadSource payloadSource;

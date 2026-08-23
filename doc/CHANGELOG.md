@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- 2026-08-23 — **The pipeline unwraps the fetched payload before transforming it, and stamps the
+  register with the payload's own `sharedTime`.** The payload the sources answer with is a wrapper
+  — the `INT_` cache document is `{isReshare, hearingDay, sharedTime, hearing}`, the query-API
+  answer `{hearing, sharedTime}` — and the legacy orchestrator opens it
+  (`InformantRegisterOrchestrator/index.js:21-24`), handing `SetInformantRegister` the `hearing`
+  member under the *payload's* `sharedTime`, not the queue message's. The port had been handing
+  the whole wrapper to the transformation under the command's `sharedTime`, so `RegisterBuilder`
+  found neither `prosecutionCases` nor `courtApplications` and every live hearing ended
+  `COMPLETED/no-authorities` with nothing POSTed (found in STE-42, 2026-08-23; the previously
+  missing seam-level test now pins both halves — `PayloadSeamTest`, driving the real
+  transformation chain with both wrapper shapes and a payload-vs-command `sharedTime` that
+  differ). A wrapper whose `hearing` is missing or `null` is refused non-transiently per
+  deviations entry 7 (the legacy throws at `SetInformantRegister/index.js:29` and swallows the
+  run); a missing `sharedTime` stays legal — the register is stamped from the clock, as
+  `moment.tz(undefined, zone)` stamps it today. The command's `sharedTime` keeps its own jobs:
+  the request fingerprint and the processed-log row.
+
 ### Changed
 - 2026-08-23 — **Downstream calls are attributed to the user who shared the results again.** The
   legacy threads the hearing-resulted envelope's `userId` into the orchestration as `cjscppuid`

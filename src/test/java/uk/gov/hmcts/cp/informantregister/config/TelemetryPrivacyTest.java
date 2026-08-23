@@ -103,22 +103,28 @@ class TelemetryPrivacyTest {
     // --- fixtures --------------------------------------------------------------------------
 
     /**
-     * A payload shaped like the ones the real adapter will fetch: large, foreign, and full of the
-     * personal data this service must never write down.
+     * A payload shaped like the ones the real adapter fetches — the cache document's wrapper
+     * around a hearing that is large, foreign, and full of the personal data this service must
+     * never write down.
      */
     private JsonNode hearingPayload() {
         return JacksonConfig.contractObjectMapper().readTree("""
                 {
-                  "hearingId": "%s",
-                  "marker": "%s",
-                  "defendants": [
-                    {
-                      "name": "%s",
-                      "dateOfBirth": "1985-04-02",
-                      "address": "12 Example Street, Exampleton",
-                      "nationalInsuranceNumber": "QQ123456C"
-                    }
-                  ]
+                  "isReshare": false,
+                  "hearingDay": "2026-08-21",
+                  "sharedTime": "2026-08-21T08:00:00Z",
+                  "hearing": {
+                    "hearingId": "%s",
+                    "marker": "%s",
+                    "defendants": [
+                      {
+                        "name": "%s",
+                        "dateOfBirth": "1985-04-02",
+                        "address": "12 Example Street, Exampleton",
+                        "nationalInsuranceNumber": "QQ123456C"
+                      }
+                    ]
+                  }
                 }
                 """.formatted(hearingId, PAYLOAD_MARKER, DEFENDANT_MARKER));
     }

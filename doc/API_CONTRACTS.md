@@ -45,12 +45,21 @@ hearing.
 | `requestId` | string (UUID) | yes | Publisher-minted, **deterministic** from `hearingId \| hearingDay \| sharedTime`. A republish of the *same* share therefore carries the same id (dedupe-able); a genuine re-share of the hearing produces a new `sharedTime` and so a new id, and **must** be reprocessed — re-shares are legitimate business events. |
 | `hearingId` | string (UUID) | yes | The resulted hearing. Combined with `hearingDay` it forms the Redis cache key and the query-API fallback path. |
 | `hearingDay` | string (`YYYY-MM-DD`) | yes | The hearing day this share relates to. Part of the Redis key (`INT_{hearingId}_{hearingDay}_result_`); a legacy key form without it also exists and is tried as a fallback. |
-| `sharedTime` | string (ISO-8601 instant) | yes | When the hearing was shared. Becomes the register date used for subscription lookup (`now-subscriptions?on={registerDate}`) and appears in the outbound document. |
+| `sharedTime` | string (ISO-8601 instant) | yes | When the hearing was shared. Drives the request fingerprint and the processed-log row — the message's own jobs. The register date stamped on the outbound document and used for subscription lookup (`now-subscriptions?on={registerDate}`) comes from the **payload's** `sharedTime`, not this field, exactly as the legacy orchestrator reads it (`InformantRegisterOrchestrator/index.js:23`). |
 | `eventType` | string | yes | `Hearing_Resulted` only. **SJP hearings are out of scope** — they stay in the NOWs function app. Any other value is a non-transient failure (dead-letter with reason), never a silent skip. |
 | `userId` | string (UUID) | **no** | The CPP user who shared the hearing results. Carried so every downstream call made for this message is attributed to that user through `CJSCPPUID`, which is what the function app does today. When absent, the service's own configured system identity is used. When present it MUST be a canonical UUID: anything else is a contract violation and dead-letters like any other. See "User attribution" below. |
 
 The payload itself is **not** in the message — this is a claim check. The full hearing payload is
 fetched from Redis, with the results query API as fallback.
+
+**The fetched payload is a wrapper, not a hearing.** The `INT_` cache document is
+`{isReshare, hearingDay, sharedTime, hearing}` and the query-API answer is
+`{hearing, sharedTime}`. The pipeline opens it at the transformation seam the way the legacy
+orchestrator does (`InformantRegisterOrchestrator/index.js:21-24`): the `hearing` member goes to
+the transformation under the wrapper's own `sharedTime`. A wrapper whose `hearing` is missing or
+`null` is a non-transient failure (the legacy throws there and swallows the run — deviations
+entry 7); a wrapper without a `sharedTime` is not an error — the register is stamped with the
+clock, as `moment.tz(undefined, zone)` stamps it today.
 
 ### User attribution (`userId`)
 
