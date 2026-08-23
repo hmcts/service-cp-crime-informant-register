@@ -363,6 +363,129 @@ final class ModelObjects {
     }
 
     /**
+     * The register fragment a legacy {@code informantRegister.json} fixture holds.
+     *
+     * <p>Read component by component rather than bound by Jackson, for two reasons. The fixture
+     * carries {@code matchedSubscriptions}, which {@link RegisterFragment} deliberately does not
+     * model — it belongs to the step after fragment building — so binding would either fail on the
+     * unknown component or need the record widened to accept it. And the fixture is legacy output,
+     * not this service's own shape: reading it explicitly is what makes the correspondence between
+     * the two visible.
+     *
+     * @param fixture the parsed fixture
+     * @return the fragment it describes
+     */
+    static RegisterFragment fragmentFrom(final JsonNode fixture) {
+        final List<RegisterDefendant> defendants = new ArrayList<>();
+        for (final JsonNode defendant : fixture.get("registerDefendants")) {
+            defendants.add(registerDefendantFrom(defendant));
+        }
+        return new RegisterFragment(
+                text(fixture, "registerDate"),
+                text(fixture, "hearingDate"),
+                text(fixture, "hearingId"),
+                text(fixture, "prosecutionAuthorityId"),
+                text(fixture, "prosecutionAuthorityCode"),
+                text(fixture, "prosecutionAuthorityOuCode"),
+                text(fixture, "prosecutionAuthorityName"),
+                text(fixture, "majorCreditorCode"),
+                defendants,
+                text(fixture, "groupId"));
+    }
+
+    /**
+     * The matched subscriptions a legacy fixture carries alongside its fragment.
+     *
+     * @param fixture the parsed fixture
+     * @return the subscriptions, empty when the fixture names none
+     */
+    static List<JsonNode> matchedSubscriptionsFrom(final JsonNode fixture) {
+        final JsonNode matched = fixture.get("matchedSubscriptions");
+        return matched == null ? List.of() : matched.valueStream().toList();
+    }
+
+    /**
+     * One register defendant from a legacy fixture.
+     *
+     * @param fixture the defendant node
+     * @return the register defendant
+     */
+    private static RegisterDefendant registerDefendantFrom(final JsonNode fixture) {
+        final List<RegisterResult> results = new ArrayList<>();
+        final JsonNode declared = fixture.get("results");
+        if (declared != null) {
+            for (final JsonNode result : declared) {
+                results.add(new RegisterResult(
+                        text(result, "prosecutionCaseId"),
+                        text(result, "defendantId"),
+                        text(result, "offenceId"),
+                        text(result, "applicationId"),
+                        levelOf(text(result, "level")),
+                        text(result, "masterDefendantId"),
+                        result.get("judicialResult"),
+                        null,
+                        null));
+            }
+        }
+        return new RegisterDefendant(
+                strings(fixture, "defendantIds"),
+                results,
+                strings(fixture, "cases"),
+                strings(fixture, "applications"),
+                text(fixture, "masterDefendantId"),
+                null,
+                text(fixture, "orderedDate"),
+                null);
+    }
+
+    /**
+     * The level a legacy single-letter code names.
+     *
+     * @param code the code
+     * @return the level, or {@code null} when the fixture names none
+     */
+    private static ResultLevel levelOf(final String code) {
+        if (code == null) {
+            return null;
+        }
+        for (final ResultLevel level : ResultLevel.values()) {
+            if (level.code().equals(code)) {
+                return level;
+            }
+        }
+        throw new IllegalArgumentException("no such result level");
+    }
+
+    /**
+     * A string list component, or {@code null} when the fixture omits it.
+     *
+     * @param node  the object to read
+     * @param field the field name
+     * @return the strings, or {@code null}
+     */
+    private static List<String> strings(final JsonNode node, final String field) {
+        final JsonNode value = node.get(field);
+        if (value == null) {
+            return null;
+        }
+        final List<String> strings = new ArrayList<>();
+        value.valueStream().forEach(member -> strings.add(member.stringValue()));
+        return strings;
+    }
+
+    /**
+     * A string component, or {@code null} when the fixture omits it.
+     *
+     * @param node  the object to read
+     * @param field the field name
+     * @return the text, or {@code null}
+     */
+    private static String text(final JsonNode node, final String field) {
+        final JsonNode value = node.get(field);
+        return value == null || value.isNull() ? null : value.stringValue();
+    }
+
+    /**
      * Sets a field only when the Jest case supplied one.
      *
      * @param target the object to set on
