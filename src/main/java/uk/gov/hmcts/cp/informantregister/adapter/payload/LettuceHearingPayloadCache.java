@@ -64,7 +64,7 @@ public class LettuceHearingPayloadCache implements HearingPayloadCache, AutoClos
 
     @Override
     public Optional<JsonNode> read(final String key) {
-        return parsed(cached(key));
+        return cached(key).flatMap(this::parsed);
     }
 
     /**
@@ -74,18 +74,21 @@ public class LettuceHearingPayloadCache implements HearingPayloadCache, AutoClos
      * fail — refused connection, expired TLS certificate, wrong password, command timeout — and it
      * is nothing else, so an error that is not the cache's own escapes to be recorded rather than
      * being spent on a fallback that was never meant for it.
+     *
+     * <p>An absent key and an unreachable cache are the same empty answer here, which is the whole
+     * point; they are told apart in the log, not in the return type.
      */
-    private String cached(final String key) {
-        String value;
+    private Optional<String> cached(final String key) {
+        Optional<String> value;
         try {
-            value = openConnection().sync().get(key);
+            value = Optional.ofNullable(openConnection().sync().get(key));
         } catch (RedisException unreadable) {
             // Logged, because a cache outage should be read from a log rather than inferred from a
             // rise in query-side traffic — and logged by type, because the message may name the
             // address and the credentials the connection was attempted with.
             LOG.warn("The hearing payload cache could not answer; treating the key as absent. "
                     + "type={}", unreadable.getClass().getName());
-            value = null;
+            value = Optional.empty();
         }
         return value;
     }
@@ -99,7 +102,7 @@ public class LettuceHearingPayloadCache implements HearingPayloadCache, AutoClos
      */
     private Optional<JsonNode> parsed(final String cached) {
         Optional<JsonNode> payload = Optional.empty();
-        if (cached != null && !cached.isBlank()) {
+        if (!cached.isBlank()) {
             try {
                 final JsonNode tree = objectMapper.readTree(cached);
                 if (tree != null && !tree.isNull() && !tree.isMissingNode()) {

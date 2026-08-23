@@ -74,7 +74,7 @@ public class LivePayloadConfig {
      * @param redis the cache settings
      * @return the URI the Lettuce client connects with
      */
-    static RedisURI cacheUri(final InformantRegisterProperties.Redis redis) {
+    /* default */ static RedisURI cacheUri(final InformantRegisterProperties.Redis redis) {
         final RedisURI.Builder uri = RedisURI.builder()
                 .withHost(redis.host())
                 .withPort(redis.port())

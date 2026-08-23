@@ -68,6 +68,10 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * nothing to match is refused rather than answered, because the legacy's own answer to
  * {@code [].find(…).registerDate} is a {@code TypeError}.
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+@SuppressWarnings("PMD.OnlyOneReturn")
 public final class SubscriptionMatcher {
 
     private static final Logger LOG = LoggerFactory.getLogger(SubscriptionMatcher.class);
@@ -144,7 +148,7 @@ public final class SubscriptionMatcher {
                     rules.match(criteriaFor(fragment, informantRegisterSubscriptions));
             LOG.debug("authority {} matched {} subscription(s) on hearing {}",
                     fragment.prosecutionAuthorityId(), subscriptions.size(), fragment.hearingId());
-            matched.add(RegisterFragmentWithSubscriptions.of(fragment, subscriptions));
+            matched.add(RegisterFragmentWithSubscriptions.carrying(fragment, subscriptions));
         }
         return List.copyOf(matched);
     }
@@ -159,7 +163,7 @@ public final class SubscriptionMatcher {
             final List<RegisterFragment> fragments) {
 
         return fragments.stream()
-                .map(fragment -> RegisterFragmentWithSubscriptions.of(fragment, null))
+                .map(fragment -> RegisterFragmentWithSubscriptions.carrying(fragment, null))
                 .toList();
     }
 

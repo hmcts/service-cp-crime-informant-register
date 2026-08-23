@@ -34,6 +34,10 @@ import uk.gov.hmcts.cp.informantregister.domain.RegisterFragment;
  * still renders the literal {@code "Invalid dateZ"}, and D9's rendering survives untouched on the
  * document's own {@code registerDate} and {@code hearingDate}.
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+@SuppressWarnings("PMD.OnlyOneReturn")
 final class CourtSessionMapper {
 
     /** What the legacy reports when the hearing had no room. */
@@ -52,7 +56,7 @@ final class CourtSessionMapper {
      * @param dates            the date service the start time is rendered by
      * @param resultDataMapper the mapper for the detail hanging off each result
      */
-    CourtSessionMapper(
+    /* default */ CourtSessionMapper(
             final JsonNode hearing,
             final RegisterFragment fragment,
             final HearingDates dates,
@@ -68,7 +72,7 @@ final class CourtSessionMapper {
      *
      * @return the session
      */
-    InformantRegisterHearing build() {
+    /* default */ InformantRegisterHearing build() {
         return new InformantRegisterHearing(
                 courtRoom(),
                 hearingStartTime(),

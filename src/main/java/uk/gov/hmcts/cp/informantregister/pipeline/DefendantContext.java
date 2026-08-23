@@ -19,6 +19,10 @@ import uk.gov.hmcts.cp.informantregister.domain.RegisterVocabulary;
  * the immutable {@link RegisterDefendant} once. Nothing outside this package ever sees the mutable
  * form, so the fragment tree that leaves the pipeline is immutable in the way records promise.
  */
+// PMD.AvoidFieldNameMatchingMethodName: record-style accessors named for the legacy
+// DefendantContextBase fields they carry. Renaming either half would cost the port the
+// name-for-name mirror it is reviewed against.
+@SuppressWarnings("PMD.AvoidFieldNameMatchingMethodName")
 final class DefendantContext {
 
     private final List<String> defendantIds = new ArrayList<>();
@@ -30,51 +34,51 @@ final class DefendantContext {
     private String orderedDate;
     private RegisterVocabulary vocabulary;
 
-    List<String> defendantIds() {
+    /* default */ List<String> defendantIds() {
         return defendantIds;
     }
 
-    List<String> cases() {
+    /* default */ List<String> cases() {
         return cases;
     }
 
-    List<String> applications() {
+    /* default */ List<String> applications() {
         return applications;
     }
 
-    List<RegisterResult> results() {
+    /* default */ List<RegisterResult> results() {
         return results;
     }
 
-    void results(final List<RegisterResult> replacement) {
+    /* default */ void results(final List<RegisterResult> replacement) {
         this.results = replacement;
     }
 
-    void addResults(final List<RegisterResult> additional) {
+    /* default */ void addResults(final List<RegisterResult> additional) {
         this.results.addAll(additional);
     }
 
-    String masterDefendantId() {
+    /* default */ String masterDefendantId() {
         return masterDefendantId;
     }
 
-    void masterDefendantId(final String value) {
+    /* default */ void masterDefendantId(final String value) {
         this.masterDefendantId = value;
     }
 
-    Boolean youthDefendant() {
+    /* default */ Boolean youthDefendant() {
         return youthDefendant;
     }
 
-    void youthDefendant(final Boolean value) {
+    /* default */ void youthDefendant(final Boolean value) {
         this.youthDefendant = value;
     }
 
-    void orderedDate(final String value) {
+    /* default */ void orderedDate(final String value) {
         this.orderedDate = value;
     }
 
-    void vocabulary(final RegisterVocabulary value) {
+    /* default */ void vocabulary(final RegisterVocabulary value) {
         this.vocabulary = value;
     }
 
@@ -83,7 +87,7 @@ final class DefendantContext {
      *
      * @return the frozen defendant
      */
-    RegisterDefendant freeze() {
+    /* default */ RegisterDefendant freeze() {
         return new RegisterDefendant(
                 defendantIds, results, cases, applications,
                 masterDefendantId, youthDefendant, orderedDate, vocabulary);

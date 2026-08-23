@@ -44,7 +44,7 @@ final class RecipientMapper {
      *
      * @param matchedSubscriptions the subscriptions matched to this authority's fragment
      */
-    RecipientMapper(final List<JsonNode> matchedSubscriptions) {
+    /* default */ RecipientMapper(final List<JsonNode> matchedSubscriptions) {
         this.matchedSubscriptions = matchedSubscriptions;
     }
 
@@ -53,7 +53,7 @@ final class RecipientMapper {
      *
      * @return the recipients, or {@code null} when none survived
      */
-    List<InformantRegisterRecipient> build() {
+    /* default */ List<InformantRegisterRecipient> build() {
         final List<InformantRegisterRecipient> recipients = new ArrayList<>();
         for (final JsonNode member : matchedSubscriptions) {
             // `subscription.forDistribution` (RecipientMapper.js:15) — the member is dereferenced
