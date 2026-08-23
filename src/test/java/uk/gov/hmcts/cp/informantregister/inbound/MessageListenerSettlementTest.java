@@ -231,7 +231,8 @@ class MessageListenerSettlementTest {
             when(guard.admit(any(DistributionCommand.class), any(DeliveryIdentity.class)))
                     .thenReturn(new GuardDecision.Run(claim));
             when(payloadSource.fetch(any(DistributionCommand.class)))
-                    .thenReturn(JacksonConfig.contractObjectMapper().readTree("{}"));
+                    .thenReturn(JacksonConfig.contractObjectMapper()
+                            .readTree("{\"hearing\":{}}"));
             when(guard.recordCompletion(claim, CompletionReason.NO_AUTHORITIES))
                     .thenAnswer(aDurableWriteThatTakesItsTime());
 

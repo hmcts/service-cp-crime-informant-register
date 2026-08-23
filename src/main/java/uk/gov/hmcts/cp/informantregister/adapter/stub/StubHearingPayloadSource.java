@@ -29,12 +29,15 @@ public class StubHearingPayloadSource implements HearingPayloadSource {
     private static final Logger LOG = LoggerFactory.getLogger(StubHearingPayloadSource.class);
 
     /**
-     * A placeholder, deliberately carrying nothing that resembles hearing content: this increment
-     * handles no defendant data at all, and a stub payload that looked like one would invite a test
-     * to start depending on its shape.
+     * A placeholder in the sources' wrapper shape — a {@code hearing} member under a stub note —
+     * because the pipeline opens the wrapper exactly as the legacy orchestrator does and a payload
+     * without a {@code hearing} is a refusal, not a placeholder. The hearing inside stays empty and
+     * deliberately carries nothing that resembles hearing content: this stub fetches no defendant
+     * data at all, and a payload that looked like a hearing would invite a test to start depending
+     * on its shape. An empty hearing walks the whole pipeline to {@code COMPLETED/no-authorities}.
      */
     private static final String PLACEHOLDER = """
-            {"stub":true,"note":"no hearing payload is fetched in this increment"}
+            {"stub":true,"note":"no hearing payload is fetched in this increment","hearing":{}}
             """;
 
     private final PayloadFailureMode failureMode;

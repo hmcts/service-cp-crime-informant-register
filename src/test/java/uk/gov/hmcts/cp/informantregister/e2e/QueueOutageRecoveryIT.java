@@ -85,9 +85,9 @@ class QueueOutageRecoveryIT {
     /** So a failure is reported as a failure rather than as a hang. */
     private static final Duration HELD_AT_MOST = Duration.ofMinutes(2);
 
-    /** Nothing that resembles hearing content: this increment handles no defendant data. */
+    /** The sources' wrapper shape around an empty hearing: nothing resembling hearing content. */
     private static final JsonNode PLACEHOLDER =
-            JacksonConfig.contractObjectMapper().readTree("{\"stub\":true}");
+            JacksonConfig.contractObjectMapper().readTree("{\"stub\":true,\"hearing\":{}}");
 
     private static String connectionString;
 

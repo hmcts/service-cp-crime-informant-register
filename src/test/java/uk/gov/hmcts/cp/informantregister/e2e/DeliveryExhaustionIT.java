@@ -106,7 +106,7 @@ class DeliveryExhaustionIT {
      * placeholder that looked like a payload would invite an assertion to depend on its shape.
      */
     private static final JsonNode PLACEHOLDER =
-            JacksonConfig.contractObjectMapper().readTree("{\"stub\":true}");
+            JacksonConfig.contractObjectMapper().readTree("{\"stub\":true,\"hearing\":{}}");
 
     @MockitoBean
     private HearingPayloadSource payloadSource;
