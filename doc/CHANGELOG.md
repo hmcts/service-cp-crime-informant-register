@@ -61,6 +61,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     `authorities-submitted`.
 
 ### Fixed
+- 2026-08-23 — **Three ways the now-subscriptions read could still address a register to nobody**,
+  found by review of the adapter that had just landed.
+  - **Success is 2xx and nothing else.** Spring's default handling raises on 4xx and 5xx alone, so a
+    304 — or a redirect this client does not follow — arrived at the body reader as though reference
+    data had answered, and an empty body there means "nobody is subscribed". That is the silent loss
+    deviation 14 exists to end, reached through the one door it had left open. The rule is also the
+    ported call's own: axios resolves 200-299 and rejects the rest
+    (`axios/lib/defaults/index.js:161-162`, `axios/lib/core/settle.js:15-17`), so a 304 reaches
+    `ReferenceDataService.js:50` exactly as a 502 does.
+  - **The two contract headers are set, not appended.** A mesh header configured under the name
+    `Accept` or `CJSCPPUID` used to be sent *alongside* the contract's value rather than instead of
+    it — two `Accept` values is a 406 from a service doing content negotiation, and two `CJSCPPUID`
+    values is an ambiguous caller to one authorising on identity. `ReferenceDataService.js:42-47`
+    sends exactly one of each and now so does this.
+  - **Startup refuses a read that can outlast the run.** Every reference-data timeout was checked
+    for being positive and every attempt count for being at least one, and ten attempts against a
+    minute-long read still passed — over ten minutes of waiting inside a four-minute deadline, so
+    the claim becomes reclaimable and a second delivery starts processing the request while the
+    first runner is still on the socket. The bound the payload fetch has had all along now applies
+    to this read too: attempts × (connect + read), plus the waits between them, must be strictly
+    shorter than `informantregister.claim.processing-deadline`. It is a per-fetch bound, as the
+    payload one is; a combined budget across all three network steps would refuse the shipped
+    defaults and is a decision for the design authority.
+
 - 2026-08-23 — **Two ordered-date defects the differential corpus found**, both of which made the
   port refuse hearings the legacy files — the one direction a bug-for-bug port must not drift in.
   - **The parse format is a token walk, not the pattern it looks like.** `DateService.parse` is
