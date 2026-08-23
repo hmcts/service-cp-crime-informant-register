@@ -79,6 +79,15 @@ three independently resolved identities.
 A required field would dead-letter both. The consumer therefore accepts a message **both ways**, and
 "no user" is a supported state rather than a defect.
 
+**Absent is not the same as null.** Optional means the property may be *omitted*, and nothing more.
+`userId` is typed `string` in the schema, and the schema applies that to the property whenever it is
+present — so `"userId": null` is a type violation and dead-letters like any other, while omitting
+the key entirely is the supported way to say there is no user. Accepting a null would be the parser
+answering a body the contract refuses, and there is nothing for it to mean that omission does not
+already say. `RESULTS` never sends either form: it parses the envelope's metadata `userId` before
+publishing, so a value that could not be an identity is rejected at the publisher rather than bought
+as a guaranteed dead-letter here.
+
 **The identity is never logged.** It is a user identifier, and the no-PII gate applies to it exactly
 as it applies to the configured system identity, which is treated as a secret. MDC carries
 `requestId`, `hearingId` and `source`; it does not carry `userId`, and neither does any log line or

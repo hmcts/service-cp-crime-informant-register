@@ -38,6 +38,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     re-delivered the original envelope and so kept the original user.
   - Agreed by the owner of both sides — publisher and consumer are the same team —
     **project-owner decision, 2026-08-23**.
+  - **Post-review hardening.** Two assertions the change had been relying on prose for. A body whose
+    optional `userId` is present but not a canonical uuid now joins the dead-letter corpus in
+    `ContractValidationDeadLetterIT`, so "optional field, non-optional shape" is proven end to end
+    on a real broker rather than at the parser alone. And `TelemetryPrivacyTest` now drives a run
+    that names a user and asserts that identity appears in no captured line at any level —
+    `CallerIdentity` said of itself that it is never logged, and that was a comment until now. The
+    publisher side gained the matching guarantee: `RESULTS` parses the envelope's metadata `userId`
+    before publishing, so a malformed value fails there, the way the Event Grid leg already fails
+    it, instead of being published as a message that could only dead-letter here.
 - 2026-08-23 — **`hearingStartTime` now says which hour of the day it means.** The one sanctioned
   departure from bug-for-bug parity in the transformation, taken as a project-owner decision:
   "for time lets use visually correct and semantically correct value - 14:30:00+01:00".

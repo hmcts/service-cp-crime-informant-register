@@ -87,6 +87,13 @@ class TelemetryPrivacyTest {
     private static final String BODY_MARKER = "BODYMARKERZQX7";
     private static final String SECRET_MARKER = "SECRETMARKERZQX7";
 
+    /**
+     * The sharing user, as a canonical uuid the eye can pick out of a log index. It has to be a real
+     * one — a marker word would be rejected by the parser and the run would never start, which would
+     * prove nothing about what a run that *does* carry a user writes down.
+     */
+    private static final String CALLER_MARKER = "0dd0dd0d-dead-beef-cafe-facade000001";
+
     private static final int MAX_DELIVERY_COUNT = 5;
     private static final Duration RUN_DEADLINE = Duration.ofMinutes(4);
 
@@ -233,6 +240,46 @@ class TelemetryPrivacyTest {
             assertThat(log.renderings())
                     .as("a rejection says what rule was broken, never what the producer sent")
                     .noneMatch(line -> line.contains(BODY_MARKER));
+        }
+    }
+
+    /**
+     * {@code CallerIdentity} says of itself that it is never logged. Until now that was a comment.
+     *
+     * <p>The identity a run is made under is the one field on this message that names a person. It
+     * has exactly one destination — a {@code CJSCPPUID} header — and the adapter suites already hold
+     * it to that for the URL and the body of each outbound call. The log is the third way out and
+     * the easiest one to open by accident: a {@code log.info("running as {}", identity)} added while
+     * debugging an attribution problem would ship a user identifier to the log index on every
+     * hearing, and no existing assertion would notice.
+     */
+    @Test
+    @DisplayName("the user a run is attributed to is not written at any level")
+    void should_never_log_the_caller_a_run_is_attributed_to() {
+        final HearingPayloadSource payloads = mock(HearingPayloadSource.class);
+        when(payloads.fetch(any(DistributionCommand.class))).thenReturn(hearingPayload());
+
+        final String namingTheSharingUser = """
+                {
+                  "source": "RESULTS",
+                  "requestId": "%s",
+                  "hearingId": "%s",
+                  "hearingDay": "2026-08-21",
+                  "sharedTime": "2026-08-21T08:00:00Z",
+                  "eventType": "Hearing_Resulted",
+                  "userId": "%s"
+                }
+                """.formatted(requestId, hearingId, CALLER_MARKER);
+
+        try (CapturedLog log = CapturedLog.everything()) {
+            listenerOver(payloads).onMessage(deliveryOf(namingTheSharingUser));
+
+            assertThat(processingLines(log))
+                    .as("the run has to have happened for its silence to mean anything")
+                    .isNotEmpty();
+            assertThat(log.renderings())
+                    .as("the caller leaves in a CJSCPPUID header and nowhere else")
+                    .noneMatch(line -> line.contains(CALLER_MARKER));
         }
     }
 
