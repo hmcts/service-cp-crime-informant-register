@@ -7,6 +7,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- 2026-08-23 — **Subscription matching: who receives the register is now decided in Java.** The
+  second transformation step is ported — `pipeline/SubscriptionRules` (the shared
+  `SubscriptionsService` kernel) and `pipeline/SubscriptionMatcher` (the
+  `InformantRegisterSubscriptions` activity) — producing
+  `RegisterFragmentWithSubscriptions`, the fragment plus the subscriptions it matched.
+  - The oddities are ported, not tidied: `ouCode` is the **major creditor code** rather than the
+    authority's OU code, so on the twelve real hearing fixtures that carry no creditor code nothing
+    can match; the whole register's vocabulary is the **first** defendant's; judicial results are
+    pooled across every defendant; a subscription that is both a NOW and a prison-court-register
+    subscription is matched **twice**, because the NOW branch has no `return`; and an
+    `includedNOWS` of `[]` rejects every NOW, because an empty array is truthy.
+  - An answer with nothing in it is not a failure. No body, no `nowSubscriptions` member, or none
+    of them for the informant register, and the fragments come back with **no**
+    `matchedSubscriptions` member at all — a different document from one carrying an empty array,
+    and both shapes are pinned.
+  - The step is **pure**: the legacy activity fetches reference data itself, and here the answer is
+    passed in. `registerDate(fragments)` is the value that fetch must be dated with, and it is
+    derived inside `match` as well, because the legacy dereferences it before the fetch and a
+    fragment set carrying no register date must never reach reference data (blind spot BS-12).
+  - Twinned twice over. All twenty-one `SubscriptionsService` Jest cases are twinned against
+    byte-identical copies of their seven fixtures, asserting *which* subscriptions came back and not
+    only how many — every Jest case asserts a length alone, and **three** of them are named for
+    branches they never enter. The three `InformantRegisterSubscriptions` cases are twinned as what
+    they actually are: all three mock reference data with a bare array and return before any matching
+    runs, which is blind spot **BS-01**, the largest false-confidence surface in the legacy suite.
+  - Six further cases close BS-01 against goldens captured from the **real** legacy activity chain
+    (parity-pack `recorded/` inputs, Node commit `a8d3c00b`, clock pinned), covering the
+    informant-register filter, the empty-match short-circuit, the creditor-code wiring, duplicate
+    subscriptions and the vocabulary gate actually refusing a match.
+
 - 2026-08-22 — **The submission leg: `add-informant-register` is actually POSTed.** The stub
   submission client is replaced by `adapter/results/`, which posts one command per prosecuting
   authority to the results-owned endpoint at the exact vendor media type, and by the
@@ -34,6 +64,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - WireMock joins the build for this: one exact path, one exact vendor media type and a body the
     results-owned schema accepts are not assertable against a mocked HTTP client, which agrees with
     whatever the code does.
+
+### Fixed
+- 2026-08-23 — **A `null` in a reference-data or results array is refused, not quietly skipped.**
+  Wherever the legacy reads a property off an array element — `nowSubscriptions`
+  (`InformantRegisterSubscriptions/index.js:28`), a candidate or child subscription, a judicial
+  result (`SubscriptionsService.js:213`, `:234`, `:286`) or one of a result's prompts (`:224`,
+  `:287`) — a `null` element is a `TypeError` there and the hearing produces **no register for any
+  authority**. The port had been reading it as "a candidate that matches nothing" and carrying on,
+  which could hand a real prosecuting authority a register the legacy never sent. It is now
+  `TransformationFailedException`, dead-lettered, under `doc/DEVIATIONS.md` entry 7 with every other
+  legacy `TypeError`.
+  - `Json.dereferenced` reproduces the legacy's *reach*, not a blanket refusal. `some` and `find`
+    stop at the first answer, `filter` completes its pass whatever it has already found, and
+    `[].some(cb)` never runs `cb` at all — so an empty `includedResults`/`excludedResults` list still
+    answers false without reading a judicial result, because refusing there would lose a register the
+    legacy produces.
+
+### Changed
+- 2026-08-23 — **The subscription-matching coverage claim now matches the coverage.** Prompted by
+  review, the branch coverage of the two matching classes was measured rather than asserted:
+  `SubscriptionRules` was at 151 of 272 branches and `SubscriptionMatcher` at 22 of 26, against a
+  changelog and a test javadoc that read as though BS-01 were closed.
+  - The Jest twin named *"Should Not include subscriptions if excluded Prompts are matched with
+    result prompts"* was the third case found to pass for a reason its name does not describe: the
+    subscription first demands the included prompt `suretyNameAndAddress`, which the fixture's
+    results do not carry, so `excludedPrompts` was never evaluated and the case would have passed
+    with that logic deleted. It now asserts what actually decided it, and the branch it is named for
+    is driven separately.
+  - New cases drive what the twenty-one Jest cases and the six goldens leave unexecuted: EDT-only
+    matching, a rejected child subscription, a prison-register candidate the vocabulary gate refuses,
+    an informant-code match, the case-sensitivity of both code comparisons, `includedNOWS: []`
+    against an absent one, `userGroupVariants` as `[]` and as `null`, a missing
+    `subscriptionVocabulary`, the CPS shortcut and its `=== true`, every attendance, court, defendant,
+    custody and custodial-result combination the legacy writes, both included/excluded prompt and
+    result outcomes, a reference-data prompt with no `resultPromptReference`, and every positive
+    major-creditor path — which the informant register itself can never reach, because its vocabulary
+    is built with the two-argument constructor.
+  - Two claims the six goldens cannot decide are separated on hand-built fragments, because no
+    recorded hearing distinguishes them: the register's vocabulary being the **first** defendant's
+    (`index.js:46`) and judicial results being **pooled across every** defendant (`:53-64`). Both were
+    verified by mutation — inverting either one leaves all six goldens green and fails these.
+  - `SubscriptionRules` is now at 240 of 276 branches and `SubscriptionMatcher` at 23 of 26; the
+    residue is defensive null halves, not unpinned matching behaviour.
 
 ### Fixed
 - 2026-08-23 — **The startup time budget now covers the whole payload fetch** (second Story 1

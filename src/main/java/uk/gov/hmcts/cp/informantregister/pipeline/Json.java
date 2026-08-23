@@ -166,6 +166,44 @@ final class Json {
     }
 
     /**
+     * One element of an array the legacy then reads a property off, refused when it is JSON
+     * {@code null}.
+     *
+     * <p>{@link #dereferencedArray} is about the array; this is about what is <em>in</em> it.
+     * {@code list.filter(item => item.someFlag)} and {@code for (const item of list) item.someFlag}
+     * are both a {@code TypeError} the moment an element is {@code null} — and only then. A number,
+     * a string, an array or an empty object all answer {@code undefined} to a property read and are
+     * simply falsy, so those are passed through untouched and behave exactly as they do in the
+     * legacy.
+     *
+     * <p>Reading a null element as "a candidate that matches nothing" would be the more forgiving
+     * answer and the wrong one: the legacy produces <em>no register at all</em> for that payload,
+     * and carrying on would emit recipients it never emitted. That is the direction a bug-for-bug
+     * port must never drift in (`.claude/rules/design_rules.md`, "Parity and the Deviations
+     * Register"), so the element is refused and the delivery is parked where support can see it —
+     * deviations register entry 7, the same treatment every other legacy {@code TypeError} gets.
+     *
+     * <p>Callers must apply this <strong>where the legacy dereferences</strong> and nowhere else.
+     * JavaScript's iteration methods are lazy: {@code some} and {@code find} stop at the first hit,
+     * so a null after the deciding element is never reached, while {@code filter} and {@code forEach}
+     * always complete the pass. Each call site names the legacy line whose reach it reproduces.
+     *
+     * @param element the element the legacy is about to read a property off; may be {@code null}
+     * @param field   the name of the field the array came from, for the refusal message
+     * @return the element, when it can be read
+     * @throws TransformationFailedException if the element cannot be read
+     */
+    static JsonNode dereferenced(final JsonNode element, final String field) {
+        if (element == null || element.isNull() || element.isMissingNode()) {
+            // The field name is this service's own vocabulary, so it is safe to name. The element is
+            // the producer's, and may be defendant detail, so it is never quoted.
+            throw new TransformationFailedException(
+                    "element of '" + field + "' is null and cannot be read");
+        }
+        return element;
+    }
+
+    /**
      * Whether a field would satisfy {@code parent.field && parent.field.length > 0}.
      *
      * <p>The second half is the reason this is not {@code !array(node, field).isEmpty()}. A truthy
