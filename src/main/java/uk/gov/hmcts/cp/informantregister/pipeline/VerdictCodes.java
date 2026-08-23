@@ -31,7 +31,7 @@ final class VerdictCodes {
      * @param verdictCode the code from the payload; may be {@code null}
      * @return the type, or {@code null} when the code names none
      */
-    static String typeOf(final String verdictCode) {
+    /* default */ static String typeOf(final String verdictCode) {
         return verdictCode == null ? null : TYPES_BY_CODE.get(verdictCode);
     }
 }

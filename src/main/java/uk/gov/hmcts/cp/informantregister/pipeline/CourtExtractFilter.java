@@ -34,7 +34,7 @@ final class CourtExtractFilter {
      *
      * @param defendants the defendant contexts to filter, modified in place
      */
-    static void apply(final List<DefendantContext> defendants) {
+    /* default */ static void apply(final List<DefendantContext> defendants) {
         for (final DefendantContext defendant : defendants) {
             final List<RegisterResult> kept = new ArrayList<>();
             for (final RegisterResult result : defendant.results()) {

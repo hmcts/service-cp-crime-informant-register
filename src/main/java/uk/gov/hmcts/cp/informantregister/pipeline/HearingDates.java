@@ -340,7 +340,7 @@ public final class HearingDates {
         private final String value;
         private int position;
 
-        Digits(final String value) {
+        /* default */ Digits(final String value) {
             this.value = value;
         }
 
@@ -350,7 +350,7 @@ public final class HearingDates {
          * @param width the token's maximum width
          * @return the digits, or {@code null} when the value has none left
          */
-        String take(final int width) {
+        /* default */ String take(final int width) {
             while (position < value.length() && !Character.isDigit(value.charAt(position))) {
                 position++;
             }

@@ -52,7 +52,7 @@ final class CourtSessionMapper {
      * @param dates            the date service the start time is rendered by
      * @param resultDataMapper the mapper for the detail hanging off each result
      */
-    CourtSessionMapper(
+    /* default */ CourtSessionMapper(
             final JsonNode hearing,
             final RegisterFragment fragment,
             final HearingDates dates,
@@ -68,7 +68,7 @@ final class CourtSessionMapper {
      *
      * @return the session
      */
-    InformantRegisterHearing build() {
+    /* default */ InformantRegisterHearing build() {
         return new InformantRegisterHearing(
                 courtRoom(),
                 hearingStartTime(),

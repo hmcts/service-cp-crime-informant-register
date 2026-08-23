@@ -50,7 +50,7 @@ final class DefendantContextBuilder {
      * @param hearing the canonical hearing tree
      * @param dates   the date service used to order results
      */
-    DefendantContextBuilder(final JsonNode hearing, final HearingDates dates) {
+    /* default */ DefendantContextBuilder(final JsonNode hearing, final HearingDates dates) {
         this.hearing = hearing;
         this.dates = dates;
     }
@@ -63,7 +63,7 @@ final class DefendantContextBuilder {
      *
      * @return the defendant contexts
      */
-    List<DefendantContext> build() {
+    /* default */ List<DefendantContext> build() {
         final Map<String, DefendantContext> byMasterDefendant = new LinkedHashMap<>();
 
         setJudicialResultsAtDefendantAndOffenceLevel(byMasterDefendant);

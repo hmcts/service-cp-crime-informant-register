@@ -38,7 +38,7 @@ final class ResultDataMapper {
      *
      * @param dates the date service the rendered timestamps come from
      */
-    ResultDataMapper(final HearingDates dates) {
+    /* default */ ResultDataMapper(final HearingDates dates) {
         this.dates = dates;
     }
 
@@ -48,7 +48,7 @@ final class ResultDataMapper {
      * @param judicialResult the judicial result, as a canonical tree
      * @return the result data, or {@code null} when the legacy creates none
      */
-    InformantRegisterResultData build(final JsonNode judicialResult) {
+    /* default */ InformantRegisterResultData build(final JsonNode judicialResult) {
         if (!canCreate(judicialResult)) {
             return null;
         }

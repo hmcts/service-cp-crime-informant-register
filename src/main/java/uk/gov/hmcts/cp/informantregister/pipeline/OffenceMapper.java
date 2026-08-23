@@ -47,7 +47,7 @@ final class OffenceMapper {
      * @param defendant    the defendant whose offences are being gathered
      * @param resultMapper the mapper for each offence's own results
      */
-    OffenceMapper(
+    /* default */ OffenceMapper(
             final JsonNode hearing,
             final RegisterFragment fragment,
             final RegisterDefendant defendant,
@@ -63,7 +63,7 @@ final class OffenceMapper {
      *
      * @return the offences, in the order the legacy accumulates them; never {@code null}
      */
-    List<InformantRegisterOffence> build() {
+    /* default */ List<InformantRegisterOffence> build() {
         final List<InformantRegisterOffence> offences = new ArrayList<>();
         addProsecutionCaseOffences(offences);
         addCourtApplicationOffences(offences);

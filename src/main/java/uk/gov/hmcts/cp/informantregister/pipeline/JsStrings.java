@@ -37,7 +37,7 @@ final class JsStrings {
      * @param value the string to trim; may be {@code null}
      * @return the trimmed string, or {@code null} when there was none
      */
-    static String trim(final String value) {
+    /* default */ static String trim(final String value) {
         if (value == null) {
             return null;
         }

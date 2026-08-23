@@ -31,7 +31,7 @@ final class FragmentLists {
      * @param <T>    the element type
      * @return an unmodifiable copy, or {@code null} if the list itself was absent
      */
-    static <T> List<T> frozen(final List<T> values) {
+    /* default */ static <T> List<T> frozen(final List<T> values) {
         return values == null ? null : Collections.unmodifiableList(new ArrayList<>(values));
     }
 }

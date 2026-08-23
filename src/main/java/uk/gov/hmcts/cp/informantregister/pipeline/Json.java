@@ -36,7 +36,7 @@ final class Json {
      * @param field the field name
      * @return the field's node, or {@code null}
      */
-    static JsonNode at(final JsonNode node, final String field) {
+    /* default */ static JsonNode at(final JsonNode node, final String field) {
         return node == null ? null : node.get(field);
     }
 
@@ -51,7 +51,7 @@ final class Json {
      * @param field the field name
      * @return the field's text, or {@code null}
      */
-    static String text(final JsonNode node, final String field) {
+    /* default */ static String text(final JsonNode node, final String field) {
         final JsonNode value = at(node, field);
         return value == null || value.isNull() ? null : value.stringValue();
     }
@@ -63,7 +63,7 @@ final class Json {
      * @param field the field name
      * @return whether the field is truthy
      */
-    static boolean truthy(final JsonNode node, final String field) {
+    /* default */ static boolean truthy(final JsonNode node, final String field) {
         return truthy(at(node, field));
     }
 
@@ -73,7 +73,7 @@ final class Json {
      * @param value the value to test; may be {@code null}
      * @return whether the value is truthy
      */
-    static boolean truthy(final JsonNode value) {
+    /* default */ static boolean truthy(final JsonNode value) {
         if (value == null || value.isNull() || value.isMissingNode()) {
             return false;
         }
@@ -119,7 +119,7 @@ final class Json {
      * @return the elements, never {@code null}
      * @throws TransformationFailedException if the field holds a truthy value that is not an array
      */
-    static List<JsonNode> array(final JsonNode node, final String field) {
+    /* default */ static List<JsonNode> array(final JsonNode node, final String field) {
         final JsonNode value = at(node, field);
         if (!truthy(value)) {
             return Collections.emptyList();
@@ -154,7 +154,7 @@ final class Json {
      * @return the elements, never {@code null}
      * @throws TransformationFailedException if the field cannot be iterated
      */
-    static List<JsonNode> dereferencedArray(final JsonNode node, final String field) {
+    /* default */ static List<JsonNode> dereferencedArray(final JsonNode node, final String field) {
         final JsonNode value = at(node, field);
         if (value == null || !value.isArray()) {
             // The field name is this service's own vocabulary, so it is safe to name. The value is
@@ -185,7 +185,7 @@ final class Json {
      * @return the field's value, never {@code null}
      * @throws TransformationFailedException if the field is absent or JSON null
      */
-    static JsonNode dereferenced(final JsonNode node, final String field) {
+    /* default */ static JsonNode dereferenced(final JsonNode node, final String field) {
         final JsonNode value = at(node, field);
         if (value == null || value.isNull()) {
             // The field name is this service's own vocabulary, so it is safe to name. The value is
@@ -225,7 +225,7 @@ final class Json {
      * @return the element, never {@code null}
      * @throws TransformationFailedException if the element cannot be read through
      */
-    static JsonNode dereferencedElement(final JsonNode element, final String collection) {
+    /* default */ static JsonNode dereferencedElement(final JsonNode element, final String collection) {
         if (element == null || element.isNull() || element.isMissingNode()) {
             // The collection name is this service's own vocabulary, so it is safe to name. The
             // element is the producer's, and may be defendant detail, so it is never quoted.
@@ -248,7 +248,7 @@ final class Json {
      * @param field the field name
      * @return whether the field is an array with at least one element
      */
-    static boolean nonEmptyArray(final JsonNode node, final String field) {
+    /* default */ static boolean nonEmptyArray(final JsonNode node, final String field) {
         final JsonNode value = at(node, field);
         return value != null && value.isArray() && !value.isEmpty();
     }

@@ -47,7 +47,7 @@ final class VocabularyBuilder {
      *
      * @param hearing the canonical hearing tree
      */
-    VocabularyBuilder(final JsonNode hearing) {
+    /* default */ VocabularyBuilder(final JsonNode hearing) {
         this.hearing = hearing;
     }
 
@@ -57,7 +57,7 @@ final class VocabularyBuilder {
      * @param defendant the defendant context, already filtered for court extract
      * @return the vocabulary flags
      */
-    RegisterVocabulary build(final DefendantContext defendant) {
+    /* default */ RegisterVocabulary build(final DefendantContext defendant) {
         final boolean custodyIsPolice = custodyAt(defendant, POLICE_STATION);
         final boolean custodyIsPrison = custodyAt(defendant, PRISON);
 

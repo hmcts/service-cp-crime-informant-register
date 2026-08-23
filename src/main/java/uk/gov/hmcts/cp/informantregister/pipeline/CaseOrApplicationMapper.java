@@ -46,7 +46,7 @@ final class CaseOrApplicationMapper {
      * @param defendant    the defendant whose cases and applications are being listed
      * @param resultMapper the mapper for each entry's own results
      */
-    CaseOrApplicationMapper(
+    /* default */ CaseOrApplicationMapper(
             final JsonNode hearing,
             final RegisterFragment fragment,
             final RegisterDefendant defendant,
@@ -62,7 +62,7 @@ final class CaseOrApplicationMapper {
      *
      * @return the entries, or {@code null} when the defendant has none the hearing carries
      */
-    List<InformantRegisterCaseOrApplication> build() {
+    /* default */ List<InformantRegisterCaseOrApplication> build() {
         final List<InformantRegisterCaseOrApplication> entries = new ArrayList<>();
         addCases(entries);
         addApplications(entries);

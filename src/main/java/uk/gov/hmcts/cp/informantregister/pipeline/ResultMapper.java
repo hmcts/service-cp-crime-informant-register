@@ -42,7 +42,7 @@ final class ResultMapper {
      * @param defendant        the defendant whose results are being read
      * @param resultDataMapper the mapper for the detail hanging off each result
      */
-    ResultMapper(final RegisterDefendant defendant, final ResultDataMapper resultDataMapper) {
+    /* default */ ResultMapper(final RegisterDefendant defendant, final ResultDataMapper resultDataMapper) {
         this.defendant = defendant;
         this.resultDataMapper = resultDataMapper;
     }
@@ -52,7 +52,7 @@ final class ResultMapper {
      *
      * @return the results, or {@code null} when there are none
      */
-    List<InformantRegisterResult> defendantLevel() {
+    /* default */ List<InformantRegisterResult> defendantLevel() {
         return select(result -> result.level() == ResultLevel.DEFENDANT);
     }
 
@@ -62,7 +62,7 @@ final class ResultMapper {
      * @param prosecutionCaseId the case to select
      * @return the results, or {@code null} when there are none
      */
-    List<InformantRegisterResult> caseLevel(final String prosecutionCaseId) {
+    /* default */ List<InformantRegisterResult> caseLevel(final String prosecutionCaseId) {
         return select(result -> result.level() == ResultLevel.CASE
                 && Objects.equals(result.prosecutionCaseId(), prosecutionCaseId));
     }
@@ -76,7 +76,7 @@ final class ResultMapper {
      * @param offence the offence to select for
      * @return the results, or {@code null} when there are none
      */
-    List<InformantRegisterResult> offenceLevel(final JsonNode offence) {
+    /* default */ List<InformantRegisterResult> offenceLevel(final JsonNode offence) {
         final String offenceId = Json.text(offence, "id");
         return select(result -> result.level() == ResultLevel.OFFENCE
                 && Objects.equals(result.offenceId(), offenceId));
@@ -88,7 +88,7 @@ final class ResultMapper {
      * @param applicationId the application to select
      * @return the results, or {@code null} when there are none
      */
-    List<InformantRegisterResult> applicationLevel(final String applicationId) {
+    /* default */ List<InformantRegisterResult> applicationLevel(final String applicationId) {
         return select(result -> result.level() == ResultLevel.APPLICATION
                 && Objects.equals(result.applicationId(), applicationId));
     }

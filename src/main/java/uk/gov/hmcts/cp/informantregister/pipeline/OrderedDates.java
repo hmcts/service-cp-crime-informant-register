@@ -57,7 +57,7 @@ final class OrderedDates {
      * @return the latest ordered date's text, or {@code null} when there is nothing to compare
      * @throws TransformationFailedException if the comparator meets a date it cannot read
      */
-    static String latest(final List<JsonNode> orderedDates, final HearingDates dates) {
+    /* default */ static String latest(final List<JsonNode> orderedDates, final HearingDates dates) {
         final List<JsonNode> compared = new ArrayList<>(orderedDates.size());
         for (final JsonNode orderedDate : orderedDates) {
             if (orderedDate != null) {
