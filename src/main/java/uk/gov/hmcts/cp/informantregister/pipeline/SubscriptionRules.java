@@ -60,6 +60,13 @@ import uk.gov.hmcts.cp.informantregister.domain.UserGroupType;
  * ({@code SubscriptionsService.js:56-59}) and never calls it; the CPS check that does run is written
  * inline at {@code :125}. Porting the dead copy would suggest a second CPS rule exists.
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+// PMD.AvoidDuplicateLiterals: the repeats are legacy JSON field names. Spelling each one at
+// the site that reads it is what lets a reviewer check the line against the property access
+// it ports; behind a constant the field name sits one indirection from the code being audited.
+@SuppressWarnings({"PMD.OnlyOneReturn", "PMD.AvoidDuplicateLiterals"})
 public final class SubscriptionRules {
 
     private static final Logger LOG = LoggerFactory.getLogger(SubscriptionRules.class);

@@ -62,6 +62,10 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * exception and stays a refusal: it ports {@code DateService.parse}, which really does
  * {@code throw new Error('Invalid date format')}.
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+@SuppressWarnings("PMD.OnlyOneReturn")
 public final class HearingDates {
 
     private static final ZoneId LONDON = ZoneId.of("Europe/London");

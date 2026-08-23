@@ -24,6 +24,13 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * <p>Nothing here mutates: every method reads. The tree belongs to whoever fetched it, and the core
  * treats it as immutable (constitution Principle IV).
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+// PMD.ShortClassName/ShortMethodName: Json and its at() are terse on purpose, so a ported line
+// reads at the density of the legacy property access it stands in for. Widening them would
+// rewrite the shape of every mirrored line in this package.
+@SuppressWarnings({"PMD.OnlyOneReturn", "PMD.ShortClassName", "PMD.ShortMethodName"})
 final class Json {
 
     private Json() {

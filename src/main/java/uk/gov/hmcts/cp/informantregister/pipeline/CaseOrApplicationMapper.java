@@ -31,6 +31,10 @@ import uk.gov.hmcts.cp.informantregister.domain.RegisterFragment;
  * legacy returns {@code undefined} when it produced nothing, and the contract gives the array
  * {@code minItems: 1}, so an absent component is the valid shape and an empty one is not.
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+@SuppressWarnings("PMD.OnlyOneReturn")
 final class CaseOrApplicationMapper {
 
     private final JsonNode hearing;

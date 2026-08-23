@@ -17,6 +17,10 @@ package uk.gov.hmcts.cp.informantregister.pipeline;
  * less the four C0 information separators {@code U+001C}–{@code U+001F}, which Java calls
  * whitespace and ECMAScript does not.
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+@SuppressWarnings("PMD.OnlyOneReturn")
 final class JsStrings {
 
     /** The byte-order mark, which ECMAScript trims and no Java predicate calls whitespace. */

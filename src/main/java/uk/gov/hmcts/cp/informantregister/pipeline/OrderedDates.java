@@ -43,6 +43,10 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * <p>A port that simply compares everything refuses hearings the legacy files, which is the one
  * direction a bug-for-bug port must not drift in.
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+@SuppressWarnings("PMD.OnlyOneReturn")
 final class OrderedDates {
 
     /** The size at which {@code sort} returns its input without ever calling the comparator. */

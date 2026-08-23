@@ -181,7 +181,13 @@ public class InformantRegisterMessageListener {
      * <p>Nothing escapes: a decision is the only thing this method can produce, which is what makes
      * the settlement below unconditional.
      */
-    @SuppressWarnings("PMD.AvoidCatchingGenericException")
+    @SuppressWarnings({"PMD.AvoidCatchingGenericException", "PMD.IdenticalCatchBranches"})
+    // PMD.IdenticalCatchBranches: the contention branch and the catch-all below it do read alike,
+    // and they cannot be merged. A multi-catch may not name a type and its own supertype, and the
+    // ordering here *is* the behaviour — ConcurrencyFailureException has to be caught above the
+    // outage classes it extends, or a deadlock would stop the queue. Collapsing the two would move
+    // that branch below them and change what a contended row does.
+    //
     // Deliberate, and narrow: this is the boundary that owns the delivery's settlement. An exception
     // escaping here would leave the message locked with no settlement attempt — the silent loss the
     // whole design exists to prevent — so the catch is total and each branch still logs at ERROR and

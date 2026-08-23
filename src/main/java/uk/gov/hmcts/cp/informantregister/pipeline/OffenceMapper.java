@@ -32,6 +32,13 @@ import uk.gov.hmcts.cp.informantregister.domain.RegisterFragment;
  * and the legacy suite never executes its false leg (parity-pack BS-05). It is asserted here on both
  * legs, for the authority and for the defendant.
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+// PMD.AvoidDuplicateLiterals: the repeats are legacy JSON field names. Spelling each one at
+// the site that reads it is what lets a reviewer check the line against the property access
+// it ports; behind a constant the field name sits one indirection from the code being audited.
+@SuppressWarnings({"PMD.OnlyOneReturn", "PMD.AvoidDuplicateLiterals"})
 final class OffenceMapper {
 
     private final JsonNode hearing;

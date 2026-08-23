@@ -29,6 +29,10 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * defaults, and a hearing with no court centre is not something this service should quietly file a
  * register for.
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+@SuppressWarnings("PMD.OnlyOneReturn")
 final class VocabularyBuilder {
 
     /** The prompt reference that marks a result as custodial. */

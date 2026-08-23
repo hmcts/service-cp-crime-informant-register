@@ -24,6 +24,13 @@ import uk.gov.hmcts.cp.informantregister.domain.RegisterResult;
  * {@code Y} in any case and a missing {@code courtExtract} means dropped. Collapsing "absent" and
  * "null" together — the obvious simplification — would silently keep prompts the legacy discards.
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+// PMD.AvoidInstantiatingObjectsInLoops: each allocation is per-iteration by necessity — one
+// context per defendant, one authority per case, one result list per defendant — so hoisting
+// any of them out of its loop would be a bug rather than an optimisation.
+@SuppressWarnings({"PMD.OnlyOneReturn", "PMD.AvoidInstantiatingObjectsInLoops"})
 final class CourtExtractFilter {
 
     private CourtExtractFilter() {
