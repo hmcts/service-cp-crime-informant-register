@@ -66,6 +66,9 @@ public class PropertiesValidator implements InitializingBean {
     private static final String INITIAL_BACKOFF = "informantregister.results.initial-backoff";
     private static final String MAX_BACKOFF = "informantregister.results.max-backoff";
 
+    /** Shared so the wording of a lower-bound refusal is one string and not four. */
+    private static final String MUST_BE_AT_LEAST = ") must be at least ";
+
     /** The first attempt is the POST itself, so a policy that permits fewer never sends one. */
     private static final int MINIMUM_ATTEMPTS = 1;
 
@@ -164,7 +167,7 @@ public class PropertiesValidator implements InitializingBean {
             final InformantRegisterProperties.Referencedata referencedata) {
         if (referencedata.maxAttempts() < MINIMUM_ATTEMPTS) {
             throw new IllegalStateException(
-                    REFDATA_MAX_ATTEMPTS + " (" + referencedata.maxAttempts() + ") must be at least "
+                    REFDATA_MAX_ATTEMPTS + " (" + referencedata.maxAttempts() + MUST_BE_AT_LEAST
                             + MINIMUM_ATTEMPTS + " — at zero the query is never made and every"
                             + " hearing that produced a register is parked having asked nobody");
         }
@@ -194,7 +197,7 @@ public class PropertiesValidator implements InitializingBean {
         final Duration required = deadline.plus(RENEWAL_MARGIN);
         if (renewal.compareTo(required) < 0) {
             throw new IllegalStateException(
-                    RENEW_DURATION + " (" + renewal + ") must be at least " + PROCESSING_DEADLINE
+                    RENEW_DURATION + " (" + renewal + MUST_BE_AT_LEAST + PROCESSING_DEADLINE
                             + " plus the " + RENEWAL_MARGIN + " renewal margin (" + required
                             + "), so the broker lock outlives any legitimate run");
         }
@@ -357,7 +360,7 @@ public class PropertiesValidator implements InitializingBean {
         final InformantRegisterProperties.Results results = properties.results();
         if (results.maxAttempts() < MINIMUM_ATTEMPTS) {
             throw new IllegalStateException(
-                    RESULTS_MAX_ATTEMPTS + " (" + results.maxAttempts() + ") must be at least "
+                    RESULTS_MAX_ATTEMPTS + " (" + results.maxAttempts() + MUST_BE_AT_LEAST
                             + MINIMUM_ATTEMPTS + ": a policy with no attempts posts no register at "
                             + "all and hands every hearing back unsent");
         }
@@ -368,7 +371,7 @@ public class PropertiesValidator implements InitializingBean {
         }
         if (results.maxBackoff().compareTo(results.initialBackoff()) < 0) {
             throw new IllegalStateException(
-                    MAX_BACKOFF + " (" + results.maxBackoff() + ") must be at least "
+                    MAX_BACKOFF + " (" + results.maxBackoff() + MUST_BE_AT_LEAST
                             + INITIAL_BACKOFF + " (" + results.initialBackoff() + "), or the ceiling "
                             + "shortens the very wait it exists to bound");
         }
