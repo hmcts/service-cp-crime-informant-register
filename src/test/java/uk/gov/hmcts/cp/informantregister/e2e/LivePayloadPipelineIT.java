@@ -96,6 +96,9 @@ class LivePayloadPipelineIT {
                 ServiceBusEmulatorTestSupport::connectionString);
         // The real adapter, which is the whole point of this suite.
         registry.add("informantregister.payload.mode", () -> "LIVE");
+        // The payload source is the subject here, not the register's recipients, so reference data
+        // stays on the refusing stub and no server has to be stood up for it.
+        registry.add("informantregister.referencedata.mode", () -> "STUB");
         registry.add("informantregister.payload.redis.host", RedisTestSupport::host);
         registry.add("informantregister.payload.redis.port", RedisTestSupport::port);
         registry.add("informantregister.results.base-url", queryApi::baseUrl);

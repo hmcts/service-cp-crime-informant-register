@@ -22,6 +22,29 @@ import uk.gov.hmcts.cp.informantregister.domain.ReferenceDataUnavailableExceptio
  * every transport failure and returns {@code null} ({@code ReferenceDataService.js:52}), which is
  * indistinguishable on the wire from "nobody is subscribed" — so an outage silently ships a register
  * that reaches nobody. This port refuses instead; see {@code doc/DEVIATIONS.md} entry 14.
+ *
+ * <p><strong>Why the answer crosses as a tree and not as a record.</strong> This is the second
+ * document that enters the core as {@code JsonNode}, and it is here for the reason Principle IV
+ * gives for the first: it is owned elsewhere, sparsely populated, and nothing in it may be lost.
+ * Three specific things forbid a typed model of it.
+ *
+ * <ul>
+ *   <li>The matched subscriptions are not only <em>read</em> here — they are carried whole into the
+ *       outbound mapping ({@code OutboundInformantRegister/index.js:44} →
+ *       {@code RecipientMapper.js:15-22}), so a binding that dropped a member reference data added
+ *       would drop a recipient's address out of a register. Unknown fields must survive untouched.
+ *   <li>The matching rules read arbitrary depths of a subscription's own shape — nested child
+ *       subscriptions, vocabulary flags, result and prompt lists ({@code SubscriptionsService.js
+ *       :213,224,234,286,287}) — and reproduce the legacy's dereference of each element, including
+ *       the {@code TypeError} a {@code null} element raises (registered deviation 7). A record tree
+ *       cannot express "this element was JSON null and reading it must fail".
+ *   <li>The shape is reference data's contract, not this service's. Principle IV requires typed
+ *       records for what this service <em>produces</em>; this is something it consumes.
+ * </ul>
+ *
+ * <p>What the adapter still owes, and pays, is the difference between an answer and no answer:
+ * anything but a 2xx carrying readable JSON is reported rather than returned. Shape is the matching
+ * step's business, because in this flow shape is a business outcome.
  */
 public interface NowSubscriptionsSource {
 

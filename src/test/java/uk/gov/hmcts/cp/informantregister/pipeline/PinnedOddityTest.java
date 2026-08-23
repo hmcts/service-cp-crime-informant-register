@@ -47,6 +47,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * exception (entry 7), one is a reference-data outage the legacy ships a recipient-less register
  * through (entry 14), and one is a value the typed outbound tree cannot carry (entry 10). Those are
  * asserted as the refusal the register records, not as the legacy's documents.
+ *
+ * <p>A seventh difference runs underneath {@link #matchesTheRecording}, on whichever of these cases
+ * has a sitting day: {@code hearingStartTime} is now the London wall clock with London's true offset
+ * ({@code doc/DEVIATIONS.md} entry 15), while the goldens keep the oracle's D9 rendering. The
+ * comparator reconciles the two by deriving the required value from the golden rather than by
+ * ignoring the component — see {@code RegisteredFieldDeviations}. Note that the {@code d09} pin
+ * below is untouched by it: that entry asserts on {@code registerDate} and {@code fileName}, which
+ * still carry D9's rendering.
  */
 @DisplayName("Pinned oddities — a correction here needs a deviations-register entry first")
 class PinnedOddityTest {

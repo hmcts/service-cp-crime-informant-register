@@ -92,6 +92,38 @@ informantregister:
     connect-timeout: 5s
     read-timeout: 30s
 
+  referencedata:
+    # LIVE | STUB. LIVE is the reference-data query-API adapter and is what an environment that says
+    # nothing gets: a service that has to be told where its register's recipients come from is a
+    # service that will one day be deployed not asking. STUB is the refusing stub, for local runs and
+    # for the container suites whose subject is settlement and the processed log rather than the
+    # register's recipients; startup refuses it wherever the deployed credential source
+    # (servicebus.namespace) is in use, because a pod that can never address a register parks every
+    # hearing carrying one.
+    mode: LIVE
+    # LOCAL DEFAULT ONLY, and not a value chosen here: it is the baseUri the reference-data query
+    # API's own RAML declares. Deployed environments set REFERENCEDATA_BASE_URL to the internal mesh
+    # host. Its own key rather than a member of results.*, because it is a different deployment
+    # behind a different host.
+    base-url: ${REFERENCEDATA_BASE_URL:http://localhost:8080}
+    # The CJSCPPUID identity, a secret from Key Vault via the Secrets Store CSI driver. It falls back
+    # to the Results identity because the function app threads a single `cjscppuid` through both
+    # calls (ReferenceDataService.js:44), so an environment that mounts one identity is not asked for
+    # a second; REFERENCEDATA_SYSTEM_USER_ID exists for the day reference data authorises a different
+    # one. REQUIRED in LIVE mode: an anonymous query is refused every time, so the service refuses to
+    # start rather than park every hearing that produced a register.
+    system-user-id: ${REFERENCEDATA_SYSTEM_USER_ID:${RESULTS_SYSTEM_USER_ID:}}
+    # The function app's DEFAULT_PUBLISH_RETRY_COUNT and DEFAULT_PUBLISH_RETRY_INTERVAL
+    # (AxiosRetryWrapper.js:10-11). This call goes through the same wrapper the payload fallback
+    # does, so the rule is ported rather than redesigned — which includes the legacy's inverted
+    # policy: a status at or below 429 is never retried, while a 5xx is.
+    max-attempts: 3
+    retry-interval: 1s
+    connect-timeout: 5s
+    # Shorter than the processing deadline on purpose, for the reason the payload read's is: a read
+    # that outlives the deadline outlives the claim behind it.
+    read-timeout: 30s
+
   stub:
     # NONE | TRANSIENT. Test and local profiles only: it is deliberately not a field in the message
     # and not an HTTP endpoint, either of which would be a production fault-injection surface.

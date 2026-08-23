@@ -11,8 +11,9 @@ import org.springframework.stereotype.Component;
  * <p>Everything checked here fails quietly in production and loudly at startup, so startup is where
  * it is made to fail: a run that can outlive its claim, a broker lock that can expire mid-run, an
  * ambiguous credential source, a payload source that cannot fetch anything, a payload fetch whose
- * own worst case outlasts the run it happens inside, and a submission policy that cannot make the
- * call it exists to make.
+ * own worst case outlasts the run it happens inside, a now-subscriptions source that cannot reach
+ * reference data or whose read can outlast that same run, and a submission policy that cannot make
+ * the call it exists to make.
  *
  * <p>The payload rules are the ones a healthy-looking pod hides. A live source with no identity, a
  * fallback with no attempts and a cache with no address all produce a service that consumes
@@ -56,9 +57,18 @@ public class PropertiesValidator implements InitializingBean {
     private static final String FALLBACK_MAX_ATTEMPTS = FALLBACK + ".max-attempts";
     private static final String RETRY_INTERVAL = FALLBACK + ".retry-interval";
     private static final String REDIS = "informantregister.payload.redis";
+    private static final String REFDATA = "informantregister.referencedata";
+    private static final String SUBSCRIPTIONS_MODE = REFDATA + ".mode";
+    private static final String REFDATA_BASE_URL = REFDATA + ".base-url";
+    private static final String REFDATA_SYSTEM_USER_ID = REFDATA + ".system-user-id";
+    private static final String REFDATA_MAX_ATTEMPTS = REFDATA + ".max-attempts";
+    private static final String REFDATA_RETRY_INTERVAL = REFDATA + ".retry-interval";
     private static final String RESULTS_MAX_ATTEMPTS = "informantregister.results.max-attempts";
     private static final String INITIAL_BACKOFF = "informantregister.results.initial-backoff";
     private static final String MAX_BACKOFF = "informantregister.results.max-backoff";
+
+    /** Shared so the wording of a lower-bound refusal is one string and not four. */
+    private static final String MUST_BE_AT_LEAST = ") must be at least ";
 
     /** The first attempt is the POST itself, so a policy that permits fewer never sends one. */
     private static final int MINIMUM_ATTEMPTS = 1;
@@ -86,7 +96,129 @@ public class PropertiesValidator implements InitializingBean {
         validateLockOutlivesTheRun(properties);
         validateExactlyOneCredentialSource(properties);
         validateThePayloadSourceCanFetch(properties);
+        validateTheSubscriptionsSourceCanFetch(properties);
         validateTheRetryPolicyCanPost(properties);
+    }
+
+    /**
+     * The now-subscriptions source must be one that can actually reach reference data.
+     *
+     * <p>The same class of hole the payload rules close, on the port that decides who a register is
+     * addressed to. A live source with no endpoint or no identity is a pod that abandons, redelivers
+     * and finally parks every hearing that produced a register, while readiness, liveness and the
+     * queue's own metrics all say the deployment succeeded — and unlike the payload case, nothing
+     * downstream ever gets far enough to notice.
+     *
+     * <p>Each rule is asked of the source actually selected. The endpoint, the identity and the retry
+     * settings belong to the live adapter and {@code STUB} builds none of them
+     * ({@link LiveSubscriptionsConfig}, {@link StubSubscriptionsConfig}), so holding a stub run to
+     * settings nothing will read would fail a local run configured exactly as it means to be.
+     */
+    private static void validateTheSubscriptionsSourceCanFetch(
+            final InformantRegisterProperties properties) {
+
+        final InformantRegisterProperties.Referencedata referencedata = properties.referencedata();
+        if (referencedata.mode() == SubscriptionsSourceMode.STUB) {
+            validateTheRefusingStubIsNotDeployed(properties);
+        } else {
+            validateTheLiveSourceCanAskReferenceData(referencedata);
+            validateTheSubscriptionsReadIsAttempted(referencedata);
+            validateTheSubscriptionsReadFinishesInsideTheRun(properties);
+        }
+    }
+
+    /**
+     * The now-subscriptions read happens inside the run, so its worst case has to fit inside it.
+     *
+     * <p>The same rule {@link #validateTheFetchFinishesInsideTheRun} applies to the payload fetch,
+     * and it is needed here for the same reason: every attempt can spend its connect and its read
+     * timeout, with the retry interval between them, and nothing else bounds the total. Ten attempts
+     * against a minute-long read is a startup that succeeds and a run that is still waiting on a
+     * socket ten minutes later — long after its claim became reclaimable and another delivery began
+     * processing the same request, which is the one outcome the deadline exists to prevent.
+     *
+     * <p>Strictly shorter, not merely no longer, for the reason the payload rule is: the run tests
+     * the deadline after the step returns, so a read that fills it exactly leaves the rest of the
+     * run nothing and can only end at {@code PROCESSING_DEADLINE_EXCEEDED}.
+     *
+     * <p>The bound is per-fetch, exactly as the payload one is: this rule refuses a reference-data
+     * read that cannot finish inside a run, not a run whose three network steps together cannot.
+     * A combined budget across the payload fetch, this read and the submission retries is a wider
+     * decision than the hole being closed here — it would refuse the shipped defaults — and belongs
+     * with the design authority rather than with a validator rule added in passing.
+     */
+    private static void validateTheSubscriptionsReadFinishesInsideTheRun(
+            final InformantRegisterProperties properties) {
+
+        final InformantRegisterProperties.Referencedata referencedata = properties.referencedata();
+        final Duration deadline = properties.claim().processingDeadline();
+        final Duration worstCase = referencedata.connectTimeout()
+                .plus(referencedata.readTimeout())
+                .multipliedBy(referencedata.maxAttempts())
+                .plus(referencedata.retryInterval()
+                        .multipliedBy(referencedata.maxAttempts() - 1L));
+        if (worstCase.compareTo(deadline) >= 0) {
+            throw new IllegalStateException(
+                    "The " + REFDATA + " settings allow a now-subscriptions read of up to "
+                            + worstCase + ", which is not strictly shorter than "
+                            + PROCESSING_DEADLINE + " (" + deadline + "); a run must be able to stop"
+                            + " itself while its claim is still its own");
+        }
+    }
+
+    /**
+     * Constitution Principle V, the same rule {@link #validateTheStubIsNotDeployed} applies to the
+     * payload stub. This one fails loudly rather than quietly — a refusal is recorded and the
+     * delivery handed back — but a deployed pod running it can never address a register at all, so
+     * every hearing that produces one is parked for ever.
+     */
+    private static void validateTheRefusingStubIsNotDeployed(
+            final InformantRegisterProperties properties) {
+        if (hasText(properties.servicebus().namespace())) {
+            throw new IllegalStateException(
+                    SUBSCRIPTIONS_MODE + " is STUB while " + NAMESPACE + " is set, which is a"
+                            + " deployed environment — the stub asks reference data nothing, so every"
+                            + " hearing that produced a register would be parked unaddressed");
+        }
+    }
+
+    /**
+     * A query needs somewhere to go and somebody to be from.
+     *
+     * <p>{@code CJSCPPUID} is part of the reference-data query's own contract and its access-control
+     * rules authorise on it, so an anonymous query is a refused query — every time, for ever.
+     */
+    private static void validateTheLiveSourceCanAskReferenceData(
+            final InformantRegisterProperties.Referencedata referencedata) {
+        if (!hasText(referencedata.baseUrl())) {
+            throw new IllegalStateException(
+                    REFDATA_BASE_URL + " must name the reference-data context when "
+                            + SUBSCRIPTIONS_MODE + " is LIVE, because the now-subscriptions query has"
+                            + " nowhere to go without it");
+        }
+        if (!hasText(referencedata.systemUserId())) {
+            throw new IllegalStateException(
+                    REFDATA_SYSTEM_USER_ID + " must be set when " + SUBSCRIPTIONS_MODE + " is LIVE,"
+                            + " because reference data authorises the now-subscriptions query on"
+                            + " CJSCPPUID and refuses an anonymous one");
+        }
+    }
+
+    private static void validateTheSubscriptionsReadIsAttempted(
+            final InformantRegisterProperties.Referencedata referencedata) {
+        if (referencedata.maxAttempts() < MINIMUM_ATTEMPTS) {
+            throw new IllegalStateException(
+                    REFDATA_MAX_ATTEMPTS + " (" + referencedata.maxAttempts() + MUST_BE_AT_LEAST
+                            + MINIMUM_ATTEMPTS + " — at zero the query is never made and every"
+                            + " hearing that produced a register is parked having asked nobody");
+        }
+        if (referencedata.retryInterval().isNegative()) {
+            throw new IllegalStateException(
+                    REFDATA_RETRY_INTERVAL + " (" + referencedata.retryInterval()
+                            + ") must not be negative");
+        }
+        requirePositive(referencedata.connectTimeout(), REFDATA + ".connect-timeout");
+        requirePositive(referencedata.readTimeout(), REFDATA + ".read-timeout");
     }
 
     private static void validateRunFinishesBeforeTheClaimExpires(
@@ -106,7 +238,7 @@ public class PropertiesValidator implements InitializingBean {
         final Duration required = deadline.plus(RENEWAL_MARGIN);
         if (renewal.compareTo(required) < 0) {
             throw new IllegalStateException(
-                    RENEW_DURATION + " (" + renewal + ") must be at least " + PROCESSING_DEADLINE
+                    RENEW_DURATION + " (" + renewal + MUST_BE_AT_LEAST + PROCESSING_DEADLINE
                             + " plus the " + RENEWAL_MARGIN + " renewal margin (" + required
                             + "), so the broker lock outlives any legitimate run");
         }
@@ -269,7 +401,7 @@ public class PropertiesValidator implements InitializingBean {
         final InformantRegisterProperties.Results results = properties.results();
         if (results.maxAttempts() < MINIMUM_ATTEMPTS) {
             throw new IllegalStateException(
-                    RESULTS_MAX_ATTEMPTS + " (" + results.maxAttempts() + ") must be at least "
+                    RESULTS_MAX_ATTEMPTS + " (" + results.maxAttempts() + MUST_BE_AT_LEAST
                             + MINIMUM_ATTEMPTS + ": a policy with no attempts posts no register at "
                             + "all and hands every hearing back unsent");
         }
@@ -280,7 +412,7 @@ public class PropertiesValidator implements InitializingBean {
         }
         if (results.maxBackoff().compareTo(results.initialBackoff()) < 0) {
             throw new IllegalStateException(
-                    MAX_BACKOFF + " (" + results.maxBackoff() + ") must be at least "
+                    MAX_BACKOFF + " (" + results.maxBackoff() + MUST_BE_AT_LEAST
                             + INITIAL_BACKOFF + " (" + results.initialBackoff() + "), or the ceiling "
                             + "shortens the very wait it exists to bound");
         }

@@ -21,11 +21,18 @@ import uk.gov.hmcts.cp.informantregister.domain.RegisterFragment;
  * readings are indistinguishable there; {@code hearingDays[0]} is what the code does and it is what
  * is ported. Sorting would be a correction.
  *
- * <p>That time is rendered by {@link HearingDates#localDateTime}, so a summer sitting day becomes
- * London wall-clock time labelled {@code Z} — an hour on from the instant it names. That is defect
- * D9 and the parity pack pins it; the contract calls this component a {@code time} and every payload
- * in the results repository puts something else in it, which is a question for the Results team
- * rather than a licence to change what the port renders.
+ * <p><strong>That time is the one sanctioned deviation in this mapper.</strong> The legacy renders it
+ * with {@code DateService.getLocalDateTime}, so a summer sitting day becomes a London wall-clock
+ * <em>date-time</em> labelled {@code Z} — an hour on from the instant it names, and a date-time in a
+ * component {@code informantRegisterHearing.json} declares to be a {@code time}. That is defect D9.
+ * Here it is rendered by {@link HearingDates#localFullTime} instead: the same wall clock, carrying
+ * London's true offset on the day, which is the RFC 3339 {@code full-time} the schema's
+ * {@code "format": "time"} asks for. {@code doc/DEVIATIONS.md} entry 15, decided by the project
+ * owner on 2026-08-23.
+ *
+ * <p>The scope is this component and no other. The parse is unchanged, an unreadable sitting day
+ * still renders the literal {@code "Invalid dateZ"}, and D9's rendering survives untouched on the
+ * document's own {@code registerDate} and {@code hearingDate}.
  */
 final class CourtSessionMapper {
 
@@ -83,7 +90,7 @@ final class CourtSessionMapper {
     }
 
     /**
-     * The first sitting day's start, rendered.
+     * The first sitting day's start, rendered as an RFC 3339 {@code full-time}.
      *
      * @return the start time, or {@code null} when the hearing has no listed days
      */
@@ -95,8 +102,10 @@ final class CourtSessionMapper {
             return null;
         }
         final JsonNode first = hearingDays.getFirst();
+        // The legacy calls DateService.getLocalDateTime here (CourtSessionMapper.js:28); this is the
+        // sanctioned re-rendering of that value — doc/DEVIATIONS.md entry 15.
         return Json.truthy(first, "sittingDay")
-                ? dates.localDateTime(Json.text(first, "sittingDay"))
+                ? dates.localFullTime(Json.text(first, "sittingDay"))
                 : null;
     }
 }

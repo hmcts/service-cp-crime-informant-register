@@ -20,6 +20,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param stub       test-only control over the stub adapters
  * @param payload    where the hearing payload is read from
  * @param results    the results context this service reads from and posts to
+ * @param referencedata the reference-data context the register's recipients are looked up in
  */
 @ConfigurationProperties(prefix = "informantregister")
 public record InformantRegisterProperties(
@@ -29,7 +30,8 @@ public record InformantRegisterProperties(
         @DefaultValue Store store,
         @DefaultValue Stub stub,
         @DefaultValue Payload payload,
-        @DefaultValue Results results) {
+        @DefaultValue Results results,
+        @DefaultValue Referencedata referencedata) {
 
     /**
      * Master switch for the Service Bus consumer.
@@ -125,6 +127,56 @@ public record InformantRegisterProperties(
 
         /** Freezes the header map, and treats an unconfigured one as none rather than as absent. */
         public Results {
+            headers = headers == null ? Map.of() : Map.copyOf(headers);
+        }
+    }
+
+    /**
+     * The reference-data context: the query API the register's recipients are looked up in.
+     *
+     * <p>Its own block rather than a member of {@link Results}, because it is a different deployment
+     * behind a different internal mesh host. The context root is part of the call's path and belongs
+     * with the client that makes it, exactly as it does there.
+     *
+     * <p>{@code baseUrl} and {@code systemUserId} carry no default here for the same reasons they
+     * carry none there: an endpoint a service invents is an endpoint it can talk to by mistake, and
+     * the identity is a secret that arrives from Key Vault. The local development value in
+     * {@code application.yaml} is the reference-data query API's own declared {@code baseUri}, and
+     * the identity there falls back to the Results one — the function app threads a single
+     * {@code cjscppuid} through both calls ({@code ReferenceDataService.js:44}), so an environment
+     * that mounts one identity is not asked for a second.
+     *
+     * <p>{@code headers} exists for the reason it does on {@link Results}: {@code CJSCPPUID} is
+     * documented and the authorisation scheme is not — reference data's own access-control rules
+     * require the caller to be in a named user group — so whatever the mesh turns out to need can be
+     * supplied without a code change and nothing is invented in the meantime.
+     *
+     * <p>The attempt count and interval are the function app's {@code DEFAULT_PUBLISH_RETRY_COUNT}
+     * and {@code DEFAULT_PUBLISH_RETRY_INTERVAL} defaults ({@code AxiosRetryWrapper.js:10-11}),
+     * because this call goes through the same wrapper the payload fallback does and the rule is
+     * ported rather than redesigned.
+     *
+     * @param mode           the adapter serving the subscriptions port
+     * @param baseUrl        scheme, host and port of the reference-data context, no path
+     * @param systemUserId   the {@code CJSCPPUID} identity; a secret, never logged
+     * @param headers        any further headers the mesh requires, name to value
+     * @param maxAttempts    total attempts including the first
+     * @param retryInterval  the wait between attempts
+     * @param connectTimeout how long to wait for a connection
+     * @param readTimeout    how long to wait for a response once connected
+     */
+    public record Referencedata(
+            @DefaultValue("LIVE") SubscriptionsSourceMode mode,
+            String baseUrl,
+            String systemUserId,
+            Map<String, String> headers,
+            @DefaultValue("3") int maxAttempts,
+            @DefaultValue("1s") Duration retryInterval,
+            @DefaultValue("5s") Duration connectTimeout,
+            @DefaultValue("30s") Duration readTimeout) {
+
+        /** Freezes the header map, and treats an unconfigured one as none rather than as absent. */
+        public Referencedata {
             headers = headers == null ? Map.of() : Map.copyOf(headers);
         }
     }

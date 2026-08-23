@@ -6,7 +6,63 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- 2026-08-23 — **`hearingStartTime` now says which hour of the day it means.** The one sanctioned
+  departure from bug-for-bug parity in the transformation, taken as a project-owner decision:
+  "for time lets use visually correct and semantically correct value - 14:30:00+01:00".
+  Deviations register **#15**.
+  - The legacy renders this component with `DateService.getLocalDateTime` — a London wall-clock
+    *date-time* with the character `Z` appended whatever the real offset was (defect D9). A 14:30
+    sitting in June went out as `2020-06-19T14:30:00Z`, an hour that did not happen at that instant,
+    inside a component `informantRegisterHearing.json` types as `{"format": "time"}`. No value this
+    component has ever carried satisfied its own schema.
+  - It is now the same wall clock as an RFC 3339 `full-time` carrying London's **true** offset on
+    the date, read from the `Europe/London` rules: `14:30:00+01:00` in June, `14:30:00Z` in January.
+    The digits a clerk read off the courtroom clock are unchanged; the label stopped lying.
+  - **Scope is that component alone.** `registerDate` and `hearingDate` keep D9's rendering, the
+    parity pack's `d09` pin is untouched, the parse is untouched, and an unreadable sitting day
+    still renders the literal `"Invalid dateZ"` (entry 13's territory).
+  - **The goldens were not touched.** The recorded `expected.json` files are the Node oracle's truth
+    and stay byte-identical, so the comparator gained a *derivation* for this component instead
+    (`RegisteredFieldDeviations`, wired into `JsonParity`): it re-reads the wall clock out of the
+    oracle's own value, asks the zone rules for that date's offset, and demands exactly that. Not an
+    exclusion — a hard-coded `+01:00` fails **108** differential cases, and the comparator's own
+    suite pins the rejections, the wrong-season offset included.
+  - Differential suite after the change: **384 cases, 382 pass, 0 fail, 2 held back** on the
+    pre-existing `s05` decision. Pinning pack: **19 asserted, 7 blocked**, unchanged.
+  - ⚠ **Results must be told**: the CSV column the prosecuting authorities read changes shape, from
+    a full date-time to a time of day.
+
 ### Added
+- 2026-08-23 — **The register is addressed from real reference data.** `NowSubscriptionsSource` is
+  served by `adapter/refdata/ReferenceDataNowSubscriptionsClient` in the deployed wiring; the
+  refusing stub stays behind `informantregister.referencedata.mode=STUB` for local runs and for the
+  container suites whose subject is settlement rather than who a register reaches.
+  - The call is `ReferenceDataService.getSubscriptionsMetadata` ported: the path, the `on` query
+    parameter, `Accept: application/vnd.referencedata.query.get-now-subscriptions+json` and
+    `CJSCPPUID` (`ReferenceDataService.js:40-47`), all four confirmed against the reference-data
+    query API's own RAML and against the parity pack's recorded calls.
+  - **The `on` day is bug-for-bug.** It is the register date's own day, read with the misleading
+    literal `Z` at face value (defect D9), so a hearing shared at 23:00 UTC in British Summer Time
+    is addressed with the *next* day's reference data. Pinned by
+    `RegisterTransformationChainTest.QueryDateAcrossBritishSummerTime` against the recorded case.
+  - **The retry rule is the legacy's**, because this call goes through the same
+    `AxiosRetryWrapper.getWrapperWithDefault` the payload fallback does: three attempts a second
+    apart, and no retry at all once a response has arrived carrying a status at or below 429 — so a
+    429 is tried once and a 500 three times. Ported deliberately and pinned.
+  - **A failure is reported, not answered.** Connect, 5xx, 429, 404 and a body that is not JSON all
+    raise the transient `ReferenceDataUnavailableException`; the legacy's `return null` is what makes
+    an outage indistinguishable from "nobody is subscribed" (deviation 14, already on the register).
+    An answer that *is* readable is passed through whatever its shape — an empty body, no
+    `nowSubscriptions` member, or no informant-register subscription among them are business
+    outcomes the legacy carries on from, and the matching step reads them.
+  - **Startup refuses a live source that cannot ask**: no base URL, no `CJSCPPUID`, no attempts, a
+    negative wait or a timeout that never expires each fail at startup rather than parking every
+    hearing that produced a register from a pod reporting itself healthy. This closes, for this
+    port, the LIVE-mode hole the payload story left open on its own; the payload one is untouched.
+    The reference-data identity falls back to the Results one, because the function app threads a
+    single `cjscppuid` through both calls.
+
 - 2026-08-23 — **The transformation runs, and the parity pack is armed against it.** The three
   ported steps are chained as `InformantRegisterOrchestrator` chains them, behind a new
   `RegisterTransformer` port, and `DistributionPipeline` calls it between the payload fetch and the
@@ -32,6 +88,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     `authorities-submitted`.
 
 ### Fixed
+- 2026-08-23 — **Three ways the now-subscriptions read could still address a register to nobody**,
+  found by review of the adapter that had just landed.
+  - **Success is 2xx and nothing else.** Spring's default handling raises on 4xx and 5xx alone, so a
+    304 — or a redirect this client does not follow — arrived at the body reader as though reference
+    data had answered, and an empty body there means "nobody is subscribed". That is the silent loss
+    deviation 14 exists to end, reached through the one door it had left open. The rule is also the
+    ported call's own: axios resolves 200-299 and rejects the rest
+    (`axios/lib/defaults/index.js:161-162`, `axios/lib/core/settle.js:15-17`), so a 304 reaches
+    `ReferenceDataService.js:50` exactly as a 502 does.
+  - **The two contract headers are set, not appended.** A mesh header configured under the name
+    `Accept` or `CJSCPPUID` used to be sent *alongside* the contract's value rather than instead of
+    it — two `Accept` values is a 406 from a service doing content negotiation, and two `CJSCPPUID`
+    values is an ambiguous caller to one authorising on identity. `ReferenceDataService.js:42-47`
+    sends exactly one of each and now so does this.
+  - **Startup refuses a read that can outlast the run.** Every reference-data timeout was checked
+    for being positive and every attempt count for being at least one, and ten attempts against a
+    minute-long read still passed — over ten minutes of waiting inside a four-minute deadline, so
+    the claim becomes reclaimable and a second delivery starts processing the request while the
+    first runner is still on the socket. The bound the payload fetch has had all along now applies
+    to this read too: attempts × (connect + read), plus the waits between them, must be strictly
+    shorter than `informantregister.claim.processing-deadline`. It is a per-fetch bound, as the
+    payload one is; a combined budget across all three network steps would refuse the shipped
+    defaults and is a decision for the design authority.
+
 - 2026-08-23 — **Two ordered-date defects the differential corpus found**, both of which made the
   port refuse hearings the legacy files — the one direction a bug-for-bug port must not drift in.
   - **The parse format is a token walk, not the pattern it looks like.** `DateService.parse` is
