@@ -57,6 +57,14 @@ import static org.assertj.core.api.Assertions.fail;
  * {@code doc/DEVIATIONS.md} entry 7. Nine more record a hearing that legitimately produced no
  * fragments, which is entry 6, and those must complete quietly with nothing.
  *
+ * <p><strong>One component is compared by derivation rather than by equality.</strong> The recorded
+ * {@code expected.json} files are the oracle's truth and are never regenerated or edited, so their
+ * {@code hearingStartTime} still carries the legacy's D9 rendering — a London wall-clock date-time
+ * labelled {@code Z}. {@code doc/DEVIATIONS.md} entry 15 replaced that with the same wall clock
+ * carrying London's true offset, so the comparator re-reads the wall clock out of the golden's own
+ * value, asks the {@code Europe/London} rules for the offset on that date, and requires exactly
+ * that. Nothing is excluded and the check is no weaker: {@code JsonParityTest} pins what it rejects.
+ *
  * <p><strong>A reference-data outage is the one place the documents deliberately differ.</strong>
  * Twenty cases make the now-subscriptions call fail. Node swallows that and ships a register with no
  * recipients at all — the outage is invisible in the outbound body — and pinning entry {@code d03}

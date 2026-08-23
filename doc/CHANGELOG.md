@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- 2026-08-23 — **`hearingStartTime` now says which hour of the day it means.** The one sanctioned
+  departure from bug-for-bug parity in the transformation, taken as a project-owner decision:
+  "for time lets use visually correct and semantically correct value - 14:30:00+01:00".
+  Deviations register **#15**.
+  - The legacy renders this component with `DateService.getLocalDateTime` — a London wall-clock
+    *date-time* with the character `Z` appended whatever the real offset was (defect D9). A 14:30
+    sitting in June went out as `2020-06-19T14:30:00Z`, an hour that did not happen at that instant,
+    inside a component `informantRegisterHearing.json` types as `{"format": "time"}`. No value this
+    component has ever carried satisfied its own schema.
+  - It is now the same wall clock as an RFC 3339 `full-time` carrying London's **true** offset on
+    the date, read from the `Europe/London` rules: `14:30:00+01:00` in June, `14:30:00Z` in January.
+    The digits a clerk read off the courtroom clock are unchanged; the label stopped lying.
+  - **Scope is that component alone.** `registerDate` and `hearingDate` keep D9's rendering, the
+    parity pack's `d09` pin is untouched, the parse is untouched, and an unreadable sitting day
+    still renders the literal `"Invalid dateZ"` (entry 13's territory).
+  - **The goldens were not touched.** The recorded `expected.json` files are the Node oracle's truth
+    and stay byte-identical, so the comparator gained a *derivation* for this component instead
+    (`RegisteredFieldDeviations`, wired into `JsonParity`): it re-reads the wall clock out of the
+    oracle's own value, asks the zone rules for that date's offset, and demands exactly that. Not an
+    exclusion — a hard-coded `+01:00` fails **108** differential cases, and the comparator's own
+    suite pins the rejections, the wrong-season offset included.
+  - Differential suite after the change: **384 cases, 382 pass, 0 fail, 2 held back** on the
+    pre-existing `s05` decision. Pinning pack: **19 asserted, 7 blocked**, unchanged.
+  - ⚠ **Results must be told**: the CSV column the prosecuting authorities read changes shape, from
+    a full date-time to a time of day.
+
 ### Added
 - 2026-08-23 — **The register is addressed from real reference data.** `NowSubscriptionsSource` is
   served by `adapter/refdata/ReferenceDataNowSubscriptionsClient` in the deployed wiring; the

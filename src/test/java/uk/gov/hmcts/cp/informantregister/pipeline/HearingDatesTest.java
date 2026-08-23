@@ -112,6 +112,130 @@ class HearingDatesTest {
     }
 
     @Nested
+    @DisplayName("localFullTime — the sanctioned hearingStartTime rendering (deviation 15)")
+    class LocalFullTime {
+
+        /**
+         * The whole point of the deviation, stated as one assertion: the digits a court clerk would
+         * have read off the wall, and the offset that says which hour of the day they were.
+         *
+         * <p>The value is the one the project owner quoted when taking the decision on 2026-08-23 —
+         * "for time lets use visually correct and semantically correct value - 14:30:00+01:00".
+         */
+        @Test
+        @DisplayName("renders a summer sitting as the London wall clock with the true +01:00 offset")
+        void renders_a_summer_sitting_with_the_true_offset() {
+            // 13:30 UTC on 1 June is 14:30 on a London wall clock, and London is one hour ahead.
+            assertThat(dates.localFullTime("2020-06-01T13:30:00Z")).isEqualTo("14:30:00+01:00");
+        }
+
+        /**
+         * The control that proves the offset is derived from the date and not hard-coded: the same
+         * wall-clock digits in January carry the zero offset instead.
+         */
+        @Test
+        @DisplayName("renders a winter sitting with the zero offset java.time writes as Z")
+        void renders_a_winter_sitting_with_the_zero_offset() {
+            // `XXX` — the offset pattern `OffsetTime.toString()` and `ISO_OFFSET_TIME` use — writes
+            // a zero offset as the single character Z rather than as "+00:00". Both are RFC 3339
+            // full-times; this one is what java.time emits, so it is what is asserted.
+            assertThat(dates.localFullTime("2020-01-20T14:30:00Z")).isEqualTo("14:30:00Z");
+        }
+
+        /**
+         * The seconds are not optional. `OffsetTime.toString()` and `ISO_OFFSET_TIME` drop a zero
+         * seconds field — "14:30Z" — and RFC 3339 `full-time`, which is what the schema's
+         * {@code format: time} means, requires it. A port that leant on `toString()` fails here.
+         */
+        @Test
+        @DisplayName("always writes the seconds, which ISO_OFFSET_TIME would drop when they are zero")
+        void always_writes_the_seconds() {
+            assertThat(dates.localFullTime("2020-01-20T14:30:00Z"))
+                    .isEqualTo("14:30:00Z")
+                    .isNotEqualTo("14:30Z");
+        }
+
+        @Test
+        @DisplayName("carries the seconds of a sitting day that has them, truncating the fraction")
+        void carries_the_seconds_of_the_sitting_day() {
+            assertThat(dates.localFullTime("2020-06-19T09:08:03.001Z")).isEqualTo("10:08:03+01:00");
+        }
+
+        @Test
+        @DisplayName("reads a bare London day as its midnight, as the legacy parse does")
+        void reads_a_bare_day_as_a_london_midnight() {
+            // The parse is untouched by this deviation — only the rendering changed — so the same
+            // ISO-day route localDateTime takes is what produces this.
+            assertThat(dates.localFullTime("2021-03-11")).isEqualTo("00:00:00Z");
+        }
+
+        @Test
+        @DisplayName("reads an offset-less date-time as already being London-local")
+        void reads_an_offsetless_date_time_as_london_local() {
+            assertThat(dates.localFullTime("2021-06-15T09:30:00")).isEqualTo("09:30:00+01:00");
+        }
+
+        /**
+         * The spring transition day, both sides of the gap. London jumps from 01:00 GMT straight to
+         * 02:00 BST at 01:00 UTC on 28 March 2021, so two instants forty minutes apart on the same
+         * morning carry different offsets — which no hard-coded "+01:00" and no "always Z" can
+         * produce, and which is the whole reason the zone rules are asked rather than assumed.
+         */
+        @Test
+        @DisplayName("spring transition day — the offset changes across the gap, on one date")
+        void the_offset_changes_across_the_spring_gap() {
+            assertThat(dates.localFullTime("2021-03-28T00:50:00Z")).isEqualTo("00:50:00Z");
+            assertThat(dates.localFullTime("2021-03-28T01:10:00Z")).isEqualTo("02:10:00+01:00");
+        }
+
+        /**
+         * The autumn transition day, and the harder half. London repeats 01:00–02:00 on 31 October
+         * 2021, so the SAME wall-clock digits occur twice, an hour apart, distinguished only by the
+         * offset. Rendering the time of day alone would collapse the two; the offset is what keeps
+         * them apart, which is the "semantically correct" half of the decision.
+         */
+        @Test
+        @DisplayName("autumn transition day — one wall clock, two offsets, kept apart")
+        void the_repeated_autumn_hour_is_kept_apart_by_the_offset() {
+            assertThat(dates.localFullTime("2021-10-31T00:30:00Z")).isEqualTo("01:30:00+01:00");
+            assertThat(dates.localFullTime("2021-10-31T01:30:00Z")).isEqualTo("01:30:00Z");
+        }
+
+        /**
+         * Deviation 13 territory, explicitly out of scope. The decision changed the rendering of a
+         * time this port could read; it said nothing about a value it could not, and moment's answer
+         * there is the literal string, appended {@code Z} and all. Changing it would be an
+         * unregistered second deviation smuggled in behind a sanctioned one.
+         */
+        @Test
+        @DisplayName("renders an unreadable sitting day exactly as the legacy does, Invalid dateZ")
+        void renders_an_unreadable_value_as_the_legacy_does() {
+            assertThat(dates.localFullTime("not a date")).isEqualTo("Invalid dateZ");
+            assertThat(dates.localFullTime("2020-13-45")).isEqualTo("Invalid dateZ");
+            assertThat(dates.localFullTime("")).isEqualTo("Invalid dateZ");
+        }
+
+        @Test
+        @DisplayName("falls back to the clock when there is no value at all, as the legacy does")
+        void falls_back_to_the_clock_when_absent() {
+            // The frozen clock is 09:30 UTC on 15 June, which is 10:30 in London.
+            assertThat(dates.localFullTime(null)).isEqualTo("10:30:00+01:00");
+        }
+
+        /**
+         * The rendering the deviation replaces must not still be reachable through the new method:
+         * a reviewer reading only this nest can see which of the two shapes it produces.
+         */
+        @Test
+        @DisplayName("never renders the legacy date-time-labelled-Z shape")
+        void never_renders_the_legacy_shape() {
+            assertThat(dates.localFullTime("2020-06-01T13:30:00Z"))
+                    .doesNotContain("2020-06-01")
+                    .doesNotContain("T");
+        }
+    }
+
+    @Nested
     @DisplayName("localDate")
     class Localised {
 

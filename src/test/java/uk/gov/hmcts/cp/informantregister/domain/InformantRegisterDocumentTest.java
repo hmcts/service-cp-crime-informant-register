@@ -59,6 +59,10 @@ class InformantRegisterDocumentTest {
     /**
      * A {@code hearingStartTime} in the shape {@code informantRegisterHearing.json} declares —
      * RFC 3339 {@code full-time}, which is a time with an offset.
+     *
+     * <p>Since {@code doc/DEVIATIONS.md} entry 15 this is also the shape the pipeline renders, so
+     * the documents below are built from what the service actually sends rather than from a shape
+     * only the schema wanted.
      */
     private static final String CONTRACT_FORM_HEARING_START_TIME = "10:00:00Z";
 
@@ -127,6 +131,29 @@ class InformantRegisterDocumentTest {
                 REGISTER_DATE, HEARING_DATE, HEARING_ID, AUTHORITY_ID,
                 "CPS", null, null, null,
                 "informant-register-CPS-20260820.pdf", null, venue, null);
+    }
+
+    /**
+     * The same document with one component replaced, so the format cases differ in that alone.
+     *
+     * @param document         the document to copy
+     * @param hearingStartTime the rendering to put in its single session
+     * @return the copy
+     */
+    private static InformantRegisterDocument withHearingStartTime(
+            final InformantRegisterDocument document, final String hearingStartTime) {
+
+        final InformantRegisterHearingVenue venue = document.hearingVenue();
+        final InformantRegisterHearing session = venue.courtSessions().getFirst();
+        return new InformantRegisterDocument(
+                document.registerDate(), document.hearingDate(), document.hearingId(),
+                document.prosecutionAuthorityId(), document.prosecutionAuthorityCode(),
+                document.prosecutionAuthorityOuCode(), document.majorCreditorCode(),
+                document.prosecutionAuthorityName(), document.fileName(), document.recipients(),
+                new InformantRegisterHearingVenue(venue.ljaName(), venue.courtHouse(),
+                        List.of(new InformantRegisterHearing(
+                                session.courtRoom(), hearingStartTime, session.defendants()))),
+                document.groupId());
     }
 
     private static JsonNode serialised(final Object document) {
@@ -278,29 +305,34 @@ class InformantRegisterDocumentTest {
     class OpenQuestions {
 
         @Test
+        @DisplayName("hearingStartTime as this port now renders it satisfies the declared format")
+        void the_rendered_form_of_hearing_start_time_should_satisfy_the_declared_format() {
+            // DECIDED, 2026-08-23, and this is the assertion that records it. The schema declares
+            // format: time, so an RFC 3339 full-time — a time of day with an offset. The function
+            // app renders a full date-time labelled Z (D9) and every example body in the results
+            // repository carries a bare date; neither is a full-time, so for as long as the port
+            // reproduced the function app it POSTed a component the schema refuses.
+            //
+            // doc/DEVIATIONS.md entry 15 ends that: the sitting day is rendered as the London wall
+            // clock with London's true offset on the day, which is the first rendering of this
+            // component that the declared format accepts. Both seasons are asserted, because a
+            // schema that accepted one offset and not the other would leave half the year invalid.
+            final InformantRegisterDocument document = minimal();
+            assertThat(violations(serialised(withHearingStartTime(document, "14:30:00+01:00"))))
+                    .isEmpty();
+            assertThat(violations(serialised(withHearingStartTime(document, "14:30:00Z"))))
+                    .isEmpty();
+        }
+
+        @Test
         @DisplayName("hearingStartTime as the function app renders it is refused by the declared format")
         void the_parity_form_of_hearing_start_time_should_be_refused_by_the_declared_format() {
-            // Recorded rather than resolved. The schema declares format: time, so an RFC 3339
-            // full-time; the function app renders a full date-time; and every example body in the
-            // results repository — the RAML example and the integration-test template — carries a
-            // bare date, which is neither. Three sources, three shapes.
-            //
-            // Nothing is decided here. The component is a String, so this record can carry any of
-            // the three, and which one the transformer writes is a question for Results, not a
-            // question this test may answer by picking a fixture. What this pins is that the choice
-            // is real and observable: if somebody later makes the transformer emit the parity form,
-            // the body it produces will not satisfy the schema as written.
-            final InformantRegisterDocument document = minimal();
-            final InformantRegisterHearingVenue venue = document.hearingVenue();
-            final InformantRegisterHearing session = venue.courtSessions().getFirst();
-            final InformantRegisterDocument asTheFunctionAppRendersIt = new InformantRegisterDocument(
-                    document.registerDate(), document.hearingDate(), document.hearingId(),
-                    document.prosecutionAuthorityId(), document.prosecutionAuthorityCode(),
-                    null, null, null, document.fileName(), null,
-                    new InformantRegisterHearingVenue(venue.ljaName(), venue.courtHouse(),
-                            List.of(new InformantRegisterHearing(session.courtRoom(),
-                                    PARITY_FORM_HEARING_START_TIME, session.defendants()))),
-                    null);
+            // The negative control that keeps the case above honest, and the reason the deviation
+            // was worth taking: the shape the port used to emit does not satisfy the schema the
+            // consumer publishes. Left asserting the refusal so that a port which quietly reverted
+            // to the function app's rendering is caught here as well as in the parity harness.
+            final InformantRegisterDocument asTheFunctionAppRendersIt =
+                    withHearingStartTime(minimal(), PARITY_FORM_HEARING_START_TIME);
 
             assertThat(violations(serialised(asTheFunctionAppRendersIt)))
                     .anySatisfy(violation -> assertThat(violation).contains("hearingStartTime"));

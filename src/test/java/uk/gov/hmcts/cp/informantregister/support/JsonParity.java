@@ -26,6 +26,13 @@ import tools.jackson.databind.JsonNode;
  *       number here, compared by value rather than by representation or by node class.</li>
  * </ul>
  *
+ * <p><strong>One rule was added, and it subtracts nothing.</strong> A component named in
+ * {@link RegisteredFieldDeviations} is checked by <em>derivation</em> instead of by equality: the
+ * golden file keeps the Node oracle's rendering, and the comparator computes from it the value the
+ * port is now required to write. Nothing is skipped and nothing is excluded — the check is as strict
+ * as equality was, and the register itself is tested in {@code JsonParityTest}. Today that is
+ * {@code hearingStartTime}, {@code doc/DEVIATIONS.md} entry 15.
+ *
  * <p>Differences are reported together, with the JSON pointer of each, rather than one per run: a
  * parity failure is usually a systematic difference across many nodes, and being told about it one
  * node per test run turns a single fix into a dozen cycles.
@@ -134,8 +141,56 @@ public final class JsonParity {
                 differences.add(at(childPath) + ": missing field, expected "
                         + describe(expectedValue));
             } else {
-                compare(expectedValue, actualValue, childPath, differences);
+                final RegisteredFieldDeviations.Deviation deviation =
+                        RegisteredFieldDeviations.forProperty(name);
+                if (deviation == null) {
+                    compare(expectedValue, actualValue, childPath, differences);
+                } else {
+                    compareUnderDeviation(
+                            deviation, expectedValue, actualValue, childPath, differences);
+                }
             }
+        }
+    }
+
+    /**
+     * Checks a registered component by derivation rather than by equality.
+     *
+     * <p>The golden file keeps the legacy rendering — it is the Node oracle's truth and is never
+     * edited — so the deviation computes what the port is now required to write and this demands
+     * exactly that. Three outcomes, all of them loud: the derived value matches, the port wrote
+     * something else, or the golden is in a shape the deviation does not describe and the field is
+     * therefore no longer covered by it.
+     *
+     * @param deviation   the registered deviation
+     * @param expected    the golden node
+     * @param actual      the ported node
+     * @param path        the JSON pointer of this node
+     * @param differences the differences found so far
+     */
+    private static void compareUnderDeviation(
+            final RegisteredFieldDeviations.Deviation deviation,
+            final JsonNode expected,
+            final JsonNode actual,
+            final String path,
+            final List<String> differences) {
+
+        final List<String> permitted = expected.isString()
+                ? deviation.permittedFor(expected.stringValue())
+                : List.of();
+
+        if (permitted.isEmpty()) {
+            differences.add(at(path) + ": registered deviation " + deviation.reference()
+                    + " cannot derive the required rendering from the golden value "
+                    + describe(expected)
+                    + " — the golden is not a value this deviation describes, so the component is "
+                    + "no longer covered by it and the difference stands");
+            return;
+        }
+        if (!actual.isString() || !permitted.contains(actual.stringValue())) {
+            differences.add(at(path) + ": registered deviation " + deviation.reference()
+                    + " requires the golden " + describe(expected) + " to be re-rendered as "
+                    + String.join(" or ", permitted) + " but was " + describe(actual));
         }
     }
 
