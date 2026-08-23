@@ -256,7 +256,8 @@ class MessageListenerSettlementTest {
         private InformantRegisterMessageListener listenerOverTheRealPipeline() {
             return new InformantRegisterMessageListener(
                     parser,
-                    new DistributionPipeline(guard, payloadSource, submissionClient, metrics,
+                    new DistributionPipeline(guard, payloadSource,
+                            (hearing, sharedTime) -> List.of(), submissionClient, metrics,
                             Clock.systemUTC(), RUN_DEADLINE),
                     metrics,
                     QueueHealthTestSupport.unwatched(),
