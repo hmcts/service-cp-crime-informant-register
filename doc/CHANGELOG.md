@@ -40,6 +40,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     byte-identical into `src/test/resources/fixtures/`, and the live adapter is now exercised
     through the whole service — cache hit to COMPLETED, and a refused query read to FAILED and
     parked — which no suite covered before.
+- 2026-08-22 — **Post-review parity corrections to the ported transformation.** Every finding was
+  re-verified against the Node source under
+  `cpp-context-azure-legalaidagency/azure-functions/durable-functions/` before it was fixed, and
+  four of them were places where the port was **more forgiving than the legacy** — the one direction
+  a bug-for-bug port must never drift in, because a payload the function app throws on would have
+  produced a register here and sent it to a real prosecuting authority:
+  - arrays the legacy dereferences with no `|| []` and no enclosing `if` are now refused when they
+    are absent, not read as empty. `Json.dereferencedArray` is the form that says so, and each call
+    site names the legacy line it reproduces; `Json.array` keeps the guarded semantics and is used
+    only where the legacy guards;
+  - a `"courtCentre": null` is refused like a missing one, because `null.welshCourtCentre` is the
+    same `TypeError` — it was being read as "not Welsh" and marking the hearing English;
+  - a court application whose `judicialResults` is not an array is **skipped**, not refused: the
+    legacy test is `judicialResults.length > 0`, and `undefined > 0` is false, so it carries on with
+    the rest of the application. The port was failing a hearing the legacy turns into a register;
+  - a slash-separated day now formats the way `moment.tz` formats it — through the `new Date(...)`
+    fallback, read as UTC and then converted, so an hour later in British Summer Time — instead of
+    raising an unclassified `DateTimeParseException`. Verified against the vendored
+    `moment-timezone`, and host-time-zone independent;
+  - the classification the ports carry is now the branch it was always documented to be: a
+    `NON_TRANSIENT` failure is recorded FAILED and dead-lettered at once instead of being handed
+    back until the delivery budget ran out and parked under `DELIVERY_LIMIT_EXHAUSTED`. New guard
+    transition `recordNonTransientFailure`, and the first producer of `DeadLetterReason.NON_TRANSIENT`;
+  - deviations register: new entry **7** records the transformation's own swallowed exceptions, which
+    the code had been attributing to entry 2 — that entry covers the final POST only.
 - 2026-08-21 — **Post-review hardening of the walking skeleton** (whole-`src/` review, findings
   independently re-verified before fixing):
   - an unexpected exception inside an admitted run is now recorded through the guard (RETRYING, or

@@ -1,0 +1,423 @@
+[
+  {
+    "registerDate": "2021-03-11T22:18:24Z",
+    "hearingDate": "2021-03-11T00:00:00Z",
+    "hearingId": "053cb01f-def9-4182-8fef-d4970afeb1da",
+    "prosecutionAuthorityId": "31af405e-7b60-4dd8-a244-c24c2d3fa595",
+    "prosecutionAuthorityCode": "TFL",
+    "prosecutionAuthorityOuCode": "GAFTL00",
+    "registerDefendants": [
+      {
+        "defendantIds": [
+          "6647df67-a065-4d07-90ba-a8daa064ecc4"
+        ],
+        "results": [
+          {
+            "prosecutionCaseId": "c10e3b71-6a6d-45ef-9b62-34df4d54971a",
+            "defendantId": "6647df67-a065-4d07-90ba-a8daa064ecc4",
+            "offenceId": "a154d828-1234-47f0-b8d5-e81227831d94",
+            "level": "O",
+            "masterDefendantId": "6647df67-a065-4d07-90ba-a8daa064ecc4",
+            "judicialResult": {
+              "judicialResultId": "8b13e723-07a5-47ad-b378-62478ad17001",
+              "judicialResultTypeId": "cfbe83c8-935b-4410-a68c-49452519f2d3",
+              "orderedHearingId": "e100d08a-ed4e-43a2-aae2-e9c5735713b0",
+              "label": "Pay by date",
+              "isAdjournmentResult": false,
+              "isFinancialResult": true,
+              "isConvictedResult": false,
+              "isAvailableForCourtExtract": true,
+              "orderedDate": "2020-01-20",
+              "category": "Fine",
+              "resultText": "Pay by date",
+              "terminatesOffenceProceedings": "",
+              "isLifeDuration": false,
+              "isPublishedAsAPrompt": false,
+              "isExcludedFromResults": false,
+              "publishedForNows": false,
+              "isAlwaysPublished": true,
+              "isUrgent": false,
+              "isD20": false,
+              "prosecutionCaseId": "c10e3b71-6a6d-45ef-9b62-34df4d54971a",
+              "offenceId": "a154d828-1234-47f0-b8d5-e81227831d94",
+              "level": "O",
+              "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket"
+            }
+          }
+        ],
+        "cases": [
+          "c10e3b71-6a6d-45ef-9b62-34df4d54971a"
+        ],
+        "applications": [],
+        "masterDefendantId": "6647df67-a065-4d07-90ba-a8daa064ecc4",
+        "orderedDate": "2020-01-20",
+        "vocabulary": {
+          "custodyLocationIsPolice": false,
+          "custodyLocationIsPrison": false,
+          "atleastOneCustodialResult": false,
+          "allNonCustodialResults": true,
+          "atleastOneNonCustodialResult": true,
+          "appearedInPerson": false,
+          "appearedByVideoLink": false,
+          "isCpsProsecuted": false,
+          "anyAppearance": false,
+          "inCustody": false,
+          "youthDefendant": false,
+          "adultDefendant": true,
+          "adultOrYouthDefendant": true,
+          "welshCourtHearing": false,
+          "englishCourtHearing": true,
+          "anyCourtHearing": true,
+          "prosecutorMajorCreditor": [],
+          "nonProsecutorMajorCreditor": []
+        }
+      },
+      {
+        "defendantIds": [
+          "ded76309-c912-436b-a21b-a4c4450bc052"
+        ],
+        "results": [
+          {
+            "prosecutionCaseId": "c10e3b71-6a6d-45ef-9b62-34df4d54971a",
+            "defendantId": "ded76309-c912-436b-a21b-a4c4450bc052",
+            "offenceId": "a154d828-1234-47f0-b8d5-e81227831d94",
+            "level": "O",
+            "masterDefendantId": "ded76309-c912-436b-a21b-a4c4450bc052",
+            "judicialResult": {
+              "judicialResultId": "c6d26764-5b6a-4e30-8860-2e1093f89a6e",
+              "judicialResultTypeId": "96349367-2d04-4265-978f-6c6b417497fd",
+              "orderedHearingId": "f9f41ca5-a963-46ec-b2c2-a307883c1db5",
+              "label": "Imprisonment",
+              "isAdjournmentResult": false,
+              "isFinancialResult": false,
+              "isConvictedResult": false,
+              "isAvailableForCourtExtract": true,
+              "orderedDate": "2020-01-20",
+              "category": "Prison",
+              "resultText": "Imprisonment court order",
+              "terminatesOffenceProceedings": "",
+              "isLifeDuration": false,
+              "isPublishedAsAPrompt": false,
+              "isExcludedFromResults": false,
+              "publishedForNows": false,
+              "isAlwaysPublished": true,
+              "isUrgent": false,
+              "isD20": false,
+              "prosecutionCaseId": "c10e3b71-6a6d-45ef-9b62-34df4d54971a",
+              "offenceId": "a154d828-1234-47f0-b8d5-e81227831d94",
+              "level": "O",
+              "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket"
+            }
+          }
+        ],
+        "cases": [
+          "c10e3b71-6a6d-45ef-9b62-34df4d54971a"
+        ],
+        "applications": [],
+        "masterDefendantId": "ded76309-c912-436b-a21b-a4c4450bc052",
+        "orderedDate": "2020-01-20",
+        "vocabulary": {
+          "custodyLocationIsPolice": false,
+          "custodyLocationIsPrison": false,
+          "atleastOneCustodialResult": false,
+          "allNonCustodialResults": true,
+          "atleastOneNonCustodialResult": true,
+          "appearedInPerson": false,
+          "appearedByVideoLink": false,
+          "isCpsProsecuted": false,
+          "anyAppearance": false,
+          "inCustody": false,
+          "youthDefendant": false,
+          "adultDefendant": true,
+          "adultOrYouthDefendant": true,
+          "welshCourtHearing": false,
+          "englishCourtHearing": true,
+          "anyCourtHearing": true,
+          "prosecutorMajorCreditor": [],
+          "nonProsecutorMajorCreditor": []
+        }
+      }
+    ]
+  },
+  {
+    "registerDate": "2021-03-11T22:18:24Z",
+    "hearingDate": "2021-03-11T00:00:00Z",
+    "hearingId": "053cb01f-def9-4182-8fef-d4970afeb1da",
+    "prosecutionAuthorityId": "9d3ad709-cb0c-4711-8ad5-f9e60d6b0530",
+    "prosecutionAuthorityCode": "TVL",
+    "prosecutionAuthorityOuCode": "GAEAA01",
+    "registerDefendants": [
+      {
+        "defendantIds": [
+          "b48a6e2e-a3e5-47e3-8243-ac17b378d04d"
+        ],
+        "results": [
+          {
+            "prosecutionCaseId": "caf8311f-65b6-474b-990a-976e51589f83",
+            "defendantId": "b48a6e2e-a3e5-47e3-8243-ac17b378d04d",
+            "offenceId": "9d1e5276-f9ee-402b-b00e-9eed6fa0bbf0",
+            "level": "O",
+            "masterDefendantId": "b48a6e2e-a3e5-47e3-8243-ac17b378d04d",
+            "judicialResult": {
+              "judicialResultId": "6d76b10c-64c4-11e8-adc0-fa7ae01bbebc",
+              "judicialResultTypeId": "cf70d7ed-8049-4fe2-b02f-5a23b5e39184",
+              "orderedHearingId": "f9f41ca5-a963-46ec-b2c2-a307883c1db5",
+              "label": "Instalments only",
+              "isAdjournmentResult": false,
+              "isFinancialResult": true,
+              "isConvictedResult": false,
+              "isAvailableForCourtExtract": true,
+              "orderedDate": "2020-01-20",
+              "category": "Fine",
+              "resultText": "Instalments only",
+              "terminatesOffenceProceedings": "",
+              "isLifeDuration": false,
+              "isPublishedAsAPrompt": false,
+              "publishedForNows": false,
+              "isExcludedFromResults": false,
+              "isAlwaysPublished": true,
+              "isUrgent": false,
+              "isD20": false,
+              "prosecutionCaseId": "caf8311f-65b6-474b-990a-976e51589f83",
+              "offenceId": "9d1e5276-f9ee-402b-b00e-9eed6fa0bbf0",
+              "level": "O",
+              "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket"
+            }
+          },
+          {
+            "prosecutionCaseId": "caf8311f-65b6-474b-990a-976e51589f83",
+            "defendantId": "b48a6e2e-a3e5-47e3-8243-ac17b378d04d",
+            "offenceId": "9d1e5276-f9ee-402b-b00e-9eed6fa0bbf0",
+            "level": "O",
+            "masterDefendantId": "b48a6e2e-a3e5-47e3-8243-ac17b378d04d",
+            "judicialResult": {
+              "judicialResultId": "b8f91621-135a-4c26-8b38-e83dbeda0b3f",
+              "judicialResultTypeId": "6cb15971-c945-4398-b7c9-3f8b743a4de3",
+              "orderedHearingId": "7669d6a3-ef75-40c7-ac13-8be3a9875c62",
+              "label": "Financial Penalty",
+              "isAdjournmentResult": false,
+              "isFinancialResult": true,
+              "isConvictedResult": false,
+              "isAvailableForCourtExtract": true,
+              "orderedDate": "2020-01-20",
+              "category": "Fine",
+              "resultText": "Financial Penalty",
+              "terminatesOffenceProceedings": "",
+              "isLifeDuration": false,
+              "isPublishedAsAPrompt": false,
+              "publishedForNows": false,
+              "isExcludedFromResults": false,
+              "isAlwaysPublished": true,
+              "isUrgent": false,
+              "isD20": false,
+              "prosecutionCaseId": "caf8311f-65b6-474b-990a-976e51589f83",
+              "offenceId": "9d1e5276-f9ee-402b-b00e-9eed6fa0bbf0",
+              "level": "O",
+              "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket"
+            }
+          }
+        ],
+        "cases": [
+          "caf8311f-65b6-474b-990a-976e51589f83"
+        ],
+        "applications": [],
+        "masterDefendantId": "b48a6e2e-a3e5-47e3-8243-ac17b378d04d",
+        "orderedDate": "2020-01-20",
+        "vocabulary": {
+          "custodyLocationIsPolice": false,
+          "custodyLocationIsPrison": false,
+          "atleastOneCustodialResult": false,
+          "allNonCustodialResults": true,
+          "atleastOneNonCustodialResult": true,
+          "appearedInPerson": false,
+          "appearedByVideoLink": false,
+          "isCpsProsecuted": false,
+          "anyAppearance": false,
+          "inCustody": false,
+          "youthDefendant": false,
+          "adultDefendant": true,
+          "adultOrYouthDefendant": true,
+          "welshCourtHearing": false,
+          "englishCourtHearing": true,
+          "anyCourtHearing": true,
+          "prosecutorMajorCreditor": [],
+          "nonProsecutorMajorCreditor": []
+        }
+      }
+    ]
+  },
+  {
+    "registerDate": "2021-03-11T22:18:24Z",
+    "hearingDate": "2021-03-11T00:00:00Z",
+    "hearingId": "053cb01f-def9-4182-8fef-d4970afeb1da",
+    "prosecutionAuthorityId": "bdc190e7-c939-37ca-be4b-9f615d6ef40e",
+    "prosecutionAuthorityCode": "DERPF",
+    "prosecutionAuthorityOuCode": "0300000",
+    "prosecutionAuthorityName": "Derbyshire Police",
+    "registerDefendants": [
+      {
+        "defendantIds": [
+          "4780c981-49d7-4b17-b542-efd6cc562e23"
+        ],
+        "results": [
+          {
+            "applicationId": "14e41d27-c073-434b-9b98-766c52c7a187",
+            "level": "A",
+            "masterDefendantId": "4780c981-49d7-4b17-b542-efd6cc562e23",
+            "judicialResult": {
+              "alwaysPublished": false,
+              "canBeSubjectOfBreach": false,
+              "canBeSubjectOfVariation": false,
+              "category": "INTERMEDIARY",
+              "courtClerk": {
+                "firstName": "Erica",
+                "lastName": "Wilson",
+                "userId": "a085e359-6069-4694-8820-7810e7dfe762"
+              },
+              "d20": false,
+              "excludedFromResults": false,
+              "isAdjournmentResult": false,
+              "isAvailableForCourtExtract": true,
+              "isConvictedResult": false,
+              "isDeleted": false,
+              "isFinancialResult": false,
+              "isUnscheduled": false,
+              "judicialResultId": "27e96363-14b4-4ddf-b02c-0fee6011fde8",
+              "judicialResultPrompts": [
+                {
+                  "isAvailableForCourtExtract": true,
+                  "publishedForNows": false,
+                  "courtExtract": "N",
+                  "isFinancialImposition": false,
+                  "judicialResultPromptTypeId": "428e2b37-88f9-4f9c-beda-450b96bac466",
+                  "label": "Prosecution costs",
+                  "promptReference": "prosecutionCosts",
+                  "promptSequence": 100,
+                  "type": "CURR",
+                  "usergroups": [
+                    "CPS",
+                    "Defence",
+                    "Judiciary",
+                    "NCES",
+                    "Probation",
+                    "YOTs",
+                    "Prosecuting Authorities"
+                  ],
+                  "value": "£100.00",
+                  "welshValue": "£100.00"
+                },
+                {
+                  "isAvailableForCourtExtract": true,
+                  "publishedForNows": false,
+                  "courtExtract": "N",
+                  "isFinancialImposition": false,
+                  "judicialResultPromptTypeId": "04d5d843-f530-43e4-927f-57942b310d5c",
+                  "label": "THIS SUMMONS IS FOR PERSONAL SERVICE",
+                  "promptReference": "tHISSUMMONSISFORPERSONALSERVICE",
+                  "promptSequence": 200,
+                  "type": "BOOLEAN",
+                  "usergroups": [
+                    "CPS",
+                    "Defence",
+                    "Judiciary",
+                    "Probation",
+                    "NCES",
+                    "Prosecuting Authorities",
+                    "YOTs"
+                  ],
+                  "value": "true",
+                  "welshValue": "true"
+                },
+                {
+                  "isAvailableForCourtExtract": true,
+                  "publishedForNows": false,
+                  "courtExtract": "N",
+                  "isFinancialImposition": false,
+                  "judicialResultPromptTypeId": "1d068bf5-5149-4bb2-b333-7c8b288ca119",
+                  "label": "This summons will be served by a Prosecutor",
+                  "promptReference": "thisSummonsWillBeServedByAProsecutor",
+                  "promptSequence": 300,
+                  "type": "BOOLEAN",
+                  "usergroups": [
+                    "CPS",
+                    "Defence",
+                    "Judiciary",
+                    "NCES",
+                    "Probation",
+                    "Prosecuting Authorities",
+                    "YOTs"
+                  ],
+                  "value": "true",
+                  "welshValue": "true"
+                },
+                {
+                  "isAvailableForCourtExtract": true,
+                  "publishedForNows": false,
+                  "courtExtract": "N",
+                  "isFinancialImposition": false,
+                  "judicialResultPromptTypeId": "7d881e55-50ee-4098-9d3a-9b9c8f9eb834",
+                  "label": "Prosecutor's email address (used summons notification)",
+                  "promptReference": "prosecutorsEmailAddressUsedSummonsNotification",
+                  "promptSequence": 400,
+                  "type": "TXT",
+                  "usergroups": [],
+                  "value": "s@w.com",
+                  "welshValue": "s@w.com"
+                }
+              ],
+              "judicialResultTypeId": "0f44eeb9-2c81-430d-9a60-bbdaf8c4a093",
+              "label": "Summons approved",
+              "lastSharedDateTime": "2021-03-11",
+              "level": "C",
+              "lifeDuration": false,
+              "orderedDate": "2021-03-11",
+              "orderedHearingId": "053cb01f-def9-4182-8fef-d4970afeb1da",
+              "postHearingCustodyStatus": "A",
+              "publishedAsAPrompt": false,
+              "publishedForNows": false,
+              "rank": 16300,
+              "resultText": "Summons approved\nProsecution costs £100.00\nTHIS SUMMONS IS FOR PERSONAL SERVICE true\nThis summons will be served by a Prosecutor true\nProsecutor's email address (used summons notification) s@w.com",
+              "rollUpPrompts": false,
+              "rootJudicialResultId": "27e96363-14b4-4ddf-b02c-0fee6011fde8",
+              "rootJudicialResultTypeId": "0f44eeb9-2c81-430d-9a60-bbdaf8c4a093",
+              "terminatesOffenceProceedings": false,
+              "urgent": false,
+              "usergroups": []
+            },
+            "includeInNcesResult": true,
+            "isApplicant": true
+          }
+        ],
+        "cases": [
+          "2cca3ecf-0bde-49ab-aa3a-f7a65539afe5"
+        ],
+        "applications": [
+          "14e41d27-c073-434b-9b98-766c52c7a187"
+        ],
+        "masterDefendantId": "4780c981-49d7-4b17-b542-efd6cc562e23",
+        "isYouthDefendant": true,
+        "orderedDate": "2021-03-11",
+        "vocabulary": {
+          "custodyLocationIsPolice": false,
+          "custodyLocationIsPrison": false,
+          "atleastOneCustodialResult": false,
+          "allNonCustodialResults": true,
+          "atleastOneNonCustodialResult": true,
+          "appearedInPerson": false,
+          "appearedByVideoLink": false,
+          "isCpsProsecuted": false,
+          "anyAppearance": false,
+          "inCustody": false,
+          "youthDefendant": true,
+          "adultDefendant": false,
+          "adultOrYouthDefendant": true,
+          "welshCourtHearing": false,
+          "englishCourtHearing": true,
+          "anyCourtHearing": true,
+          "prosecutorMajorCreditor": [],
+          "nonProsecutorMajorCreditor": []
+        }
+      }
+    ]
+  }
+]

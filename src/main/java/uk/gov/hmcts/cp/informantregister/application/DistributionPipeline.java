@@ -18,6 +18,8 @@ import uk.gov.hmcts.cp.informantregister.domain.PayloadUnavailableException;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.RequestOutcome;
 import uk.gov.hmcts.cp.informantregister.domain.RunClaim;
+import uk.gov.hmcts.cp.informantregister.domain.SubmissionFailedException;
+import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
 
 /**
  * One request, from the guard admitting it to the guard recording what happened.
@@ -42,19 +44,20 @@ import uk.gov.hmcts.cp.informantregister.domain.RunClaim;
  * timestamp, which is the multi-node skew the data model's single-time-authority rule exists to rule
  * out.
  *
- * <p>Every failure a run can meet this increment is transient — payload unavailability is transient
- * by construction, and a deadline is not a fault at all — so no failure here is ever parked for
- * being unretryable. What decides the outcome instead is whether the queue will deliver the message
- * again: with deliveries remaining the failure is recorded RETRYING and the delivery is handed back;
- * on the final permitted delivery the same failure is recorded FAILED, with the identity of the
- * delivery that exhausted the budget, and the message is parked. The transport adapter reads that
- * fact from the delivery and carries it in, because the processed log cannot know it — the budget
- * belongs to the message, not to the request.
+ * <p><strong>A failure is read twice: is it worth retrying, and is there a retry left?</strong> The
+ * first question is the ports' to answer, and they answer it in the exception — a transformation
+ * that cannot read the payload and a 4xx contract rejection are both {@code NON_TRANSIENT}, and a
+ * non-transient failure is recorded FAILED and parked immediately, whatever the delivery count says.
+ * Handing one back instead would spend the whole delivery budget re-reading a payload that reads the
+ * same every time and park it at the end under {@code DELIVERY_LIMIT_EXHAUSTED} — a reason that
+ * tells support the service ran out of tries rather than that the payload was unusable
+ * (`design_rules.md`, "Processing State Machine").
  *
- * <p>The classification is carried rather than assumed because it already decides the metric label,
- * and it becomes a second branch the moment the submission port has authorities to reject: a 4xx
- * contract rejection is not worth a redelivery whatever the delivery count says, and that branch
- * belongs with the story that can test it.
+ * <p>Only a transient failure asks the second question. With deliveries remaining it is recorded
+ * RETRYING and the delivery is handed back; on the final permitted delivery the same failure is
+ * recorded FAILED, with the identity of the delivery that exhausted the budget, and the message is
+ * parked. The transport adapter reads that fact from the delivery and carries it in, because the
+ * processed log cannot know it — the budget belongs to the message, not to the request.
  */
 public class DistributionPipeline {
 
@@ -124,6 +127,10 @@ public class DistributionPipeline {
             outcome = runToOutcome(command, claim, lastChance);
         } catch (PayloadUnavailableException unavailable) {
             outcome = failed(claim, unavailable.classification(), unavailable.reason(), lastChance);
+        } catch (TransformationFailedException unreadable) {
+            outcome = failed(claim, unreadable.classification(), unreadable.reason(), lastChance);
+        } catch (SubmissionFailedException rejected) {
+            outcome = failed(claim, rejected.classification(), rejected.reason(), lastChance);
         } catch (RuntimeException unexpected) {
             LOG.error("Run failed unexpectedly; recording it so the claim is released. "
                             + "source={} requestId={} type={}",
@@ -182,8 +189,12 @@ public class DistributionPipeline {
      * Records a failed run — loudly, and with a bounded reason rather than whatever the layer
      * beneath had to say about it.
      *
-     * <p>The same failure means two different things depending on whether the queue will deliver the
-     * message again. With deliveries remaining it is recorded RETRYING and the delivery is handed
+     * <p>A failure the throw site classified {@code NON_TRANSIENT} is parked here and now: no
+     * redelivery can change it, so the delivery count is not consulted at all, and the row carries
+     * the reason the port named rather than an exhaustion the service never reached.
+     *
+     * <p>A transient failure means two different things depending on whether the queue will deliver
+     * the message again. With deliveries remaining it is recorded RETRYING and the delivery is handed
      * back. On the final permitted delivery it is recorded FAILED, in the transaction that stamps the
      * identity of the delivery that exhausted the budget onto the row, and the message is parked
      * where support can see it. Retry exhaustion is judged by that delivery count alone and never by
@@ -205,13 +216,15 @@ public class DistributionPipeline {
         metrics.pipelineFailed(classification);
 
         final GuardDecision outcome;
-        if (lastChance) {
+        if (classification == FailureClassification.NON_TRANSIENT) {
+            outcome = guard.recordNonTransientFailure(claim, reason);
+        } else if (lastChance) {
             outcome = guard.recordExhaustion(claim, reason);
-            if (outcome instanceof GuardDecision.DeadLetter) {
-                metrics.requestSettled(RequestOutcome.FAILED);
-            }
         } else {
             outcome = guard.recordTransientFailure(claim, reason);
+        }
+        if (outcome instanceof GuardDecision.DeadLetter) {
+            metrics.requestSettled(RequestOutcome.FAILED);
         }
         return outcome;
     }

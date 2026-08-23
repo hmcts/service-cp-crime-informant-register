@@ -63,6 +63,16 @@ public enum ReasonCode {
     PIPELINE_TRANSIENT_FAILURE("PIPELINE_TRANSIENT_FAILURE"),
 
     /**
+     * The hearing payload could not be transformed into register fragments.
+     *
+     * <p>Non-transient: the same payload transforms the same way on every delivery. Distinct from
+     * {@link #UNEXPECTED_FAILURE} because it names the payload rather than the service — a rise in
+     * this code means hearings are arriving in a shape the ported transformation was never written
+     * for, which is a producer signal, not a capacity one.
+     */
+    TRANSFORMATION_FAILED("TRANSFORMATION_FAILED"),
+
+    /**
      * The processed log could not be reached, so the delivery was not examined at all.
      *
      * <p>Distinct from every other failure here because it says nothing about the message. The
