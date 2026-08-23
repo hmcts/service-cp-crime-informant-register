@@ -273,14 +273,14 @@ public class DistributionCommandParser {
         final Optional<UUID> parsed;
         if (value == null) {
             parsed = Optional.empty();
-        } else if (!value.isString()) {
-            throw new ContractValidationException(ContractViolation.INVALID_FORMAT, field);
-        } else {
+        } else if (value.isString()) {
             final String text = value.stringValue();
             if (!CANONICAL_UUID.matcher(text).matches()) {
                 throw new ContractValidationException(ContractViolation.INVALID_FORMAT, field);
             }
             parsed = Optional.of(UUID.fromString(text));
+        } else {
+            throw new ContractValidationException(ContractViolation.INVALID_FORMAT, field);
         }
         return parsed;
     }
