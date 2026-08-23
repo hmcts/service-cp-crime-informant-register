@@ -16,8 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   had been calling under its own name. It no longer does.
   - **Contract.** `userId` is added to `distribution-command.schema.json` as an **optional**
     `uuid`; `additionalProperties` stays `false` and the required set is unchanged. Optional
-    because support replay tooling mints messages no person triggered and transition-window
-    producers send none — a required field would dead-letter both. A `userId` that *is* present
+    because a replay that does not carry the original body names no user — one rebuilt by hand, or
+    one re-sent deliberately without the field — and transition-window producers send none; a
+    required field would dead-letter both. A `userId` that *is* present
     must be a canonical UUID: anything else, an explicit `null` included, is a contract violation
     and dead-letters with a bounded reason that never quotes the value.
   - **Threading.** `CallerIdentity` is resolved once per run from the command and handed to the
@@ -34,8 +35,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     `cpp-context-results` must not send `userId` until this version is live in the target
     environment.
   - Restoring legacy behaviour needs no deviation entry; the one residue does. Deviations register
-    **#16**: a message that names *no* user runs under the system identity, where the legacy
-    envelope always carried one.
+    **#16**: a message that names *no* user runs under the system identity, where the legacy passed
+    the envelope's `userId` through whatever it was.
   - Agreed by the owner of both sides — publisher and consumer are the same team —
     **project-owner decision, 2026-08-23**.
   - **Post-review hardening.** Two assertions the change had been relying on prose for. A body whose
@@ -48,10 +49,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     before publishing, so a malformed value fails there, the way the Event Grid leg already fails
     it, instead of being published as a message that could only dead-letter here.
   - **A replay keeps the user it carries** — project-owner decision, 2026-08-23, "implement option
-    1". The replay procedure already re-sends the dead-lettered body verbatim under a fresh
-    `messageId`, and attribution is read from the message and nowhere else, so a replayed message
-    that names a `userId` runs as that original sharing user with nothing persisted and nothing for
-    an operator to remember. Persisting the user in the processed log to attribute a replay (option
+    1". The replay procedure already requires the dead-lettered body to be re-sent verbatim under a
+    fresh `messageId`, and attribution is read from the message and nowhere else, so a replay that
+    follows it runs as the original sharing user with nothing persisted and nothing for an operator
+    to remember. Verbatim is a documented requirement on the replay, not something this service can
+    check: a replay that does not carry the original body simply names no user and runs as the
+    system. Persisting the user in the processed log to attribute a replay (option
     2) was rejected: it stores PII the service has no other need for. Deviation **#16** is narrowed
     to what is actually left — a message carrying no user at all, which is a transition-window
     message, a replay hand-built without the original body, or the deliberate escape hatch of

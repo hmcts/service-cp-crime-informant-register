@@ -110,8 +110,8 @@ class DistributionCommandParserTest {
      * The sharing user, which a message may carry and may equally leave out.
      *
      * <p>Both shapes have to parse, because both are published: the producer names the user who
-     * shared the results, while support replay tooling and every producer build predating the field
-     * name nobody. A present value is held to the identifier shape the schema declares — an
+     * shared the results, while a replay that does not carry the original body — and every producer
+     * build predating the field — names nobody. A present value is held to the identifier shape the schema declares — an
      * attribution that is not an identity is worse than none, because it reaches a downstream
      * service as a {@code CJSCPPUID} it will refuse.
      */

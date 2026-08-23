@@ -180,9 +180,9 @@ settled before the state machine starts and so leaves no row.
   broker duplicate detection **on**, `maxConcurrentCalls` **2** to start (parity with the function
   app's Durable throttle).
 - `messageId` = `"{source}:{requestId}"` for **normal publishing by the producer**. Replay tooling is
-  the exception: a support resubmission re-sends the dead-lettered body **verbatim** (so the same
-  `requestId`) but must mint a **fresh `messageId`, distinct from any identity previously used for
-  that request**, so the replay is neither swallowed by the duplicate-detection window nor mistaken
+  the exception: a support resubmission must re-send the dead-lettered body **verbatim** (so the
+  same `requestId`) and must mint a **fresh `messageId`, distinct from any identity previously used
+  for that request**, so the replay is neither swallowed by the duplicate-detection window nor mistaken
   for the delivery that exhausted the retries. Verbatim is load-bearing: the body carries the
   attribution, so a replayed message that named a `userId` runs as that original sharing user, while
   one rebuilt without it runs under the system identity. The `userId` field is stripped only as the

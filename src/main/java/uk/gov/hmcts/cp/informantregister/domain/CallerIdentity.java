@@ -16,11 +16,14 @@ import java.util.UUID;
  * identity, three calls, from the user who shared the results. This type is that answer, made
  * explicit so it cannot be resolved three times and come out three ways.
  *
- * <p><strong>Having no user is a state, not a gap.</strong> Support replay tooling mints a message
- * nobody triggered, and a producer build from before {@code userId} was agreed sends none. Those
- * runs are made under the configured system identity, which is what {@link #orSystem(String)} is
- * for: the per-request user takes precedence where there is one, and the configured identity is the
- * fallback rather than the other way round.
+ * <p><strong>Having no user is a state, not a gap.</strong> A producer build from before
+ * {@code userId} was agreed sends none, and so does a replay that does not carry the original body —
+ * one rebuilt by hand, or one re-sent deliberately without the field because the original user has
+ * been deactivated. Those runs are made under the configured system identity, which is what
+ * {@link #orSystem(String)} is for: the per-request user takes precedence where there is one, and
+ * the configured identity is the fallback rather than the other way round. A replay that carries the
+ * original body carries the original {@code userId} with it, and is attributed to that user like any
+ * other delivery; see {@code doc/DEVIATIONS.md} #16.
  *
  * <p><strong>It is never logged.</strong> A user identifier is PII-adjacent and the configured
  * identity is a secret; both leave this service in a {@code CJSCPPUID} header and nowhere else. MDC
@@ -30,7 +33,10 @@ import java.util.UUID;
  */
 public record CallerIdentity(Optional<UUID> userId) {
 
-    /** A run no user triggered: a replay, or a message published before the field existed. */
+    /**
+     * A run no user is named for: a message published before the field existed, or a replay that
+     * does not carry the original body.
+     */
     public static final CallerIdentity SYSTEM = new CallerIdentity(Optional.empty());
 
     /**

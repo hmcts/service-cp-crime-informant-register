@@ -18,10 +18,13 @@ import java.util.UUID;
  * share of the results produced this message, and every downstream call of the run is attributed to
  * them — which is what the function app does with the envelope's {@code userId}
  * ({@code InformantRegisterEventGridTrigger/index.js:15} → {@code cjscppuid}). It is optional
- * because two legitimate producers have no user to name: support replay tooling, which mints a
- * message nobody triggered, and any producer build from before the field existed. Those messages run
- * under the configured system identity instead, which is why the absence is modelled as an empty
- * {@link Optional} rather than as a defect.
+ * because two legitimate producers have no user to name: support replay tooling, where the replay is
+ * built by hand rather than re-sent verbatim or is re-sent deliberately without the field because
+ * the original user has been deactivated, and any producer build from before the field existed.
+ * Those messages run under the configured system identity instead, which is why the absence is
+ * modelled as an empty {@link Optional} rather than as a defect. A replay that <em>is</em> re-sent
+ * verbatim carries the original {@code userId} and is attributed to that user like any other
+ * delivery; see {@code doc/DEVIATIONS.md} #16.
  *
  * <p>Every component is normalised at parse time, so an uppercase-hex identifier and an
  * offset-bearing instant arrive here in the same canonical shape as their lowercase and {@code Z}
@@ -36,7 +39,8 @@ import java.util.UUID;
  * @param sharedTime  the instant at which the hearing was shared, normalised to UTC
  * @param eventType   the publishing event; {@code Hearing_Resulted} only
  * @param userId      the user who shared the results, where the message named one; empty for a
- *                    replayed or transition-window message, which runs under the system identity
+ *                    transition-window message, or a replay that does not carry the original body,
+ *                    both of which run under the system identity
  */
 public record DistributionCommand(
         String source,
@@ -61,8 +65,9 @@ public record DistributionCommand(
     /**
      * A command carrying no user, which is a message this contract accepts rather than a shortcut.
      *
-     * <p>It is the shape support replay tooling publishes and the shape every producer sent before
-     * {@code userId} was agreed, so it deserves to be constructible without spelling out an absence.
+     * <p>It is the shape a replay built without the original body carries, and the shape every
+     * producer sent before {@code userId} was agreed, so it deserves to be constructible without
+     * spelling out an absence.
      *
      * @param source     publishing system
      * @param requestId  publisher-minted request identity

@@ -200,11 +200,13 @@ class FailedReplayIT {
     /**
      * Who a replayed run is made as (deviations-register entry 16).
      *
-     * <p>The replay procedure re-sends the dead-lettered body <strong>verbatim</strong>, changing
-     * only the broker {@code messageId} (`doc/API_CONTRACTS.md`, "Replay rule"). Attribution is
-     * purely message-driven — the run's {@link CallerIdentity} is read from the command and from
-     * nothing else — so a replay of an attributed message is run as the original user without the
-     * processed log storing a user identifier anywhere. That is the whole of the claim, and it is
+     * <p>The replay procedure requires the dead-lettered body to be re-sent <strong>verbatim</strong>,
+     * changing only the broker {@code messageId} (`doc/API_CONTRACTS.md`, "Replay rule") — a
+     * requirement on whoever replays, not something this service checks. What is pinned here is the
+     * consumer's answer to each body it might be handed. Attribution is purely message-driven — the
+     * run's {@link CallerIdentity} is read from the command and from nothing else — so a replay that
+     * does carry the original body is run as the original user, without the processed log storing a
+     * user identifier anywhere. That is the whole of the claim, and it is
      * worth pinning because it is a property of two mechanisms agreeing: the guard readmits the
      * request because {@code userId} is outside the request fingerprint, and the pipeline resolves
      * the caller from the body it was handed.

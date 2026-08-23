@@ -64,9 +64,9 @@ class DistributionCommandSchemaCorpusTest {
      * The one declared property the contract does not require.
      *
      * <p>Named once, here, so every assertion below that has to treat it differently says why in the
-     * same terms: a message may legitimately carry no user — support replay tooling mints one no
-     * person triggered, and a producer build from before the field existed sends none — so absent is
-     * valid and the service falls back to its configured system identity.
+     * same terms: a message may legitimately carry no user — a replay that does not carry the
+     * original body names none, and neither does a producer build from before the field existed — so
+     * absent is valid and the service falls back to its configured system identity.
      */
     private static final String OPTIONAL_FIELD = "userId";
 
@@ -482,8 +482,9 @@ class DistributionCommandSchemaCorpusTest {
                 .as("the optional property must actually be declared, or nothing below tests it")
                 .contains(OPTIONAL_FIELD);
         assertThat(requiredFieldNames())
-                .as("the sharing user is optional: replay tooling and transition-window producers "
-                        + "carry none, and a required field would dead-letter both")
+                .as("the sharing user is optional: a replay without the original body and a "
+                        + "transition-window producer carry none, and a required field would "
+                        + "dead-letter both")
                 .doesNotContain(OPTIONAL_FIELD);
 
         assertAgreement(bodyWithout(OPTIONAL_FIELD), true);

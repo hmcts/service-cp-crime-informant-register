@@ -252,6 +252,15 @@ class TelemetryPrivacyTest {
      * the easiest one to open by accident: a {@code log.info("running as {}", identity)} added while
      * debugging an attribution problem would ship a user identifier to the log index on every
      * hearing, and no existing assertion would notice.
+     *
+     * <p><strong>Scope.</strong> This drives the listener, the parser and the pipeline over mocked
+     * ports, so what it proves is that <em>that</em> path writes no caller — not that no adapter
+     * anywhere does. Where each real adapter puts the identity is pinned by that adapter's own suite
+     * ({@code ResultsCommandGatewayTest}, most explicitly, in
+     * {@code a_post_should_never_carry_the_caller_anywhere_but_the_identity_header}; and by the
+     * exact-URL verifications in {@code ReferenceDataNowSubscriptionsClientTest} and
+     * {@code ResultsQueryHearingPayloadClientTest}). A new adapter needs its own assertion and does
+     * not inherit this one.
      */
     @Test
     @DisplayName("the user a run is attributed to is not written at any level")
@@ -278,7 +287,7 @@ class TelemetryPrivacyTest {
                     .as("the run has to have happened for its silence to mean anything")
                     .isNotEmpty();
             assertThat(log.renderings())
-                    .as("the caller leaves in a CJSCPPUID header and nowhere else")
+                    .as("no line this delivery path writes may carry the caller")
                     .noneMatch(line -> line.contains(CALLER_MARKER));
         }
     }
