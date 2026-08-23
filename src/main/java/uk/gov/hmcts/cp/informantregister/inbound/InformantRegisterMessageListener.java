@@ -1,14 +1,20 @@
 package uk.gov.hmcts.cp.informantregister.inbound;
 
+import com.azure.core.amqp.exception.AmqpErrorCondition;
+import com.azure.core.amqp.exception.AmqpException;
+import com.azure.messaging.servicebus.ServiceBusException;
+import com.azure.messaging.servicebus.ServiceBusFailureReason;
 import com.azure.messaging.servicebus.ServiceBusReceivedMessage;
 import com.azure.messaging.servicebus.ServiceBusReceivedMessageContext;
 import com.azure.messaging.servicebus.models.DeadLetterOptions;
-import java.time.OffsetDateTime;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
-import org.springframework.dao.DataAccessException;
+import org.springframework.dao.ConcurrencyFailureException;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.RecoverableDataAccessException;
+import org.springframework.dao.TransientDataAccessException;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
 import uk.gov.hmcts.cp.informantregister.config.ServiceBusHealthIndicator;
@@ -29,9 +35,9 @@ import uk.gov.hmcts.cp.informantregister.domain.SettlementOperation;
  * one" half: every path produces a {@link GuardDecision}, and settlement happens once, afterwards,
  * in one place. There is no route through this class that reaches the end without a settlement
  * attempt and none that settles twice, which is what stops a delivery being left to time out (spec
- * FR-001, constitution Principle VI). The single exception is a lock that has already expired: the
- * call could not succeed, so it is reported and counted rather than attempted, and the broker's
- * redelivery is the recovery (spec FR-016).
+ * FR-001, constitution Principle VI). A lock that has expired is discovered from the broker's own
+ * refusal of that one attempt — never from a local clock reading — and is then reported and counted
+ * under its own instrument, with the broker's redelivery as the recovery (spec FR-016).
  *
  * <p>Ordering is the other half. A delivery is acknowledged only after the outcome write has
  * returned durably, because a message acknowledged before the write is a request the processed log
@@ -51,9 +57,17 @@ public class InformantRegisterMessageListener {
 
     private static final Logger LOG = LoggerFactory.getLogger(InformantRegisterMessageListener.class);
 
+    private static final String SOURCE = "source";
     private static final String REQUEST_ID = "requestId";
     private static final String HEARING_ID = "hearingId";
     private static final String HEARING_DAY = "hearingDay";
+
+    /**
+     * How deep to walk a refusal's cause chain before giving up — bounded because the chain is
+     * supplied by libraries, and a self-referential one must classify a few times and stop rather
+     * than hang the settlement path.
+     */
+    private static final int MAX_CAUSE_DEPTH = 10;
 
     /**
      * This runner's identity, for the half of {@code claim_owner} that is not the delivery.
@@ -177,7 +191,22 @@ public class InformantRegisterMessageListener {
         GuardDecision decision;
         try {
             decision = examine(message);
-        } catch (DataAccessException storeGone) {
+        } catch (ConcurrencyFailureException contention) {
+            // Caught before the outage classes because it extends TransientDataAccessException
+            // and is the one transient kind that is not an outage: a deadlock or lock timeout is
+            // the store *answering* — two writers met on one row — and the loser's delivery simply
+            // comes round again. Suspending the whole queue for one contended row would stall
+            // every message behind it.
+            decision = unexpectedFailure(contention);
+        } catch (TransientDataAccessException | RecoverableDataAccessException
+                | DataAccessResourceFailureException storeGone) {
+            // The outage classes, and deliberately not the whole DataAccessException hierarchy.
+            // Spring's own transient/non-transient split is the wrong knife here: the exception a
+            // dead store actually produces — DataAccessResourceFailureException, connection
+            // acquisition included — sits on the non-transient side, while a constraint violation
+            // or a broken statement is the store *answering*, over a connection that plainly
+            // worked. Only the store-went-away classes may stop the queue; a per-statement fault
+            // is handed back below without turning one poison message into an intake outage.
             decision = storeDiedMidRun();
         } catch (RuntimeException unexpected) {
             decision = unexpectedFailure(unexpected);
@@ -215,6 +244,7 @@ public class InformantRegisterMessageListener {
      */
     private GuardDecision process(
             final DistributionCommand command, final ServiceBusReceivedMessage message) {
+        MDC.put(SOURCE, command.source());
         MDC.put(REQUEST_ID, command.requestId().toString());
         MDC.put(HEARING_ID, command.hearingId().toString());
         MDC.put(HEARING_DAY, command.hearingDay().toString());
@@ -285,6 +315,7 @@ public class InformantRegisterMessageListener {
      * believed.
      */
     private static void correlate(final DistributionCommandParser.Correlation correlation) {
+        putIfPresent(SOURCE, correlation.source());
         putIfPresent(REQUEST_ID, correlation.requestId());
         putIfPresent(HEARING_ID, correlation.hearingId());
         putIfPresent(HEARING_DAY, correlation.hearingDay());
@@ -297,45 +328,18 @@ public class InformantRegisterMessageListener {
     }
 
     /**
-     * The one settlement — attempted once, and only while there is still a lock to settle against.
+     * The settlement the decision names, made once.
      *
-     * <p>Spec FR-001 asks for exactly one settlement attempt <em>while the delivery lock is still
-     * valid</em>. A lock that has already run out makes the attempt impossible rather than optional:
-     * the call would be refused whatever it was, so it is not made, the loss is reported and counted
-     * under its own instrument, and recovery is the broker's redelivery into a state machine that
-     * already knows what this delivery achieved (spec FR-016).
+     * <p>Whether the lock is still held is the broker's fact, and it is learned from the settlement
+     * call itself: a refusal that names the lock is reported and counted under its own instrument
+     * inside {@link #accepted}, and recovery is the broker's redelivery into a state machine that
+     * already knows what this delivery achieved (spec FR-016). Deliberately <strong>no</strong>
+     * local pre-check against {@code lockedUntil} — that would compare the broker's clock with this
+     * pod's, which is the multi-node skew the data model's single-time-authority rule exists to
+     * rule out, and a pod running ahead would skip settlements the broker was still willing to
+     * accept, completed work included.
      */
     private void settle(
-            final ServiceBusReceivedMessageContext context, final GuardDecision decision) {
-        if (lockHeld(context.getMessage())) {
-            perform(context, decision);
-        } else {
-            LOG.error("The delivery lock was lost before settlement, so none was attempted; "
-                            + "recovery is the broker's redelivery. decision={}",
-                    decision.getClass().getSimpleName());
-            metrics.lockLost();
-        }
-    }
-
-    /**
-     * Whether this delivery's lock is still ours to settle against.
-     *
-     * <p>A broker that has not said when the lock expires is not evidence that it has gone, so an
-     * absent expiry is read as held: refusing to settle a delivery this service could have settled
-     * would leave the message to come round again for no reason. The lock is renewed automatically
-     * up to {@code max-auto-lock-renew-duration}, which startup validation keeps comfortably longer
-     * than a run's own deadline, so a live run reaching this check with an expired lock means the
-     * renewal itself stopped — which is exactly what the instrument is for.
-     */
-    private static boolean lockHeld(final ServiceBusReceivedMessage message) {
-        final OffsetDateTime lockedUntil = message.getLockedUntil();
-        return lockedUntil == null || lockedUntil.isAfter(OffsetDateTime.now());
-    }
-
-    /**
-     * The settlement the decision names, made once.
-     */
-    private void perform(
             final ServiceBusReceivedMessageContext context, final GuardDecision decision) {
         switch (decision) {
             case GuardDecision.Complete acknowledged -> {
@@ -423,15 +427,27 @@ public class InformantRegisterMessageListener {
             brokerCall.run();
             settled = true;
         } catch (RuntimeException refused) {
-            LOG.error("The broker refused the settlement; no second settlement is attempted and the "
-                            + "delivery will come round again. operation={} type={}",
-                    operation.label(), refused.getClass().getName());
-            metrics.settlementFailed(operation);
-            // The same call that failed is also the most recent thing this service knows about the
-            // connection, and a refusal is the counterpart of the successful settlement the queue
-            // health indicator already counts as evidence of reachability. Reported, not judged:
-            // the indicator decides whether this particular refusal means the broker is gone.
-            health.recordSettlementRefusal(refused);
+            if (lockLost(refused)) {
+                // The broker's own statement that the lock has gone. Not a settlement failure —
+                // the machinery worked, the lock had simply run out — and not a transport fault,
+                // because the refusal arrived over a connection that plainly answered. Counted
+                // under its own instrument: a rise means lock renewal is not covering the runs.
+                LOG.error("The delivery lock was lost before the settlement was accepted; no "
+                                + "second settlement is attempted and recovery is the broker's "
+                                + "redelivery. operation={}", operation.label());
+                metrics.lockLost();
+            } else {
+                LOG.error("The broker refused the settlement; no second settlement is attempted "
+                                + "and the delivery will come round again. operation={} type={}",
+                        operation.label(), refused.getClass().getName());
+                metrics.settlementFailed(operation);
+                // The same call that failed is also the most recent thing this service knows about
+                // the connection, and a refusal is the counterpart of the successful settlement the
+                // queue health indicator already counts as evidence of reachability. Reported, not
+                // judged: the indicator decides whether this particular refusal means the broker
+                // is gone.
+                health.recordSettlementRefusal(refused);
+            }
         }
         if (settled) {
             // Outside the guard, and this is the whole reason the guard is exactly one call wide.
@@ -447,6 +463,29 @@ public class InformantRegisterMessageListener {
             health.recordSettlementAccepted();
         }
         return settled;
+    }
+
+    /**
+     * Whether a refusal is the broker saying the delivery lock has gone.
+     *
+     * <p>The cause chain is walked because the SDK wraps: a blocking settlement's failure routinely
+     * carries the interesting reason a level or two beneath the exception it throws. The walk is
+     * bounded, so a self-referential chain supplied by a library classifies a few times and stops.
+     */
+    private static boolean lockLost(final Throwable refusal) {
+        boolean lost = false;
+        Throwable current = refusal;
+        for (int depth = 0; !lost && current != null && depth < MAX_CAUSE_DEPTH; depth++) {
+            lost = switch (current) {
+                case ServiceBusException serviceBus ->
+                    serviceBus.getReason() == ServiceBusFailureReason.MESSAGE_LOCK_LOST;
+                case AmqpException amqp ->
+                    amqp.getErrorCondition() == AmqpErrorCondition.MESSAGE_LOCK_LOST;
+                default -> false;
+            };
+            current = current.getCause();
+        }
+        return lost;
     }
 
     /**
@@ -485,6 +524,7 @@ public class InformantRegisterMessageListener {
     }
 
     private static void clearCorrelation() {
+        MDC.remove(SOURCE);
         MDC.remove(REQUEST_ID);
         MDC.remove(HEARING_ID);
         MDC.remove(HEARING_DAY);

@@ -287,25 +287,35 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
      * The rule, in one place.
      *
      * <p>A recorded failure is answered by one of two things: traffic since — a receive that
-     * succeeded says more about reachability than an error that preceded it — or age. A failure
-     * nothing has repeated for longer than the staleness window stops being reported, strictly
-     * longer, because a failure exactly on the window is not yet older than it. That is the rule
-     * that keeps an idle queue from looking like an outage.
+     * succeeded says more about reachability than an error that preceded it — or age, <em>for a
+     * consumer the broker has answered before</em>. A failure nothing has repeated for longer than
+     * the staleness window stops being reported, strictly longer, because a failure exactly on the
+     * window is not yet older than it. That is the rule that keeps an idle queue from looking like
+     * an outage — and it is conditional on ever having heard from the broker, because an idle queue
+     * is only the innocent explanation of silence when the connection is known to have worked. For
+     * a consumer that has <em>never once</em> been answered, the recorded fault is the last thing
+     * the transport ever said, the SDK will not repeat it (see {@link #recordSettlementRefusal}),
+     * and letting it quietly age into UP would hide a total outage behind the very rule meant to
+     * excuse a quiet night. Such a consumer says DOWN until first contact — with no startup grace,
+     * because grace is the benefit of the doubt for a silence that carries no evidence, and a
+     * recorded connection fault is evidence. A wrong DOWN here costs one health cycle and is
+     * cleared by the first answer; a wrong UP hides the outage.
      *
      * <p>With no failure recorded, the question is whether this consumer has <em>ever</em> heard
      * from the broker. Not having heard lately is normal; not having heard at all is not, and it is
      * the only evidence available for a pod that started while the queue was unavailable — the SDK
-     * reports nothing at all in that case (see {@link #recordSettlementRefusal}). One staleness
-     * window of grace covers an ordinary start, and after it a consumer that has never once been
-     * answered says so. Any contact at all clears it permanently.
+     * reports nothing at all in that case. One staleness window of grace covers an ordinary start,
+     * and after it a consumer that has never once been answered says so. Any contact at all clears
+     * it permanently.
      */
     private boolean reachable(final Fault fault, final Instant traffic) {
         final boolean answered;
         if (fault == null) {
             answered = traffic != null || withinStartupGrace();
         } else {
-            answered = (traffic != null && traffic.isAfter(fault.at()))
-                    || Duration.between(fault.at(), clock.instant()).compareTo(staleness) > 0;
+            answered = traffic != null
+                    && (traffic.isAfter(fault.at())
+                        || Duration.between(fault.at(), clock.instant()).compareTo(staleness) > 0);
         }
         return answered;
     }

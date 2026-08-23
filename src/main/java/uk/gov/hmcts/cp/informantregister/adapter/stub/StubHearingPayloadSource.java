@@ -14,10 +14,10 @@ import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 /**
  * A payload source that fetches nothing, and says so on every call.
  *
- * <p>The real adapter — the hearing payload cache, with the query-side fallback — arrives with a
- * later story. Until it does this is the deployed adapter, which is the agreed shape of the walking
- * skeleton rather than an oversight, so it logs at INFO on every invocation: a stub that is quiet is
- * a stub somebody will mistake for the real thing.
+ * <p>The real adapter — the hearing payload cache, with the query-side fallback — has landed, so this
+ * is a local-run and test convenience and nothing else: startup refuses it wherever the deployed
+ * credential source is in use (constitution Principle V). It still logs at INFO on every invocation,
+ * because a stub that is quiet is a stub somebody will mistake for the real thing.
  *
  * <p>It is also where spec FR-009's simulated transient failure lives. The switch is a configuration
  * property read once at construction — never a field in the message and never an HTTP endpoint,

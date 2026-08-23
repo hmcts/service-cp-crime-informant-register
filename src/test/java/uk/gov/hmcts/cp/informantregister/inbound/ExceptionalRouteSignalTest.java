@@ -13,6 +13,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
@@ -20,6 +21,7 @@ import uk.gov.hmcts.cp.informantregister.domain.DeliveryIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
 import uk.gov.hmcts.cp.informantregister.domain.FailureClassification;
 import uk.gov.hmcts.cp.informantregister.domain.GuardDecision;
+import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.RunClaim;
 import uk.gov.hmcts.cp.informantregister.support.CapturedLog;
 import uk.gov.hmcts.cp.informantregister.support.QueueHealthTestSupport;
@@ -52,6 +54,7 @@ class ExceptionalRouteSignalTest {
 
     private static final int MAX_DELIVERY_COUNT = 5;
 
+    private static final String SOURCE = "source";
     private static final String REQUEST_ID = "requestId";
     private static final String HEARING_ID = "hearingId";
     private static final String HEARING_DAY = "hearingDay";
@@ -127,6 +130,7 @@ class ExceptionalRouteSignalTest {
             assertThat(errors).hasSize(1);
             assertThat(errors.getFirst().getMDCPropertyMap())
                     .as("the six agreed fields were all there; only the seventh was the problem")
+                    .containsEntry(SOURCE, "RESULTS")
                     .containsEntry(REQUEST_ID, requestId.toString())
                     .containsEntry(HEARING_ID, hearingId.toString())
                     .containsEntry(HEARING_DAY, "2026-08-21");
@@ -146,7 +150,40 @@ class ExceptionalRouteSignalTest {
             assertThat(errors).hasSize(1);
             assertThat(errors.getFirst().getMDCPropertyMap())
                     .as("absent is the honest answer; a placeholder would be searched for and found")
-                    .doesNotContainKeys(REQUEST_ID, HEARING_ID, HEARING_DAY);
+                    .doesNotContainKeys(SOURCE, REQUEST_ID, HEARING_ID, HEARING_DAY);
+        }
+    }
+
+    @Test
+    @DisplayName("a delivery leaves no correlation behind for the next one's lines")
+    void should_clear_every_correlation_key_when_the_delivery_ends() {
+        when(pipeline.process(any(DistributionCommand.class), any(DeliveryIdentity.class)))
+                .thenReturn(new GuardDecision.Complete(ReasonCode.RUN_COMPLETED));
+
+        listener.onMessage(deliveryOf(validBody()));
+
+        assertThat(MDC.get(SOURCE)).isNull();
+        assertThat(MDC.get(REQUEST_ID)).isNull();
+        assertThat(MDC.get(HEARING_ID)).isNull();
+        assertThat(MDC.get(HEARING_DAY)).isNull();
+    }
+
+    @Test
+    @DisplayName("a source the contract does not permit is not correlated on")
+    void should_ignore_a_source_value_outside_the_permitted_set() {
+        // The security point of the canonical-only rule, applied to the enumerated field: a
+        // producer-chosen string must not reach the log index by being called source.
+        final String hostile = validBody().replace("\"RESULTS\"", "\"EVIL-SOURCE\"");
+
+        try (CapturedLog log = CapturedLog.of(InformantRegisterMessageListener.class)) {
+            listener.onMessage(deliveryOf(hostile));
+
+            final List<ILoggingEvent> errors = errorsIn(log);
+            assertThat(errors).hasSize(1);
+            assertThat(errors.getFirst().getMDCPropertyMap())
+                    .as("the other identifiers still correlate; the rejected value stays out")
+                    .doesNotContainKey(SOURCE)
+                    .containsEntry(REQUEST_ID, requestId.toString());
         }
     }
 

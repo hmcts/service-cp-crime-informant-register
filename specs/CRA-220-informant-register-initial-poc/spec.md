@@ -216,11 +216,12 @@ reporting the queue connection state.
 ### Functional Requirements
 
 - **FR-001**: The service MUST consume request messages from its dedicated request queue and settle
-  every delivery explicitly: on every path the handler controls, and while the delivery lock is
-  still valid, it MUST make exactly one settlement attempt — acknowledge (done), return-for-retry,
-  or park on the dead-letter queue. No delivery may be left to time out by default, and no failure
-  may be silently swallowed. The edge cases where a settlement attempt itself fails are covered by
-  FR-016.
+  every delivery explicitly: on every path the handler controls it MUST make exactly one settlement
+  attempt — acknowledge (done), return-for-retry, or park on the dead-letter queue. The attempt is
+  always made; whether the delivery lock is still valid is the broker's fact, learned from its
+  answer to that one attempt, never from a local clock reading. No delivery may be left to time out
+  by default, and no failure may be silently swallowed. The edge cases where the settlement attempt
+  itself fails — a refusal, including one that names a lost lock — are covered by FR-016.
 - **FR-002**: The service MUST validate every message body against the agreed request contract: the
   six fields `source`, `requestId`, `hearingId`, `hearingDay`, `sharedTime`, `eventType` — all
   required, no unknown fields, `source` and `eventType` restricted to their agreed values,

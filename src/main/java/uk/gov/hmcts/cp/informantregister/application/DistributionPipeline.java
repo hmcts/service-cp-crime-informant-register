@@ -104,8 +104,19 @@ public class DistributionPipeline {
     }
 
     /**
-     * The run itself, with the one failure it can meet turned into an outcome.
+     * The run itself, with every failure it can meet turned into an outcome.
+     *
+     * <p>The second catch is total on purpose: this frame holds the claim, and it is the only frame
+     * that does. A failure that escaped it would leave {@code claim_owner} live for the rest of the
+     * lease, so every redelivery would bounce off {@code CLAIM_NOT_ACQUIRED} until the broker parked
+     * the message under its own reason with no FAILED record behind it — the silent parking the
+     * state machine exists to prevent. It is a catch-and-record, not a catch-and-ignore: the failure
+     * is reported at ERROR, classified, and written to the processed log before the delivery is
+     * settled. A store that dies inside the recording write throws out of the catch block itself,
+     * which is correct — nothing is recordable during a store outage, and the transport adapter's
+     * own handling takes over.
      */
+    @SuppressWarnings("PMD.AvoidCatchingGenericException")
     private GuardDecision runUnder(
             final DistributionCommand command, final RunClaim claim, final boolean lastChance) {
         GuardDecision outcome;
@@ -113,6 +124,12 @@ public class DistributionPipeline {
             outcome = runToOutcome(command, claim, lastChance);
         } catch (PayloadUnavailableException unavailable) {
             outcome = failed(claim, unavailable.classification(), unavailable.reason(), lastChance);
+        } catch (RuntimeException unexpected) {
+            LOG.error("Run failed unexpectedly; recording it so the claim is released. "
+                            + "source={} requestId={} type={}",
+                    claim.source(), claim.requestId(), unexpected.getClass().getName());
+            outcome = failed(claim, FailureClassification.TRANSIENT,
+                    ReasonCode.UNEXPECTED_FAILURE, lastChance);
         }
         return outcome;
     }

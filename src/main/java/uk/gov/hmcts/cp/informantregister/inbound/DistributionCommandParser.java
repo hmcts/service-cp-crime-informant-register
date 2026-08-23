@@ -106,10 +106,11 @@ public class DistributionCommandParser {
      * about. The producer, meanwhile, usually did supply the identifiers: an unknown extra field
      * leaves the other six untouched.
      *
-     * <p><strong>Only canonical values, and only these three.</strong> Each is admitted just when it
-     * matches the shape the contract requires — a canonical UUID, an RFC 3339 date — so nothing a
-     * producer wrote can reach the log index by being called {@code requestId}. Anything absent, of
-     * the wrong type or the wrong shape simply is not there, and the line goes out without it.
+     * <p><strong>Only canonical values, and only these four.</strong> Each is admitted just when it
+     * matches the shape the contract requires — a canonical UUID, an RFC 3339 date, an enumerated
+     * source — so nothing a producer wrote can reach the log index by being called
+     * {@code requestId}. Anything absent, of the wrong type or the wrong shape simply is not there,
+     * and the line goes out without it.
      *
      * @param body the raw message body, valid or not
      * @return the canonical identifiers it yielded, with nulls where it yielded none
@@ -118,6 +119,7 @@ public class DistributionCommandParser {
         return readableTree(body)
                 .filter(JsonNode::isObject)
                 .map(root -> new Correlation(
+                        permittedOrNull(root, SOURCE, PERMITTED_SOURCES),
                         canonicalOrNull(root, REQUEST_ID, CANONICAL_UUID),
                         canonicalOrNull(root, HEARING_ID, CANONICAL_UUID),
                         canonicalOrNull(root, HEARING_DAY, RFC3339_DATE)))
@@ -148,17 +150,27 @@ public class DistributionCommandParser {
         return text != null && canonical.matcher(text).matches() ? text : null;
     }
 
+    /** The enumerated counterpart: admitted just when the value is one the contract permits. */
+    private static String permittedOrNull(
+            final JsonNode root, final String field, final Set<String> permitted) {
+        final JsonNode value = root.get(field);
+        final String text = value != null && value.isString() ? value.stringValue() : null;
+        return text != null && permitted.contains(text) ? text : null;
+    }
+
     /**
      * The correlation set, as far as a body could supply it.
      *
+     * @param source     the permitted source, or null
      * @param requestId  the canonical request id, or null
      * @param hearingId  the canonical hearing id, or null
      * @param hearingDay the canonical hearing day, or null
      */
-    public record Correlation(String requestId, String hearingId, String hearingDay) {
+    public record Correlation(
+            String source, String requestId, String hearingId, String hearingDay) {
 
         /** What a body that yielded nothing gives back. */
-        public static final Correlation NONE = new Correlation(null, null, null);
+        public static final Correlation NONE = new Correlation(null, null, null, null);
     }
 
     /**

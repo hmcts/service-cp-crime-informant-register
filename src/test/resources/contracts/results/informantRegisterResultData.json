@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "id": "http://justice.gov.uk/results/courts/informantRegisterDocument/informantRegisterResultData.json",
+  "description": "The details of a published result rendered in a informant register document",
+  "type": "object",
+  "properties": {
+    "amount": {
+      "description": "",
+      "type": "string"
+    },
+    "nextHearingDate": {
+      "type": "string"
+    },
+    "nextCourtLocation": {
+      "type": "string"
+    },
+    "durationValue": {
+      "type": "string"
+    },
+    "durationUnit": {
+      "type": "string"
+    },
+    "durationStartDate": {
+      "type": "string"
+    },
+    "durationEndDate": {
+      "type": "string"
+    },
+    "secondaryDurationValue": {
+      "type": "string"
+    },
+    "secondaryDurationUnit": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

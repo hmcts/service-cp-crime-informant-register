@@ -44,6 +44,7 @@ import uk.gov.hmcts.cp.informantregister.support.PostgresTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ProcessedLogTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ProcessedLogTestSupport.Row;
 import uk.gov.hmcts.cp.informantregister.support.ServiceBusEmulatorTestSupport;
+import uk.gov.hmcts.cp.informantregister.support.ServiceTestSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -131,6 +132,7 @@ class DeliveryExhaustionIT {
         registry.add("spring.datasource.username", PostgresTestSupport::username);
         registry.add("spring.datasource.password", PostgresTestSupport::password);
         registry.add("informantregister.servicebus.connection-string", () -> connectionString);
+        ServiceTestSupport.stubPayloadSource(registry);
     }
 
     @BeforeEach

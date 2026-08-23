@@ -48,9 +48,11 @@ A change ships only when all applicable gates are green:
 
 1. **Message-contract gate.** The inbound message is parsed and validated against the documented
    schema. Unknown fields, missing required fields, and unparseable messages have explicit,
-   tested behaviour: missing required fields and unparseable messages dead-letter
-   with a reason (never a silent drop); unknown extra fields are tolerated
-   (forward-compatible) and logged once at debug.
+   tested behaviour, and all of it is dead-lettering with a reason — never a silent drop. The
+   contract is **closed** (`additionalProperties: false`, per the schema, FR-002 and
+   `doc/API_CONTRACTS.md`): an unknown extra field is a contract violation and dead-letters like
+   any other, because tolerating it would hide producer drift until it mattered. The offending
+   field's name is never quoted back (producer-chosen text); the reason code is.
 2. **Settlement gate.** Every path through the message listener performs exactly one explicit
    `complete()` / `abandon()` / `deadLetter()`. Tests must cover the success, transient-failure and
    non-transient-failure paths. A path that can return unsettled fails review.

@@ -120,6 +120,7 @@ class ReadinessPolicyIT {
         registry.add("spring.datasource.username", PostgresTestSupport::username);
         registry.add("spring.datasource.password", PostgresTestSupport::password);
         registry.add("informantregister.servicebus.connection-string", () -> connectionString);
+        ServiceTestSupport.stubPayloadSource(registry);
         // A frozen container swallows the connection attempt rather than refusing it, so the driver
         // waits out its connect timeout. The deployed default is thirty seconds, which would make
         // every health poll in this suite a thirty-second block; three keeps the outage observable
@@ -258,10 +259,17 @@ class ReadinessPolicyIT {
     }
 
     @Test
-    @DisplayName("an unresolved error older than the staleness window, with no traffic, is not an outage")
+    @DisplayName("an unresolved error older than the staleness window, on an idle queue, is not an outage")
     void should_stop_reporting_an_error_that_nothing_has_contradicted_or_repeated() {
         final AdjustableClock clock = AdjustableClock.startingAt(Instant.parse("2026-08-21T09:00:00Z"));
         final ServiceBusHealthIndicator indicator = indicatorOn(clock);
+
+        // The broker has answered this consumer before: that is what entitles a later silence to
+        // the idle-queue reading. A consumer never answered at all keeps reporting the fault — the
+        // SDK will not repeat it, so aging it out would hide a total outage — and that case is
+        // asserted in ServiceBusHealthIndicatorTest.
+        indicator.recordTraffic();
+        clock.advance(Duration.ofMinutes(5));
 
         indicator.recordProcessorError(SOURCE, ENTITY_PATH, connectionFailure());
         assertThat(indicator.health().getStatus())

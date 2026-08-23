@@ -29,6 +29,7 @@ import uk.gov.hmcts.cp.informantregister.domain.RunClaim;
 import uk.gov.hmcts.cp.informantregister.domain.SubmissionFailedException;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -290,6 +291,95 @@ class DistributionPipelineTest {
 
             assertThat(counter(ProcessingMetrics.PROCESSING_FAILURES,
                     ProcessingMetrics.CLASSIFICATION_TAG, "transient")).isEqualTo(1.0);
+        }
+    }
+
+    // --- the failure nothing anticipated (spec FR-004, FR-009) --------------------------------
+
+    @Nested
+    @DisplayName("an unexpected failure inside an admitted run")
+    class UnexpectedRunFailure {
+
+        private final RuntimeException fault = new IllegalStateException("adapter fault");
+
+        /**
+         * The claim must be released by an outcome write, not leaked. An exception that escaped the
+         * pipeline here would leave {@code claim_owner} live for the rest of the lease, so every
+         * redelivery would bounce off {@code CLAIM_NOT_ACQUIRED} until the broker parked the message
+         * under its own reason with no FAILED record behind it.
+         */
+        @Test
+        void should_record_a_transient_failure_so_the_claim_is_released_before_the_hand_back() {
+            when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
+            when(payloadSource.fetch(command)).thenThrow(fault);
+            final GuardDecision handedBack = new GuardDecision.Abandon(ReasonCode.UNEXPECTED_FAILURE);
+            when(guard.recordTransientFailure(claim, ReasonCode.UNEXPECTED_FAILURE))
+                    .thenReturn(handedBack);
+
+            final GuardDecision decision = pipeline.process(command, delivery);
+
+            verify(guard).recordTransientFailure(claim, ReasonCode.UNEXPECTED_FAILURE);
+            assertThat(decision).isEqualTo(handedBack);
+        }
+
+        @Test
+        void should_park_the_request_when_the_failure_ends_the_final_permitted_delivery() {
+            final DeliveryIdentity lastChance = new DeliveryIdentity(MESSAGE_ID, OWNER, true);
+            when(guard.admit(command, lastChance)).thenReturn(new GuardDecision.Run(claim));
+            when(payloadSource.fetch(command)).thenThrow(fault);
+            final GuardDecision parked = new GuardDecision.DeadLetter(
+                    DeadLetterReason.EXHAUSTED, ReasonCode.DELIVERY_LIMIT_EXHAUSTED);
+            when(guard.recordExhaustion(claim, ReasonCode.UNEXPECTED_FAILURE)).thenReturn(parked);
+
+            final GuardDecision decision = pipeline.process(command, lastChance);
+
+            verify(guard).recordExhaustion(claim, ReasonCode.UNEXPECTED_FAILURE);
+            assertThat(decision).isEqualTo(parked);
+        }
+
+        @Test
+        void should_never_complete_a_run_that_failed() {
+            when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
+            when(payloadSource.fetch(command)).thenThrow(fault);
+            when(guard.recordTransientFailure(claim, ReasonCode.UNEXPECTED_FAILURE))
+                    .thenReturn(new GuardDecision.Abandon(ReasonCode.UNEXPECTED_FAILURE));
+
+            pipeline.process(command, delivery);
+
+            verify(guard, never()).recordCompletion(any(), any());
+            verifyNoInteractions(submissionClient);
+        }
+
+        @Test
+        void should_count_the_unexpected_failure_as_transient() {
+            when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
+            when(payloadSource.fetch(command)).thenThrow(fault);
+            when(guard.recordTransientFailure(claim, ReasonCode.UNEXPECTED_FAILURE))
+                    .thenReturn(new GuardDecision.Abandon(ReasonCode.UNEXPECTED_FAILURE));
+
+            pipeline.process(command, delivery);
+
+            assertThat(counter(ProcessingMetrics.PROCESSING_FAILURES,
+                    ProcessingMetrics.CLASSIFICATION_TAG, "transient")).isEqualTo(1.0);
+        }
+
+        /**
+         * The recovery path is a store write, and a store that dies inside it must not be dressed
+         * up as anything else: the failure escapes the catch block as itself, so the transport
+         * adapter's own store-outage handling — hand the delivery back, stop intake — takes over.
+         * A catch here that absorbed it would be the swallowed exception this service exists to
+         * remove, wearing a recovery's clothes.
+         */
+        @Test
+        void should_let_a_failure_of_the_recording_write_itself_escape() {
+            when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
+            when(payloadSource.fetch(command)).thenThrow(fault);
+            final IllegalStateException storeDied =
+                    new IllegalStateException("the store went away under the recording write");
+            when(guard.recordTransientFailure(claim, ReasonCode.UNEXPECTED_FAILURE))
+                    .thenThrow(storeDied);
+
+            assertThatThrownBy(() -> pipeline.process(command, delivery)).isSameAs(storeDied);
         }
     }
 

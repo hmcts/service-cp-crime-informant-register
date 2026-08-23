@@ -70,9 +70,11 @@ CONSTRAINT processed_request_exhausted_id_chk
 Two further rules are enforced by the application because a `CHECK` would be either wrong or
 expensive:
 
-- `failure_reason` is mandatory when `status` is `RETRYING` or `FAILED`. It is not a `CHECK`
-  because the `FAILED → RECEIVED` replay transition clears it in the same statement that leaves
-  the row non-terminal, and a column-level constraint would have to encode that transition.
+- `failure_reason` describes the **current** status, never history: mandatory when `status` is
+  `RETRYING` or `FAILED`, and cleared by the transitions that leave those states — the replay
+  (`FAILED → RECEIVED`) and the completion (`RETRYING → COMPLETED`) both null it in the statement
+  that moves the state, so a completed row can never read as a contradiction. It is not a `CHECK`
+  because a column-level constraint would have to encode those transitions.
 - `exhausted_message_id` is mandatory **exactly** when `status = 'FAILED'`; the cheap half (must be
   present) is the `CHECK` above, and the other half (must be absent otherwise) is enforced by the
   replay statement clearing it.
@@ -237,6 +239,7 @@ turned terminal in between; `abandon()` (no spin).
 -- COMPLETED
 UPDATE processed_request
    SET status = 'COMPLETED', completion_reason = :reason,
+       failure_reason = NULL,
        claim_owner = NULL, claim_token = NULL, claim_expires_at = NULL,
        updated_at = now()
  WHERE source = :source AND request_id = :requestId

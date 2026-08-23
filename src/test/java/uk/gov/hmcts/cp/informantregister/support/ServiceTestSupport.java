@@ -12,6 +12,7 @@ import com.azure.messaging.servicebus.ServiceBusSenderClient;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.test.context.DynamicPropertyRegistry;
 import uk.gov.hmcts.cp.Application;
 import uk.gov.hmcts.cp.informantregister.domain.RequestStatus;
 
@@ -116,10 +117,32 @@ public final class ServiceTestSupport {
         properties.put("spring.datasource.hikari.data-source-properties.socketTimeout", "5");
         properties.put("informantregister.servicebus.connection-string",
                 ServiceBusEmulatorTestSupport.connectionString());
+        // The stub payload source. What these suites are about is settlement, the processed log and
+        // health, none of which the payload participates in — so standing a cache and an HTTP stub
+        // up for them would make what they prove depend on infrastructure their scenarios never
+        // mention, and would turn "the cache container was slow to start" into a settlement failure.
+        // The payload adapter has its own suites, which use a real server and a real HTTP stub.
+        properties.put("informantregister.payload.mode", "STUB");
         // The deployed interval is ten seconds. Two makes a resume observable without making the
         // probe itself the thing under test.
         properties.put("informantregister.store.probe-interval", "2s");
         return properties;
+    }
+
+    /**
+     * Selects the stub payload source for a suite that boots the context itself.
+     *
+     * <p>The same choice {@link #defaults()} makes, for the suites that use
+     * {@code @DynamicPropertySource} instead. What all of them are about is settlement, the processed
+     * log and health, and the payload takes no part in any of it — so standing a cache and an HTTP
+     * stub up for them would make what they prove depend on infrastructure their scenarios never
+     * mention, and would turn "the cache container was slow" into a settlement failure. The payload
+     * adapter has its own suites, against a real server and a real HTTP stub.
+     *
+     * @param registry the suite's property registry
+     */
+    public static void stubPayloadSource(final DynamicPropertyRegistry registry) {
+        registry.add("informantregister.payload.mode", () -> "STUB");
     }
 
     /**

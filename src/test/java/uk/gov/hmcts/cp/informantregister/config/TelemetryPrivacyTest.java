@@ -73,9 +73,9 @@ import static org.mockito.Mockito.when;
  */
 class TelemetryPrivacyTest {
 
-    /** The correlation set every processing line must carry (spec FR-012). */
+    /** The correlation set every processing line must carry (spec FR-012, technical-rules MDC). */
     private static final Set<String> CORRELATION =
-            Set.of("requestId", "hearingId", "hearingDay");
+            Set.of("source", "requestId", "hearingId", "hearingDay");
 
     private static final String PAYLOAD_MARKER = "PAYLOADMARKERZQX7";
     private static final String MESSAGE_ID_MARKER = "MESSAGEIDMARKERZQX7";
@@ -168,6 +168,8 @@ class TelemetryPrivacyTest {
                 .thenReturn(new GuardDecision.Run(claim));
         when(guard.recordCompletion(any(RunClaim.class), any(CompletionReason.class)))
                 .thenReturn(new GuardDecision.Complete(ReasonCode.RUN_COMPLETED));
+        when(guard.recordTransientFailure(any(RunClaim.class), any(ReasonCode.class)))
+                .thenReturn(new GuardDecision.Abandon(ReasonCode.UNEXPECTED_FAILURE));
 
         return new DistributionPipeline(
                 guard, payloads, mock(RegisterSubmissionClient.class),
@@ -290,7 +292,15 @@ class TelemetryPrivacyTest {
                         Duration.ofMinutes(5), Duration.ofSeconds(60)),
                 new InformantRegisterProperties.Claim(Duration.ofMinutes(5), RUN_DEADLINE),
                 new InformantRegisterProperties.Store(Duration.ofSeconds(10)),
-                new InformantRegisterProperties.Stub(PayloadFailureMode.NONE));
+                new InformantRegisterProperties.Stub(PayloadFailureMode.NONE),
+                new InformantRegisterProperties.Payload(
+                        PayloadSourceMode.STUB,
+                        new InformantRegisterProperties.Redis("localhost", 6379, null, false,
+                                "INT_", Duration.ofSeconds(5), Duration.ofSeconds(5)),
+                        new InformantRegisterProperties.Fallback(3, Duration.ofSeconds(1),
+                                Duration.ofSeconds(5), Duration.ofSeconds(30))),
+                new InformantRegisterProperties.Results("http://localhost:8080"),
+                null);
     }
 
     // --- the configuration that makes correlation reach the index ---------------------------------

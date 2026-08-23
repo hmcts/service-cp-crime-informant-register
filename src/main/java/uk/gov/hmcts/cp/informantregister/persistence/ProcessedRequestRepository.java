@@ -86,10 +86,19 @@ public class ProcessedRequestRepository {
                AND (claim_expires_at IS NULL OR claim_expires_at < now())
             """;
 
-    /** Statement 4 — the run succeeded. */
+    /**
+     * Statement 4 — the run succeeded.
+     *
+     * <p>{@code failure_reason} is cleared because it describes the current status, not history: a
+     * COMPLETED row still carrying the transient reason a retried run once wrote reads as a
+     * contradiction to the support engineer the log exists for. The retry history lives in the
+     * logs, exactly as it does after a replay — {@code REPLAY_FAILED} below clears the column the
+     * same way, carrying the old reason into the audit note.
+     */
     private static final String RECORD_COMPLETED = """
             UPDATE processed_request
                SET status = 'COMPLETED', completion_reason = :reason,
+                   failure_reason = NULL,
                    claim_owner = NULL, claim_token = NULL, claim_expires_at = NULL,
                    updated_at = now()
              WHERE source = :source AND request_id = :requestId

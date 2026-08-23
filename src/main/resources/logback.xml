@@ -2,7 +2,6 @@
     <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
         <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
             <providers>
-                <mdc/>
                 <timestamp>
                     <fieldName>timestamp</fieldName>
                     <pattern>yyyy-MM-dd' 'HH:mm:ss.SSS</pattern>
@@ -12,6 +11,8 @@
                 <loggerName/>
                 <threadName/>
                 <logLevel/>
+                <!-- MDC after the fixed columns so timestamp leads every line in a terminal -->
+                <mdc/>
                 <pattern>
                     <pattern>{"exception": "%xException{full}"}</pattern>
                 </pattern>

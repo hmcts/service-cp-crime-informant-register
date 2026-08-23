@@ -6,6 +6,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- 2026-08-23 — **The startup time budget now covers the whole payload fetch** (second Story 1
+  review round):
+  - the budget counted the query-side attempts only, so the two cache reads in front of them — the
+    dated key and its legacy undated twin, each able to spend a connect and a command timeout —
+    were time a run could spend beyond the deadline the budget exists to hold it to. They are
+    counted now, and the fetch must be *strictly* shorter than the processing deadline: a fetch
+    that fills it exactly leaves the rest of the run nothing, which is the reading
+    `DistributionPipeline` and the lease rule already take of that bound;
+  - the cache and query-side settings are asked of the live source only. STUB builds neither
+    client, so a local stub run is no longer refused startup over a cache address and an attempt
+    count that nothing in it will read — the same scope the system-user identity rule already had.
+- 2026-08-22 — **Post-review hardening of the payload adapter** (Story 1 review, findings
+  re-verified against the function-app source before fixing):
+  - the composite adapter no longer catches every `RuntimeException` the cache can raise. The
+    catch moves down to the cache adapter, which knows its own technology, and narrows to
+    `RedisException` — so a cache outage is still a miss the query side can answer, while a defect
+    in this service reaches the pipeline and is recorded instead of being spent on a fallback;
+  - two behaviours that differ from the function app are now named in `doc/DEVIATIONS.md` with
+    their assertions: reading the legacy undated cache key as a second lookup (entry 4), and
+    treating a cache that cannot be *connected* to as a miss rather than as the end of the fetch
+    (entry 5). Registered deviation 1, verified TLS, gained the assertion it never had;
+  - neither parse failure — a corrupt cached value or a malformed query response — is logged with
+    the parser's own words any more; they quote the token they stopped on, and in a hearing
+    document that token is defendant data;
+  - startup now refuses a payload source that could never fetch: LIVE without the system user
+    identity its fallback authorises with, STUB where the deployed credential source is in use
+    (constitution Principle V, now that the real adapter has landed), a fallback allowed no
+    attempts, a timeout that never expires, a cache with no address or key prefix, and a fallback
+    whose worst case outlasts the processing deadline it runs inside;
+  - the source-selection tests are twinned against the function app's own Jest fixture, copied
+    byte-identical into `src/test/resources/fixtures/`, and the live adapter is now exercised
+    through the whole service — cache hit to COMPLETED, and a refused query read to FAILED and
+    parked — which no suite covered before.
+- 2026-08-21 — **Post-review hardening of the walking skeleton** (whole-`src/` review, findings
+  independently re-verified before fixing):
+  - an unexpected exception inside an admitted run is now recorded through the guard (RETRYING, or
+    FAILED + dead-letter on the final permitted delivery) instead of escaping with the run claim
+    still live and letting the broker park the message with no record behind it;
+  - lock loss is learned from the broker's refusal of the one settlement attempt and counted under
+    the lock-loss instrument, replacing the local-clock `lockedUntil` pre-check that skew could
+    turn into skipped settlements;
+  - only store-outage exception classes suspend intake; a constraint violation or broken statement
+    hands its delivery back without stopping the queue;
+  - a consumer the broker has never answered no longer ages its startup fault into a healthy
+    reading: it keeps one startup grace window and then reports DOWN until first contact;
+  - `source` joins `requestId`/`hearingId`/`hearingDay` in the MDC on every message, including the
+    contract-invalid path (canonical values only);
+  - completing a previously retried request clears `failure_reason`, so a COMPLETED row never
+    carries a stale failure (data model updated to state the semantic);
+  - the workflow message-contract gate text now matches the closed contract the schema declares —
+    unknown extra fields dead-letter; they were never tolerated.
+
 ### Added
 - 2026-08-20 — Repository scaffolded from `hmcts/service-hmcts-crime-springboot-template`
   (Spring Boot 4.1, Java 25, Gradle, package root `uk.gov.hmcts.cp`).
