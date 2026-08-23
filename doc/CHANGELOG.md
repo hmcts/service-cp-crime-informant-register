@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- 2026-08-23 — **The jar no longer packages the emulator's Service Bus connection string as a
+  default.** Startup enforces exactly one broker credential source — `connection-string` (local
+  and CI) or `namespace` (deployed, workload identity) — and the packaged default forced every
+  deployed values file to carry a blank `INFORMANTREGISTER_SERVICEBUS_CONNECTIONSTRING` override
+  purely to erase it: the exact line a reviewer tidies away, and tidying it away failed startup as
+  "both are set". The emulator string now lives only where local runs get their configuration —
+  `docker-compose.yml`, the quickstart's `bootRun` exports and the test suites — and the packaged
+  file carries no credential at all (`PackagedDefaultsTest` pins this). A deployment that supplies
+  neither source still fails fast with the validator's message. Behaviour is otherwise unchanged;
+  the corresponding blank override is removed from the STE helm values.
+
 ### Fixed
 - 2026-08-23 — **The pipeline unwraps the fetched payload before transforming it, and stamps the
   register with the payload's own `sharedTime`.** The payload the sources answer with is a wrapper

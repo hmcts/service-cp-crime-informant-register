@@ -12,8 +12,9 @@ informantregister:
   servicebus:
     # Startup validation insists on exactly one credential source, and it is deliberately
     # unconditional: "the consumer happens to be off" is not a reason to let an ambiguous credential
-    # configuration through. This is the same emulator string `application.yaml` carries as the local
-    # default, and nothing in this profile ever connects with it.
+    # configuration through. The packaged `application.yaml` deliberately carries no credential at
+    # all (PackagedDefaultsTest), so this profile supplies the emulator string itself — the same
+    # one compose and the quickstart use — and nothing in this profile ever connects with it.
     connection-string: "Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;"
   payload:
     # There is no cache and no query side in this profile, and nothing here fetches a payload. LIVE

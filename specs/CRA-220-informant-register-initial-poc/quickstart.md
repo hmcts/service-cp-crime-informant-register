@@ -40,6 +40,9 @@ export SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/informantregister
 export SPRING_DATASOURCE_USERNAME=informantregister
 export SPRING_DATASOURCE_PASSWORD=informantregister
 export INFORMANTREGISTER_SERVICEBUS_CONNECTIONSTRING='Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;'
+                                                    # REQUIRED: the jar packages no broker
+                                                    # credential; without this export startup
+                                                    # fails fast ("Set exactly one of ...")
 export INFORMANTREGISTER_SERVICEBUS_QUEUENAME=informantregister.requests
 
 ./gradlew bootRun                                   # port 8082

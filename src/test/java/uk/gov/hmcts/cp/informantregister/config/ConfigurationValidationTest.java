@@ -776,9 +776,19 @@ class ConfigurationValidationTest {
          * the cases about something else are not refused startup by the live payload source's
          * identity rule, and a property value set on the runner outranks the file. A test about what
          * the file binds has to let the file be the only thing that binds it.
+         *
+         * <p>The one property supplied is the broker connection string, because the shipped file
+         * deliberately carries no credential at all ({@code PackagedDefaultsTest}) and the
+         * exactly-one-source rule would otherwise refuse startup before any case here reached its
+         * subject — the same reason {@code shippedOnTheStub} takes the payload-identity rule out of
+         * the way. No case in this nest asserts the connection-string binding, so outranking the
+         * file on that one value costs nothing.
          */
         private final ApplicationContextRunner shipped = new ApplicationContextRunner()
                 .withUserConfiguration(PropertiesTestConfiguration.class)
+                .withPropertyValues("informantregister.servicebus.connection-string="
+                        + "Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;"
+                        + "SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;")
                 .withInitializer(new ConfigDataApplicationContextInitializer());
 
         /**
