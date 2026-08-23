@@ -7,6 +7,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- 2026-08-23 — **Subscription matching: who receives the register is now decided in Java.** The
+  second transformation step is ported — `pipeline/SubscriptionRules` (the shared
+  `SubscriptionsService` kernel) and `pipeline/SubscriptionMatcher` (the
+  `InformantRegisterSubscriptions` activity) — producing
+  `RegisterFragmentWithSubscriptions`, the fragment plus the subscriptions it matched.
+  - The oddities are ported, not tidied: `ouCode` is the **major creditor code** rather than the
+    authority's OU code, so on the twelve real hearing fixtures that carry no creditor code nothing
+    can match; the whole register's vocabulary is the **first** defendant's; judicial results are
+    pooled across every defendant; a subscription that is both a NOW and a prison-court-register
+    subscription is matched **twice**, because the NOW branch has no `return`; and an
+    `includedNOWS` of `[]` rejects every NOW, because an empty array is truthy.
+  - An answer with nothing in it is not a failure. No body, no `nowSubscriptions` member, or none
+    of them for the informant register, and the fragments come back with **no**
+    `matchedSubscriptions` member at all — a different document from one carrying an empty array,
+    and both shapes are pinned.
+  - The step is **pure**: the legacy activity fetches reference data itself, and here the answer is
+    passed in. `registerDate(fragments)` is the value that fetch must be dated with, and it is
+    derived inside `match` as well, because the legacy dereferences it before the fetch and a
+    fragment set carrying no register date must never reach reference data (blind spot BS-12).
+  - Twinned twice over. All twenty-one `SubscriptionsService` Jest cases are twinned against
+    byte-identical copies of their seven fixtures, asserting *which* subscriptions came back and not
+    only how many — every Jest case asserts a length alone, and two of them are named for branches
+    they never enter. The three `InformantRegisterSubscriptions` cases are twinned as what they
+    actually are: all three mock reference data with a bare array and return before any matching
+    runs, which is blind spot **BS-01**, the largest false-confidence surface in the legacy suite.
+  - Six further cases close BS-01 against goldens captured from the **real** legacy activity chain
+    (parity-pack `recorded/` inputs, Node commit `a8d3c00b`, clock pinned), covering the
+    informant-register filter, the empty-match short-circuit, the creditor-code wiring, duplicate
+    subscriptions and the vocabulary gate actually refusing a match.
+
 - 2026-08-22 — **The submission leg: `add-informant-register` is actually POSTed.** The stub
   submission client is replaced by `adapter/results/`, which posts one command per prosecuting
   authority to the results-owned endpoint at the exact vendor media type, and by the

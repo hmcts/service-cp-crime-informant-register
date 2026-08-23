@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -403,9 +404,77 @@ class SubscriptionRulesParityTest {
         assertThat(matched).isEmpty();
         // Named for the excluded-results branch, but the all-false vocabulary fails the attendance
         // check first and the branch is never reached. The excluded-results behaviour itself is
-        // pinned by ExcludedResultsCoverage below.
+        // pinned by BranchesNoJestCaseExecutes below.
         assertThat(subscriptions.get(0).get("subscriptionVocabulary").get("excludedResults"))
                 .isNotNull();
+    }
+
+    /**
+     * Branches of the kernel that no Jest case reaches, driven from the same fixtures.
+     *
+     * <p>These are not twins — there is no Jest case to twin — but they are not invented inputs
+     * either: each is one of the suite's own byte-identical fixtures, relaxed by the same five flags
+     * the suite itself uses to get past the vocabulary gate. They exist because blind spot
+     * <strong>BS-01</strong> rates the whole of subscription matching unexecuted, and two of the
+     * twenty-one cases above are named for branches they never enter.
+     */
+    @Nested
+    @DisplayName("BS-01 — branches no Jest case executes")
+    class BranchesNoJestCaseExecutes {
+
+        @Test
+        @DisplayName("BS-01: an included result the register carries lets the subscription through")
+        void match_with_a_matching_included_result_should_include_the_subscription() {
+            final List<JsonNode> subscriptions = fixture("subscriptions-with-inc-exc-results.json");
+            applyIgnoringCustodyAndResults(subscriptions.get(0));
+
+            final List<JsonNode> matched = rules.match(criteria()
+                    .nowId(INCLUDED_NOW_ID)
+                    .vocabulary(new Vocabulary().anyCourtHearing().adultOrYouthDefendant().build())
+                    .subscriptions(subscriptions)
+                    .judicialResults(judicialResults("judicial-results-with-included-prompts.json"))
+                    .build());
+
+            assertThat(matched).containsExactly(subscriptions.get(0));
+        }
+
+        @Test
+        @DisplayName("BS-01: an excluded result the register carries keeps the subscription out")
+        void match_with_a_matching_excluded_result_should_exclude_the_subscription() {
+            final List<JsonNode> subscriptions = fixture("subscriptions-with-inc-exc-results.json");
+            applyIgnoringCustodyAndResults(subscriptions.get(0));
+
+            // The same fixture whose result type ids are fd1, fd2 and fd2: fd1 satisfies
+            // includedResults, and fd2 then trips excludedResults. Both branches run, and the
+            // second decides.
+            final List<JsonNode> matched = rules.match(criteria()
+                    .nowId(INCLUDED_NOW_ID)
+                    .vocabulary(new Vocabulary().anyCourtHearing().adultOrYouthDefendant().build())
+                    .subscriptions(subscriptions)
+                    .judicialResults(judicialResults("judicial-results-with-excluded-prompts.json"))
+                    .build());
+
+            assertThat(matched).isEmpty();
+        }
+
+        @Test
+        @DisplayName("BS-01: a subscription that is both NOW and prison-court-register is matched twice")
+        void match_should_push_a_subscription_once_per_branch_that_accepts_it() {
+            final List<JsonNode> subscriptions = fixture("Subscriptions.json");
+            final ObjectNode subscription = (ObjectNode) subscriptions.get(0);
+            subscription.put("isPrisonCourtRegisterSubscription", true);
+            applyIgnoringCustodyAndResults(subscription);
+
+            final List<JsonNode> matched = rules.match(criteria()
+                    .vocabulary(new Vocabulary().anyCourtHearing().adultOrYouthDefendant().build())
+                    .subscriptions(subscriptions)
+                    .build());
+
+            // The NOW/EDT branch has no `return`, so the prison-court-register branch is evaluated
+            // on the same subscription and pushes it again (SubscriptionsService.js:29-41). The
+            // duplicate reaches the register as a duplicate recipient.
+            assertThat(matched).containsExactly(subscription, subscription);
+        }
     }
 
     @Test
