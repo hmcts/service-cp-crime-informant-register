@@ -1,5 +1,6 @@
 package uk.gov.hmcts.cp.informantregister.pipeline;
 
+import java.util.List;
 import tools.jackson.databind.JsonNode;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterHearing;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterFragment;
@@ -89,7 +90,7 @@ final class CourtSessionMapper {
     private String hearingStartTime() {
         // `this.hearingJson.hearingDays.length` — dereferenced with no guard
         // (CourtSessionMapper.js:26). An empty list is legal; an absent one is not.
-        final var hearingDays = Json.dereferencedArray(hearing, "hearingDays");
+        final List<JsonNode> hearingDays = Json.dereferencedArray(hearing, "hearingDays");
         if (hearingDays.isEmpty()) {
             return null;
         }

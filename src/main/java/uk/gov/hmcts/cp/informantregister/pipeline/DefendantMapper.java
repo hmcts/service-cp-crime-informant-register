@@ -7,6 +7,7 @@ import tools.jackson.databind.JsonNode;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDefendant;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterDefendant;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterFragment;
+import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
 
 /**
  * The defendants of one court session, with their personal details, cases and results.
@@ -64,8 +65,7 @@ final class DefendantMapper {
         // no guard. The fragment builder always supplies a list, so this is unreachable from the
         // pipeline; it is refused rather than read as "no defendants" for the reason in Json.
         if (fragment.registerDefendants() == null) {
-            throw new uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException(
-                    "register fragment carries no defendant list");
+            throw new TransformationFailedException("register fragment carries no defendant list");
         }
         for (final RegisterDefendant registerDefendant : fragment.registerDefendants()) {
             final List<JsonNode> records = defendantsOf(registerDefendant.masterDefendantId());

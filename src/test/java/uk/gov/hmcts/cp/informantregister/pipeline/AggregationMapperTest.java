@@ -17,6 +17,7 @@ import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDocument;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterFragment;
 import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
+import uk.gov.hmcts.cp.informantregister.support.JsonParity;
 
 /**
  * The JUnit twins of the legacy {@code OutboundInformantRegister} activity's own Jest suite, plus the
@@ -176,8 +177,7 @@ class AggregationMapperTest {
                             .get(0);
             final JsonNode actual = mapper.valueToTree(build(hearingFixture, fragmentFixture));
 
-            uk.gov.hmcts.cp.informantregister.support.JsonParity
-                    .assertMatches(expected, actual, golden);
+            JsonParity.assertMatches(expected, actual, golden);
         }
     }
 
