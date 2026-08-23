@@ -35,10 +35,13 @@ informantregister:
     enabled: true
 
   servicebus:
-    # LOCAL AND CI ONLY — the Service Bus emulator's well-known development string, which is why it
-    # ends UseDevelopmentEmulator=true. A deployed environment sets `namespace` instead and clears
-    # this; exactly one of the two may be set, and startup fails fast otherwise.
-    connection-string: "Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;"
+    # NO packaged broker credential, deliberately (PackagedDefaultsTest pins this). Exactly one
+    # source may be set and startup fails fast otherwise: `connection-string` for local and CI
+    # (the emulator's development string — docker-compose.yml, the quickstart's bootRun exports
+    # and the test suites each supply it themselves), or `namespace` for deployed environments
+    # (workload identity). Packaging the emulator string here would force every deployed values
+    # file to carry a blank override just to erase it — the exact line a reviewer tidies away.
+    # connection-string: supplied by compose/quickstart/tests, never packaged.
     # namespace: set in deployed environments only, for workload identity.
     queue-name: informantregister.requests
     # Two concurrent deliveries, matching the Durable Functions throttle this service replaces.
