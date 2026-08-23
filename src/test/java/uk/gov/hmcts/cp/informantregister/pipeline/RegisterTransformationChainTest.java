@@ -219,6 +219,47 @@ class RegisterTransformationChainTest {
     }
 
     @Nested
+    @DisplayName("a shared time that is present and null")
+    class NullSharedTime {
+
+        /**
+         * A divergence the corpus found, recorded here so it cannot change unnoticed.
+         *
+         * <p>{@code moment} distinguishes {@code undefined} from {@code null}: the first is "now",
+         * the second is invalid. So a hearing shared with {@code "sharedTime": null} gets a register
+         * date of {@code "Invalid dateZ"} in the legacy, which then kills the chain in the
+         * reference-data service — {@code mut__*__shared-time__null} records four hearings lost that
+         * way — while a hearing shared with no {@code sharedTime} member at all is stamped with the
+         * processing time and filed.
+         *
+         * <p>Java has one null, and the transformation is handed a {@code String}, so the two arrive
+         * here as the same value and both behave like {@code undefined}. The case is
+         * {@code SCHEMA_INVALID} on the way in and cannot be reached in this service:
+         * {@code sharedTime} is required by {@code public.hearing-resulted.json} and by this
+         * service's own closed inbound contract, where it is parsed into a non-null {@code Instant}
+         * before the pipeline sees it. So this is a difference on an input that cannot arrive rather
+         * than a behaviour anyone has to decide about — and it is pinned rather than left as a
+         * surprise for whoever next widens the port's signature.
+         */
+        @Test
+        @DisplayName("cannot be told from an absent one, so both are stamped with the clock")
+        void cannot_be_told_from_an_absent_shared_time() {
+            final ParityCase nulled =
+                    ParityCase.load(CORPUS, "mut__prosecution-case__shared-time__null");
+            assertThat(nulled.sharedTime()).isNull();
+            assertThat(nulled.oracleOutcome()).isEqualTo("swallowed-exception");
+            source.answers(nulled.subscriptions());
+
+            final List<InformantRegisterDocument> documents =
+                    chainFor(nulled).transform(nulled.hearing(), nulled.sharedTime());
+
+            assertThat(documents).hasSize(2);
+            assertThat(documents.getFirst().registerDate().toInstant())
+                    .isEqualTo(Instant.parse("2026-08-21T10:15:00Z"));
+        }
+    }
+
+    @Nested
     @DisplayName("the clock the chain is given")
     class ClockPin {
 

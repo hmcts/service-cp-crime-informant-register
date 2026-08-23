@@ -126,6 +126,15 @@ public record ParityCase(
     }
 
     /**
+     * The documents a second delivery of the same hearing produced, for the re-share cases.
+     *
+     * @return the second delivery's document array, or {@code null} when the case has one delivery
+     */
+    public JsonNode expectedSecondDelivery() {
+        return readOptional("/parity/recorded/" + caseId + "/expected-second-delivery.json");
+    }
+
+    /**
      * The {@code on} query parameter the recording shows reference data being asked for.
      *
      * @return the query date, or {@code null} when the case made no reference-data call

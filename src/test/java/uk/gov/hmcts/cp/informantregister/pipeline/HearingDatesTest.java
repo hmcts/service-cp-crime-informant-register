@@ -192,6 +192,76 @@ class HearingDatesTest {
                     .isInstanceOf(TransformationFailedException.class)
                     .hasMessage("Invalid date format");
         }
+
+        /**
+         * Every token width moment's non-strict parse actually uses, and it uses three different
+         * ones.
+         *
+         * <p>The parse is {@code moment(value, 'YYYY/MM/DD')} with no strict flag, so moment walks
+         * the format's tokens and gives each a width: up to four digits for the year, up to two for
+         * the month and up to two for the day, skipping whatever separates them. Reading it as "four
+         * digits, a separator, one or two, a separator, one or two" — the shape the format looks
+         * like — refuses values the legacy reads perfectly well, and the two
+         * {@code OutboundInformantRegister} fixtures in the parity corpus are exactly that: their
+         * ordered date is {@code 20-01-2020}, which moment reads as 20 January 2020 and a
+         * four-digit-year reader refuses. Refusing there loses a register the legacy produces, which
+         * is the one direction this port must not drift in.
+         *
+         * <p>Each expectation below was taken from the {@code moment} vendored with the function
+         * app, not from a reading of what the format ought to mean.
+         */
+        @Test
+        @DisplayName("reads a two-digit year the way moment reads one, mapping it into a century")
+        void reads_a_two_digit_year() {
+            // moment('20-01-2020', 'YYYY/MM/DD') is 2020-01-20: the year token takes "20", the
+            // two-digit-year rule makes it 2020, the month takes "01", and the day token takes only
+            // the first two digits of "2020".
+            assertThat(dates.orderingKey("20-01-2020")).isEqualTo(LocalDate.of(2020, 1, 20));
+            // '25-03-2019' is 2025-03-20 — the year is 2025 and the day is 20, which is nobody's
+            // idea of what that string means and is what the legacy orders by.
+            assertThat(dates.orderingKey("25-03-2019")).isEqualTo(LocalDate.of(2025, 3, 20));
+            // The century boundary moment uses: 68 goes forward, 69 goes back.
+            assertThat(dates.orderingKey("68-01-02")).isEqualTo(LocalDate.of(2068, 1, 2));
+            assertThat(dates.orderingKey("69-01-02")).isEqualTo(LocalDate.of(1969, 1, 2));
+            // Four digits are a year as written, even when they are small.
+            assertThat(dates.orderingKey("0020-01-20")).isEqualTo(LocalDate.of(20, 1, 20));
+        }
+
+        @Test
+        @DisplayName("defaults a month or a day the value does not carry, as moment defaults them")
+        void defaults_a_missing_month_or_day() {
+            assertThat(dates.orderingKey("2020")).isEqualTo(LocalDate.of(2020, 1, 1));
+            assertThat(dates.orderingKey("20-1")).isEqualTo(LocalDate.of(2020, 1, 1));
+            assertThat(dates.orderingKey("2020-06")).isEqualTo(LocalDate.of(2020, 6, 1));
+        }
+
+        @Test
+        @DisplayName("skips whatever separates the numbers, including none at all")
+        void skips_whatever_separates_the_numbers() {
+            assertThat(dates.orderingKey("20200120")).isEqualTo(LocalDate.of(2020, 1, 20));
+            assertThat(dates.orderingKey("2020--01--20")).isEqualTo(LocalDate.of(2020, 1, 20));
+            assertThat(dates.orderingKey("  2020-01-20")).isEqualTo(LocalDate.of(2020, 1, 20));
+            assertThat(dates.orderingKey("abc2020-01-20")).isEqualTo(LocalDate.of(2020, 1, 20));
+            assertThat(dates.orderingKey("a1b2c3")).isEqualTo(LocalDate.of(1, 2, 3));
+        }
+
+        @Test
+        @DisplayName("refuses a zero month or day, which moment calls invalid rather than defaults")
+        void refuses_a_zero_month_or_day() {
+            assertThatThrownBy(() -> dates.orderingKey("2020-0-5"))
+                    .isInstanceOf(TransformationFailedException.class);
+            assertThatThrownBy(() -> dates.orderingKey("2020-01-0"))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
+
+        @Test
+        @DisplayName("refuses a value with no digits in it at all")
+        void refuses_a_value_with_no_digits() {
+            assertThatThrownBy(() -> dates.orderingKey(""))
+                    .isInstanceOf(TransformationFailedException.class);
+            assertThatThrownBy(() -> dates.orderingKey("not/a/date"))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
     }
 
     /**
