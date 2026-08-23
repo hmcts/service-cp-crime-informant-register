@@ -241,6 +241,61 @@ class PayloadSeamTest {
                     .isEqualTo(ZonedDateTime.parse("2026-08-21T10:15:00Z"));
         }
 
+        /**
+         * An explicit {@code sharedTime: null} is not {@code undefined} to moment:
+         * {@code moment.tz(null, zone)} is an Invalid Date, rendered {@code "Invalid dateZ"} into
+         * a {@code date-time}-typed component — the shape deviations entry 10 refuses.
+         */
+        @Test
+        void process_a_wrapper_with_a_null_shared_time_should_park_the_request() {
+            final ObjectNode wrapper = cacheWrapped();
+            wrapper.set("sharedTime", NullNode.getInstance());
+            assertParkedNonTransient(wrapper);
+        }
+
+        /** A container {@code sharedTime}: no source writes one, and it reads the same on every
+         * delivery — a classified refusal, never an unclassified throw that burns the budget. */
+        @Test
+        void process_a_wrapper_whose_shared_time_is_not_scalar_should_park_the_request() {
+            final ObjectNode wrapper = cacheWrapped();
+            wrapper.set("sharedTime", MAPPER.createObjectNode());
+            assertParkedNonTransient(wrapper);
+        }
+
+        /**
+         * A {@code hearing} that is a scalar is not the legacy's {@code TypeError}: reading a
+         * property off a JavaScript string answers {@code undefined}, so
+         * {@code SetInformantRegister/index.js:29} survives it, the builder's guard finds neither
+         * member, and the legacy emits nothing without throwing — entry 6's completion, not
+         * entry 7's refusal. The port completes {@code no-authorities} on exactly that boundary.
+         */
+        @Test
+        void process_a_wrapper_whose_hearing_is_not_an_object_should_complete_no_authorities() {
+            final ObjectNode wrapper = cacheWrapped();
+            wrapper.put("hearing", "not-a-hearing");
+            when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
+            when(payloadSource.fetch(command)).thenReturn(wrapper);
+            final GuardDecision completed = new GuardDecision.Complete(ReasonCode.RUN_COMPLETED);
+            when(guard.recordCompletion(claim, CompletionReason.NO_AUTHORITIES))
+                    .thenReturn(completed);
+
+            final GuardDecision decision = pipeline.process(command, delivery);
+
+            assertThat(decision).isEqualTo(completed);
+            verifyNoInteractions(submissionClient);
+        }
+
+        /**
+         * The pre-fix payload shape — a bare hearing at the root, no {@code hearing} member —
+         * parks loudly rather than completing silently: a source that regresses to answering the
+         * unwrapped shape is a missing-{@code hearing} wrapper here, which is the point of the
+         * refusal.
+         */
+        @Test
+        void process_a_bare_unwrapped_hearing_should_park_the_request() {
+            assertParkedNonTransient(resource("hearing.json"));
+        }
+
         private void assertParkedNonTransient(final JsonNode payload) {
             when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
             when(payloadSource.fetch(command)).thenReturn(payload);

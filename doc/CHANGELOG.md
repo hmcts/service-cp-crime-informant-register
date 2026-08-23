@@ -21,7 +21,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   differ). A wrapper whose `hearing` is missing or `null` is refused non-transiently per
   deviations entry 7 (the legacy throws at `SetInformantRegister/index.js:29` and swallows the
   run); a missing `sharedTime` stays legal — the register is stamped from the clock, as
-  `moment.tz(undefined, zone)` stamps it today. The command's `sharedTime` keeps its own jobs:
+  `moment.tz(undefined, zone)` stamps it today — while an explicit `null` or non-scalar
+  `sharedTime` is refused on entry 10's terms (`moment.tz(null)` is an Invalid Date, rendered
+  `"Invalid dateZ"` into a typed component). The command's `sharedTime` keeps its own jobs:
   the request fingerprint and the processed-log row.
 
 ### Changed

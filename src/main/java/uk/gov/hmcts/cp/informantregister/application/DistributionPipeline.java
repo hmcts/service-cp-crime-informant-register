@@ -261,19 +261,33 @@ public class DistributionPipeline {
     }
 
     /**
-     * The wrapper's {@code sharedTime}, as the wire carried it, or {@code null} when it carried
-     * none.
+     * The wrapper's {@code sharedTime} as scalar text, {@code null} when the wrapper carries none,
+     * or a refusal for a shape no readable register date can come out of.
      *
-     * <p>Null is not an error here: the legacy hands {@code undefined} straight through
-     * ({@code InformantRegisterOrchestrator/index.js:23}) and {@code moment.tz(undefined, zone)}
-     * is the current time, which {@code HearingDates} reproduces from its clock.
+     * <p>An <em>absent</em> member is not an error: the legacy hands {@code undefined} straight
+     * through ({@code InformantRegisterOrchestrator/index.js:23}) and
+     * {@code moment.tz(undefined, zone)} is the current time, which {@code HearingDates}
+     * reproduces from its clock. An explicit {@code null} is a different value to moment —
+     * {@code moment.tz(null, zone)} is an <em>Invalid Date</em>, rendered {@code "Invalid dateZ"}
+     * into a {@code date-time}-typed component, which registered deviation entry 10 refuses at the
+     * typed boundary; it is refused here with the same classification and reason rather than
+     * manufacturing a carrier string to fail on later. A container is refused on the same terms:
+     * neither source writes one, it reads identically on every delivery, and letting Jackson's
+     * {@code asString()} throw instead would misclassify it as a transient failure and spend the
+     * whole delivery budget re-reading it. Any other scalar passes through as its text form; a
+     * number diverges from moment's epoch-millis reading there, which is the entry-13 family of
+     * date forms this port does not read — it renders {@code "Invalid dateZ"} and is refused at
+     * the typed boundary, never silently reinterpreted.
      *
      * @param payload the wrapped payload the source answered with
-     * @return the shared time text, or {@code null}
+     * @return the shared time text, or {@code null} when the wrapper has no such member
      */
     private static String sharedTimeOf(final JsonNode payload) {
         final JsonNode sharedTime = payload.path("sharedTime");
-        return sharedTime.isMissingNode() || sharedTime.isNull() ? null : sharedTime.asText();
+        if (sharedTime.isNull() || sharedTime.isContainer()) {
+            throw new TransformationFailedException("payload sharedTime is not scalar text");
+        }
+        return sharedTime.isMissingNode() ? null : sharedTime.asString();
     }
 
     /**

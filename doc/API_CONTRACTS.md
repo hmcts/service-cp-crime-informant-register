@@ -58,8 +58,10 @@ fetched from Redis, with the results query API as fallback.
 orchestrator does (`InformantRegisterOrchestrator/index.js:21-24`): the `hearing` member goes to
 the transformation under the wrapper's own `sharedTime`. A wrapper whose `hearing` is missing or
 `null` is a non-transient failure (the legacy throws there and swallows the run — deviations
-entry 7); a wrapper without a `sharedTime` is not an error — the register is stamped with the
-clock, as `moment.tz(undefined, zone)` stamps it today.
+entry 7); a wrapper *without* a `sharedTime` is not an error — the register is stamped with the
+clock, as `moment.tz(undefined, zone)` stamps it today — but an explicit `null` or non-scalar
+`sharedTime` is a non-transient failure, because the legacy renders those `"Invalid dateZ"` into
+a `date-time`-typed component, which deviations entry 10 refuses.
 
 ### User attribution (`userId`)
 
