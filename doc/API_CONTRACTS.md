@@ -32,7 +32,8 @@ hearing.
   "hearingId": "1c9d3f7a-88b1-4d5e-9c33-0f2a6b4e77aa",
   "hearingDay": "2026-08-19",
   "sharedTime": "2026-08-19T16:42:07.512Z",
-  "eventType": "Hearing_Resulted"
+  "eventType": "Hearing_Resulted",
+  "userId": "0b7a5c2e-4d19-4a6b-8c30-9e1f5d7b2a48"
 }
 ```
 
@@ -46,9 +47,54 @@ hearing.
 | `hearingDay` | string (`YYYY-MM-DD`) | yes | The hearing day this share relates to. Part of the Redis key (`INT_{hearingId}_{hearingDay}_result_`); a legacy key form without it also exists and is tried as a fallback. |
 | `sharedTime` | string (ISO-8601 instant) | yes | When the hearing was shared. Becomes the register date used for subscription lookup (`now-subscriptions?on={registerDate}`) and appears in the outbound document. |
 | `eventType` | string | yes | `Hearing_Resulted` only. **SJP hearings are out of scope** — they stay in the NOWs function app. Any other value is a non-transient failure (dead-letter with reason), never a silent skip. |
+| `userId` | string (UUID) | **no** | The CPP user who shared the hearing results. Carried so every downstream call made for this message is attributed to that user through `CJSCPPUID`, which is what the function app does today. When absent, the service's own configured system identity is used. When present it MUST be a canonical UUID: anything else is a contract violation and dead-letters like any other. See "User attribution" below. |
 
 The payload itself is **not** in the message — this is a claim check. The full hearing payload is
 fetched from Redis, with the results query API as fallback.
+
+### User attribution (`userId`)
+
+**What the legacy does.** The hearing-resulted envelope carries the sharing user in its metadata as
+`userId`. The function app's trigger copies it straight into the orchestration input as `cjscppuid`
+(`InformantRegisterEventGridTrigger/index.js:15`, `InformantRegisterQueueTrigger/index.js:17`), and
+`InformantRegisterOrchestrator/index.js:13,31,46` threads that one value, unchanged, into all three
+downstream calls of the run: the hearing payload read (`HearingResultedCacheQuery/index.js:40`), the
+now-subscriptions read (`ReferenceDataService.js:44`) and the `add-informant-register` POST
+(`ProcessOutboundInformantRegister/index.js:21`). **One `cjscppuid` per run, from the user who
+shared the results.**
+
+**What this service does.** The same. A message carrying `userId` runs every one of those three
+calls under it; a message without one runs them under the configured system identity
+(`informantregister.results.system-user-id`, and `informantregister.referencedata.system-user-id`
+for the reference-data read). The per-request identity takes precedence where it is present, and it
+is the *same* value for all three calls of the run — the legacy's single-`cjscppuid` semantics, not
+three independently resolved identities.
+
+**Why optional and not required.** Two legitimate producers of this message have no user to name:
+
+- **support replay tooling**, which mints a message no person triggered; and
+- **the transition window** — producer builds from before this field existed. The consumer ships
+  first (see the rollout note below), so during that window every message arrives without it.
+
+A required field would dead-letter both. The consumer therefore accepts a message **both ways**, and
+"no user" is a supported state rather than a defect.
+
+**The identity is never logged.** It is a user identifier, and the no-PII gate applies to it exactly
+as it applies to the configured system identity, which is treated as a secret. MDC carries
+`requestId`, `hearingId` and `source`; it does not carry `userId`, and neither does any log line or
+dead-letter reason.
+
+**It is not part of the request fingerprint.** The fingerprint compares `hearingId`, `hearingDay`,
+`sharedTime` and `eventType`. A replay of the same request carrying no `userId` where the original
+carried one is the *same* unit of work, not an idempotency collision, and adding the identity to the
+fingerprint would turn every replay of an attributed request into a dead-letter.
+
+**Contract change, agreed and sequenced.** Adding `userId` is a change to the inbound contract and
+is agreed by the owner of both sides — publisher and consumer are the same team — **project-owner
+decision, 2026-08-23**. The rollout order is fixed by the closed contract: **the consumer ships
+first**. Until this service is deployed, a message carrying `userId` would be rejected as an unknown
+field (`additionalProperties: false`), so `cpp-context-results` must not start sending it until this
+version is live in the target environment.
 
 ### Message properties (broker-level, part of the contract)
 
@@ -140,7 +186,7 @@ redefine, extend, or relax it.
 | Endpoint | `POST {results}/results-command-api/command/api/rest/results/informant-register` |
 | Content type | `application/vnd.results.add-informant-register+json` |
 | Success | `202 Accepted` |
-| Headers | `CJSCPPUID` (identity — treated as a secret) |
+| Headers | `CJSCPPUID` (identity — treated as a secret): the message's `userId` when it carries one, otherwise the configured system identity |
 | Schema | `results-json/.../informantRegisterDocument/informantRegisterDocumentRequest.json` in `cpp-context-results`; declared in `results-command-api.raml` |
 | Cardinality | **One POST per prosecuting authority** derived from the hearing |
 
@@ -185,8 +231,12 @@ much of it: `informantregister.results.max-attempts` (4), `initial-backoff` (500
 cannot park a run past its claim), `connect-timeout` (5s) and `read-timeout` (30s). The worst case
 must stay well inside `informantregister.claim.processing-deadline`.
 
-**Identity and authorisation:** `CJSCPPUID` is the documented header and is supplied from
-`informantregister.results.system-user-id`. It is **required**: the gateway refuses to be built
+**Identity and authorisation:** `CJSCPPUID` is the documented header. Its value is the message's
+`userId` where the message carries one — the legacy attributes this POST to the user who shared the
+results (`ProcessOutboundInformantRegister/index.js:21`) and so does this — and
+`informantregister.results.system-user-id` otherwise. The configured identity is
+**required** whether or not messages carry a user, because a message without one is a supported
+state and the POST still has to be attributable: the gateway refuses to be built
 without it, so a deployment missing the identity fails to start rather than dead-lettering every
 hearing it is given, one 403 at a time. The Results side additionally applies access-control
 rules requiring the caller to be in a named user group (`System Users` is the applicable one for a
@@ -198,6 +248,10 @@ blockers recorded against the submission story.
 ---
 
 ## Other outbound calls (not contracts this service owns)
+
+In every `CJSCPPUID` below, the value is the message's `userId` where it carries one and the
+configured system identity otherwise — one identity for the whole run, as the legacy threads one
+`cjscppuid` through all three calls. See "User attribution" above.
 
 | Call | Purpose |
 |------|---------|
