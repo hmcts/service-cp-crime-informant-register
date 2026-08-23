@@ -59,6 +59,10 @@ class InformantRegisterDocumentTest {
     /**
      * A {@code hearingStartTime} in the shape {@code informantRegisterHearing.json} declares —
      * RFC 3339 {@code full-time}, which is a time with an offset.
+     *
+     * <p>Since {@code doc/DEVIATIONS.md} entry 15 this is also the shape the pipeline renders, so
+     * the documents below are built from what the service actually sends rather than from a shape
+     * only the schema wanted.
      */
     private static final String CONTRACT_FORM_HEARING_START_TIME = "10:00:00Z";
 
