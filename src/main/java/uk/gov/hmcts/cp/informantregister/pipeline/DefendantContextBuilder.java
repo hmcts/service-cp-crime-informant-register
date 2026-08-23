@@ -474,14 +474,21 @@ final class DefendantContextBuilder {
     /**
      * The latest ordered date across a defendant's results.
      *
+     * <p>Ports {@code DefendantContextBaseService.js:294-297}, which maps the results to their
+     * ordered dates and sorts them with a comparator that parses — and, unlike its twin in
+     * {@code RegisterFragmentService}, with no error handling of any kind. Whether a bad date is
+     * fatal here depends on how many results the defendant happens to have, which is parity pin
+     * {@code s06}; {@link OrderedDates} carries the {@code sort} rules that decide it.
+     *
      * @param context the defendant context
      * @return the latest ordered date, or {@code null} when there are no results
      */
     private String latestOrderedDate(final DefendantContext context) {
-        return context.results().stream()
-                .map(result -> Json.text(result.judicialResult(), "orderedDate"))
-                .max(Comparator.comparing(dates::orderingKey))
-                .orElse(null);
+        return OrderedDates.latest(
+                context.results().stream()
+                        .map(result -> Json.at(result.judicialResult(), "orderedDate"))
+                        .toList(),
+                dates);
     }
 
     /**

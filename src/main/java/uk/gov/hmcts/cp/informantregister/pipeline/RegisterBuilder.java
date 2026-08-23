@@ -177,19 +177,23 @@ public final class RegisterBuilder {
     /**
      * The latest ordered date across every result of every defendant, before filtering.
      *
+     * <p>Ports {@code SetInformantRegister/index.js:109-119} feeding
+     * {@code RegisterFragmentService.getLatestOrderedDate}. The de-duplication is the legacy's own —
+     * it collects into a {@code Set} before spreading and sorting — and it is kept because it
+     * changes how many elements the sort has, which is what decides whether an unreadable date is
+     * ever compared ({@link OrderedDates}).
+     *
      * @param defendants the gathered defendant contexts
      * @return the latest ordered date, or {@code null} when there are no results
      */
     private String latestOrderedDate(final List<DefendantContext> defendants) {
-        final Set<String> orderedDates = new LinkedHashSet<>();
+        final Set<JsonNode> orderedDates = new LinkedHashSet<>();
         for (final DefendantContext defendant : defendants) {
             for (final RegisterResult result : defendant.results()) {
-                orderedDates.add(Json.text(result.judicialResult(), "orderedDate"));
+                orderedDates.add(Json.at(result.judicialResult(), "orderedDate"));
             }
         }
-        return orderedDates.stream()
-                .max(Comparator.comparing(dates::orderingKey))
-                .orElse(null);
+        return OrderedDates.latest(new ArrayList<>(orderedDates), dates);
     }
 
     /**
