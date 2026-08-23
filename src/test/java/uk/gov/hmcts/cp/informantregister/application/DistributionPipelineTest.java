@@ -15,6 +15,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
@@ -32,6 +33,7 @@ import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterHearing;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterHearingVenue;
 import uk.gov.hmcts.cp.informantregister.domain.PayloadUnavailableException;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
+import uk.gov.hmcts.cp.informantregister.domain.ReferenceDataUnavailableException;
 import uk.gov.hmcts.cp.informantregister.domain.RunClaim;
 import uk.gov.hmcts.cp.informantregister.domain.SubmissionFailedException;
 import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
@@ -39,6 +41,7 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -69,13 +72,15 @@ class DistributionPipelineTest {
 
     private final IdempotencyGuard guard = mock(IdempotencyGuard.class);
     private final HearingPayloadSource payloadSource = mock(HearingPayloadSource.class);
+    private final RegisterTransformer transformer = mock(RegisterTransformer.class);
     private final RegisterSubmissionClient submissionClient = mock(RegisterSubmissionClient.class);
     private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
     private final ProcessingMetrics metrics = new ProcessingMetrics(registry);
     private final SteppingClock clock = new SteppingClock();
 
     private final DistributionPipeline pipeline = new DistributionPipeline(
-            guard, payloadSource, submissionClient, metrics, clock, PROCESSING_DEADLINE);
+            guard, payloadSource, transformer, submissionClient, metrics, clock,
+            PROCESSING_DEADLINE);
 
     private final DistributionCommand command = new DistributionCommand(
             "RESULTS",
@@ -143,9 +148,21 @@ class DistributionPipelineTest {
                 "informant-register-CPS-20260820.pdf", null, venue, null);
     }
 
+    /** A second document, so "one per authority" can be told apart from "one". */
+    private static InformantRegisterDocument secondDocument() {
+        return new InformantRegisterDocument(
+                ZonedDateTime.parse("2026-08-20T11:00:00Z"),
+                ZonedDateTime.parse("2026-08-19T10:00:00Z"),
+                UUID.fromString("11111111-2222-4333-8444-555555555555"),
+                UUID.fromString("9c8b7a65-4321-4fed-8cba-098765432100"),
+                "TVL", null, null, null,
+                "InformantRegister_TVL_2026-08-20.csv", null, null, null);
+    }
+
     private void guardAdmitsTheDelivery() {
         when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
         when(payloadSource.fetch(command)).thenReturn(payload());
+        when(transformer.transform(any(), any())).thenReturn(List.of());
     }
 
     private double counter(final String name, final String tag, final String value) {
@@ -231,6 +248,124 @@ class DistributionPipelineTest {
         }
     }
 
+    // --- the transformation seam (design_rules.md, "Pipeline Architecture") --------------------
+
+    /**
+     * What the run does once the transformation port actually produces something.
+     *
+     * <p>The two ends of the seam are what matter. The transformation is handed the payload that was
+     * fetched and the shared time the command carries — not a payload re-read, and not the wall
+     * clock — and every document it produces becomes exactly one submission, in the order it
+     * produced them, keyed by the request the authority belongs to. Order is the half that is easy
+     * to lose: nothing downstream sorts, so the first authority the legacy names is the first
+     * authority POSTed.
+     */
+    @Nested
+    @DisplayName("a hearing the transformation produces authorities for")
+    class ProducedAuthorities {
+
+        private void transformationProduces(final List<InformantRegisterDocument> documents) {
+            when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
+            when(payloadSource.fetch(command)).thenReturn(payload());
+            when(transformer.transform(any(), any())).thenReturn(documents);
+            when(guard.recordCompletion(claim, CompletionReason.AUTHORITIES_SUBMITTED))
+                    .thenReturn(new GuardDecision.Complete(ReasonCode.RUN_COMPLETED));
+        }
+
+        @Test
+        void should_transform_the_payload_it_fetched_under_the_shared_time_the_command_carries() {
+            transformationProduces(List.of(document()));
+
+            pipeline.process(command, delivery);
+
+            verify(transformer).transform(payload(), command.sharedTime().toString());
+        }
+
+        @Test
+        void should_submit_one_document_per_authority_in_the_order_they_were_produced() {
+            final InformantRegisterDocument first = document();
+            final InformantRegisterDocument second = secondDocument();
+            transformationProduces(List.of(first, second));
+
+            pipeline.process(command, delivery);
+
+            final InOrder order = inOrder(submissionClient);
+            order.verify(submissionClient).submit(new AuthoritySubmission(
+                    command.source(), command.requestId(),
+                    first.prosecutionAuthorityId().toString(), first));
+            order.verify(submissionClient).submit(new AuthoritySubmission(
+                    command.source(), command.requestId(),
+                    second.prosecutionAuthorityId().toString(), second));
+            order.verifyNoMoreInteractions();
+        }
+
+        @Test
+        void should_record_a_completion_that_says_authorities_were_submitted() {
+            transformationProduces(List.of(document()));
+
+            pipeline.process(command, delivery);
+
+            verify(guard).recordCompletion(claim, CompletionReason.AUTHORITIES_SUBMITTED);
+            verify(guard, never()).recordCompletion(claim, CompletionReason.NO_AUTHORITIES);
+        }
+
+        @Test
+        void should_record_no_authorities_when_the_transformation_produced_none() {
+            // The legacy's orchestrator skips the rest of the flow for this hearing and still
+            // reports success; here it is a recorded business outcome (deviations entry 6).
+            guardAdmitsTheDelivery();
+            when(guard.recordCompletion(claim, CompletionReason.NO_AUTHORITIES))
+                    .thenReturn(new GuardDecision.Complete(ReasonCode.RUN_COMPLETED));
+
+            pipeline.process(command, delivery);
+
+            verify(guard).recordCompletion(claim, CompletionReason.NO_AUTHORITIES);
+            verifyNoInteractions(submissionClient);
+        }
+
+        @Test
+        void should_park_a_transformation_the_payload_cannot_survive() {
+            when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
+            when(payloadSource.fetch(command)).thenReturn(payload());
+            when(transformer.transform(any(), any()))
+                    .thenThrow(new TransformationFailedException("unreadable hearing"));
+            final GuardDecision parked = new GuardDecision.DeadLetter(
+                    DeadLetterReason.NON_TRANSIENT, ReasonCode.TRANSFORMATION_FAILED);
+            when(guard.recordNonTransientFailure(claim, ReasonCode.TRANSFORMATION_FAILED))
+                    .thenReturn(parked);
+
+            final GuardDecision decision = pipeline.process(command, delivery);
+
+            assertThat(decision).isEqualTo(parked);
+            verifyNoInteractions(submissionClient);
+        }
+
+        /**
+         * A reference-data outage must never become a register that reaches nobody. The legacy
+         * catches it, answers {@code null}, and POSTs a body with no recipients at all
+         * ({@code ReferenceDataService.js:52}); the parity pack's pinning entry {@code d03} requires
+         * this port to classify it instead, and transiently, because the next delivery may find
+         * reference data up.
+         */
+        @Test
+        void should_hand_back_a_delivery_whose_reference_data_could_not_be_reached() {
+            when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
+            when(payloadSource.fetch(command)).thenReturn(payload());
+            when(transformer.transform(any(), any())).thenThrow(
+                    new ReferenceDataUnavailableException(ReasonCode.REFERENCE_DATA_UNAVAILABLE));
+            final GuardDecision handedBack =
+                    new GuardDecision.Abandon(ReasonCode.REFERENCE_DATA_UNAVAILABLE);
+            when(guard.recordTransientFailure(claim, ReasonCode.REFERENCE_DATA_UNAVAILABLE))
+                    .thenReturn(handedBack);
+
+            final GuardDecision decision = pipeline.process(command, delivery);
+
+            assertThat(decision).isEqualTo(handedBack);
+            verify(guard, never()).recordNonTransientFailure(any(), any());
+            verifyNoInteractions(submissionClient);
+        }
+    }
+
     // --- decisions that are not a run --------------------------------------------------------
 
     @Nested
@@ -245,7 +380,7 @@ class DistributionPipelineTest {
             final GuardDecision decision = pipeline.process(command, delivery);
 
             assertThat(decision).isEqualTo(alreadyDone);
-            verifyNoInteractions(payloadSource, submissionClient);
+            verifyNoInteractions(payloadSource, transformer, submissionClient);
         }
 
         @Test
@@ -256,7 +391,7 @@ class DistributionPipelineTest {
             final GuardDecision decision = pipeline.process(command, delivery);
 
             assertThat(decision).isEqualTo(contested);
-            verifyNoInteractions(payloadSource, submissionClient);
+            verifyNoInteractions(payloadSource, transformer, submissionClient);
         }
 
         @Test
@@ -268,7 +403,7 @@ class DistributionPipelineTest {
             final GuardDecision decision = pipeline.process(command, delivery);
 
             assertThat(decision).isEqualTo(collision);
-            verifyNoInteractions(payloadSource, submissionClient);
+            verifyNoInteractions(payloadSource, transformer, submissionClient);
         }
     }
 

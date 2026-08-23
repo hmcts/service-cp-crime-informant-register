@@ -73,6 +73,17 @@ public enum ReasonCode {
     TRANSFORMATION_FAILED("TRANSFORMATION_FAILED"),
 
     /**
+     * The now-subscriptions reference data a register is addressed with could not be obtained.
+     *
+     * <p>Transient, and a code of its own rather than a payload failure: the hearing was read
+     * perfectly well and the register was built — what is missing is who it goes to. A rise in this
+     * code means the reference-data context is unwell, which is a different call-out from the
+     * hearing payload being unreachable, and shipping the register anyway is the silent
+     * reaches-nobody failure {@code doc/DEVIATIONS.md} entry 14 records.
+     */
+    REFERENCE_DATA_UNAVAILABLE("REFERENCE_DATA_UNAVAILABLE"),
+
+    /**
      * The Results command API refused an {@code add-informant-register} body.
      *
      * <p>A 4xx other than 429: the request was understood and declined, so the same bytes will be

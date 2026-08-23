@@ -1,0 +1,132 @@
+[
+  {
+    "registerDate": "2020-06-01T11:00:00Z",
+    "hearingDate": "2020-12-01T00:00:00Z",
+    "hearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+    "prosecutionAuthorityId": "31af405e-7b60-4dd8-a244-c24c2d3fa595",
+    "prosecutionAuthorityCode": "TFL",
+    "prosecutionAuthorityOuCode": "GAFTL00",
+    "fileName": "InformantRegister_TFL_2020-06-01.csv",
+    "hearingVenue": {
+      "courtSessions": [
+        {
+          "defendants": [
+            {
+              "name": "Fred Smith",
+              "dateOfBirth": "1965-12-27",
+              "address1": "Flat 1",
+              "address2": "1 Old Road",
+              "address3": "London",
+              "address4": "Merton",
+              "postCode": "SW99 1AA",
+              "title": "MR",
+              "firstName": "Fred",
+              "lastName": "Smith",
+              "prosecutionCasesOrApplications": [
+                {
+                  "caseOrApplicationReference": "TFL4359536",
+                  "offences": [
+                    {
+                      "offenceCode": "PS90010",
+                      "orderIndex": 1,
+                      "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+                      "pleaValue": "NOT_GUILTY",
+                      "offenceResults": [
+                        {
+                          "cjsResultCode": "4028",
+                          "resultText": "Remanded in custody\nRemand basis Before conviction\nBail exception Already in custody, Likely to offend, Likely to offend (physical or mental injury)\nBail exception reason Nature and seriousness of offence, Offended on bail, Previous record and character\nPrison organisation name HMP/YOI Nottingham\nPrison email address 1 Courts.Nottingham@justice.gov.uk\nPrison email address 2 Reception.Nottingham@justice.gov.uk\nConveyor / custodian name organisation name Derby Justice Centre (aka Derby St Mary Adult): PECS\nConveyor / custodian name email address 1 derbymc@geoamey.co.uk\nFor the trial to take place \nAdjournment reasons \nNext hearing in magistrates' court Date of hearing:10/12/2020\nTime of hearing:14:00\nCourtroom:Courtroom 09\nHearing type:Trial\nEstimated duration:6 HOURS\nBooking reference:5a567ac0-ebf7-4999-94ae-7fee40ace81a\nCourthouse organisation name:Westminster Magistrates' Court\nCourthouse address line 1:181 Marylebone Road\nCourthouse address line 2:London\nCourthouse post code:NW1 5BR"
+                        }
+                      ],
+                      "originatingCaseUrn": "TFL4359536"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Fred Smith",
+              "dateOfBirth": "1965-12-27",
+              "address1": "Flat 1",
+              "address2": "1 Old Road",
+              "address3": "London",
+              "address4": "Merton",
+              "postCode": "SW99 1AA",
+              "title": "MR",
+              "firstName": "Fred",
+              "lastName": "Smith",
+              "prosecutionCasesOrApplications": [
+                {
+                  "caseOrApplicationReference": "TFL4359536",
+                  "offences": [
+                    {
+                      "offenceCode": "PS90010",
+                      "orderIndex": 1,
+                      "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+                      "pleaValue": "GUILTY",
+                      "offenceResults": [
+                        {
+                          "cjsResultCode": "4028",
+                          "resultText": "Remanded in custody\nRemand basis Before conviction\nBail exception Already in custody, Likely to offend, Likely to offend (physical or mental injury)\nBail exception reason Nature and seriousness of offence, Offended on bail, Previous record and character\nPrison organisation name HMP/YOI Nottingham\nPrison email address 1 Courts.Nottingham@justice.gov.uk\nPrison email address 2 Reception.Nottingham@justice.gov.uk\nConveyor / custodian name organisation name Derby Justice Centre (aka Derby St Mary Adult): PECS\nConveyor / custodian name email address 1 derbymc@geoamey.co.uk\nFor the trial to take place \nAdjournment reasons \nNext hearing in magistrates' court Date of hearing:10/12/2020\nTime of hearing:14:00\nCourtroom:Courtroom 09\nHearing type:Trial\nEstimated duration:6 HOURS\nBooking reference:5a567ac0-ebf7-4999-94ae-7fee40ace81a\nCourthouse organisation name:Westminster Magistrates' Court\nCourthouse address line 1:181 Marylebone Road\nCourthouse address line 2:London\nCourthouse post code:NW1 5BR"
+                        }
+                      ],
+                      "originatingCaseUrn": "TFL4359536"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "registerDate": "2020-06-01T11:00:00Z",
+    "hearingDate": "2020-12-01T00:00:00Z",
+    "hearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+    "prosecutionAuthorityId": "9d3ad709-cb0c-4711-8ad5-f9e60d6b0530",
+    "prosecutionAuthorityCode": "TVL",
+    "prosecutionAuthorityOuCode": "GAEAA01",
+    "fileName": "InformantRegister_TVL_2020-06-01.csv",
+    "hearingVenue": {
+      "courtSessions": [
+        {
+          "defendants": [
+            {
+              "name": "Fred Smith",
+              "dateOfBirth": "1965-12-27",
+              "address1": "Flat 1",
+              "address2": "1 Old Road",
+              "address3": "London",
+              "address4": "Merton",
+              "postCode": "SW99 1AA",
+              "title": "MR",
+              "firstName": "Fred",
+              "lastName": "Smith",
+              "prosecutionCasesOrApplications": [
+                {
+                  "caseOrApplicationReference": "TVL298320922",
+                  "offences": [
+                    {
+                      "offenceCode": "PS90010",
+                      "orderIndex": 1,
+                      "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+                      "pleaValue": "GUILTY",
+                      "offenceResults": [
+                        {
+                          "cjsResultCode": "4028",
+                          "resultText": "Remanded in custody\nRemand basis Before conviction\nBail exception Already in custody, Likely to offend, Likely to offend (physical or mental injury)\nBail exception reason Nature and seriousness of offence, Offended on bail, Previous record and character\nPrison organisation name HMP/YOI Nottingham\nPrison email address 1 Courts.Nottingham@justice.gov.uk\nPrison email address 2 Reception.Nottingham@justice.gov.uk\nConveyor / custodian name organisation name Derby Justice Centre (aka Derby St Mary Adult): PECS\nConveyor / custodian name email address 1 derbymc@geoamey.co.uk\nFor the trial to take place \nAdjournment reasons \nNext hearing in magistrates' court Date of hearing:10/12/2020\nTime of hearing:14:00\nCourtroom:Courtroom 09\nHearing type:Trial\nEstimated duration:6 HOURS\nBooking reference:5a567ac0-ebf7-4999-94ae-7fee40ace81a\nCourthouse organisation name:Westminster Magistrates' Court\nCourthouse address line 1:181 Marylebone Road\nCourthouse address line 2:London\nCourthouse post code:NW1 5BR"
+                        }
+                      ],
+                      "originatingCaseUrn": "TVL298320922"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

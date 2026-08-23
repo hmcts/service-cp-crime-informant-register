@@ -1,0 +1,76 @@
+{
+  "caseId": "mut__group-master-case__amount-edge-value__one-scale-1",
+  "recordedAt": null,
+  "oracle": {
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js, as the Durable Task extension serialises them; OutboundInformantRegister therefore receives the ORCHESTRATOR's hearing, not the copy SetInformantRegister mutated",
+    "runner": "oracle/run-transform.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "recorded/provenance.json"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 1,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "refdataCallCount": 1,
+    "refdataCalls": [
+      {
+        "verb": "GET",
+        "url": "http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2021-09-27",
+        "on": "2021-09-27",
+        "headers": {
+          "CJSCPPUID": "00000000-0000-0000-0000-000000000000",
+          "Accept": "application/vnd.referencedata.query.get-now-subscriptions+json"
+        },
+        "attempt": 1,
+        "answered": "resolve status=200"
+      }
+    ]
+  },
+  "deterministic": true,
+  "clockDependent": false,
+  "clockProbe": null,
+  "digests": {
+    "hearing": "15fadecb2cef05e6225220903fa2cf38ee1b4fd0e0068baeed63da718a5dd722",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "bffc94ac365db6ea5582818bd310de55f6c1aeba7ba016536e28b6fe0154ec70",
+    "expected": "a54249301ac1717c01517bfc43c754278efd75a489b738407f8a682a3f1de514"
+  },
+  "contract": {
+    "status": "IN_CONTRACT",
+    "basis": "cpp-platform-core-domain/criminal-court-public-model/src/main/resources/json/schema/global/judicialResultPrompt.json types value as \"string\" with no pattern, so every value here is a legal prompt value; the schema constrains the type and nothing else",
+    "note": "Parity obligation: the Java port must reproduce this."
+  },
+  "evidence": "CONSTRUCTED",
+  "provenance": {
+    "kind": "mutation",
+    "baseCase": "group-master-case",
+    "baseFixture": "fixtures/hearings/group-master-case.json",
+    "baseFixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/SetInformantRegister/test/group-master-case.json",
+    "subscriptionsInput": "fixtures/subscriptions/now-subscriptions-ir-sample.json",
+    "subscriptionsOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/NowsVariantsSubscriptions/test/subscriptions.json (first 5 informant-register entries, verbatim)",
+    "sharedTimeSource": "SetInformantRegister/test/index.test.js:213",
+    "operator": "amount-edge-value",
+    "operatorVariant": "one-scale-1",
+    "note": "The only real fixture carrying majorCreditorCode (PF45) and isGroupMaster/groupId.",
+    "operatorScope": "hearing",
+    "operatorDescription": "Grafts the real financial-result judicialResult, then rewrites its financial-imposition prompt value to a decimal edge case — keeping the producer's currency-string shape.",
+    "operatorRationale": "ResultDataMapper.js:27-31 copies `prompt.value` into `resultData.amount` verbatim. It is a String on the wire: every isFinancialImposition prompt in every real fixture carries a currency-formatted string such as \"£188.00\". A Java port that parses it to BigDecimal and re-renders will silently turn \"£1.0\" into \"£1.00\", \"£0\" into \"£0.00\", and will lose digits past double precision. Each variant pins one of those. Since no real HEARING fixture carries a financial-imposition prompt, this operator first grafts the real judicialResult-with-financialResult.json (see graft-judicial-result) and only then edits its value.",
+    "operatorDetail": {
+      "value": "£1.0",
+      "why": "distinguishes 1.0 from 1.00 — equal as BigDecimal.compareTo, unequal as equals()",
+      "evidence": "CONSTRUCTED",
+      "graftedFrom": "fixtures/judicial-results/judicialResult-with-financialResult.json",
+      "reader": "ResultDataMapper.js:30"
+    }
+  }
+}

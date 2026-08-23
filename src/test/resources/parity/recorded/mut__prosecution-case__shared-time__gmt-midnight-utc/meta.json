@@ -1,0 +1,74 @@
+{
+  "caseId": "mut__prosecution-case__shared-time__gmt-midnight-utc",
+  "recordedAt": null,
+  "oracle": {
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js, as the Durable Task extension serialises them; OutboundInformantRegister therefore receives the ORCHESTRATOR's hearing, not the copy SetInformantRegister mutated",
+    "runner": "oracle/run-transform.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "recorded/provenance.json"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 2,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "refdataCallCount": 1,
+    "refdataCalls": [
+      {
+        "verb": "GET",
+        "url": "http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2020-12-01",
+        "on": "2020-12-01",
+        "headers": {
+          "CJSCPPUID": "00000000-0000-0000-0000-000000000000",
+          "Accept": "application/vnd.referencedata.query.get-now-subscriptions+json"
+        },
+        "attempt": 1,
+        "answered": "resolve status=200"
+      }
+    ]
+  },
+  "deterministic": true,
+  "clockDependent": false,
+  "clockProbe": null,
+  "digests": {
+    "hearing": "373baa08132f420cf1eb9f328fbfabdb225889a94380af6dad3ae8651c42a92b",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "abc0f6da6cf973116f655404e2d197a8aeb243e470af765f90a7deae966e61f0",
+    "expected": "0363804a91acabebdb64373cb1a4decaec2c925dcbd85b991bc68e35dbee9046"
+  },
+  "contract": {
+    "status": "IN_CONTRACT",
+    "basis": "public.hearing-resulted.json:9,20 — sharedTime is required with format date-time; an RFC3339 instant satisfies it",
+    "note": "Parity obligation: the Java port must reproduce this."
+  },
+  "evidence": "CONSTRUCTED — the instant is chosen by this harness to sit on a named boundary",
+  "provenance": {
+    "kind": "mutation",
+    "baseCase": "prosecution-case",
+    "baseFixture": "fixtures/hearings/hearing-results-from-prosecution-case.json",
+    "baseFixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/SetInformantRegister/test/hearing-results-from-prosecution-case.json",
+    "subscriptionsInput": "fixtures/subscriptions/now-subscriptions-ir-sample.json",
+    "subscriptionsOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/NowsVariantsSubscriptions/test/subscriptions.json (first 5 informant-register entries, verbatim)",
+    "sharedTimeSource": "SetInformantRegister/test/index.test.js:12",
+    "operator": "shared-time",
+    "operatorVariant": "gmt-midnight-utc",
+    "note": "Two prosecution authorities (TFL, TVL), no courtCentre fields, hearingDays empty.",
+    "operatorScope": "params",
+    "operatorDescription": "Replaces the sharedTime the orchestrator passes in.",
+    "operatorRationale": "sharedTime is the sole source of registerDate (SetInformantRegister/index.js:83 -> DateService.getLocalDateTime) and therefore of fileName (OutboundInformantRegister/index.js:48 -> DateService.getLocalDate). Both go through moment-timezone pinned to Europe/London, so the BST/GMT boundary and the midnight boundary are where a java.time port diverges by a day — those six variants are IN_CONTRACT and are real parity obligations. The last five are NOT: public.hearing-resulted.json:9,20 makes sharedTime required with format date-time, and HearingResultedEventProcessor.java:86,128 reads it as a JsonString and dereferences it unguarded, so an absent or null sharedTime NPEs in the results context before any informant-register message is sent. The recordings stand as robustness evidence for README.md §5 finding 2 — they are what the Node app does, not what the port must reproduce.",
+    "operatorDetail": {
+      "sharedTime": "2020-12-01T00:00:00Z",
+      "why": "the GMT control for the case above",
+      "reader": "SetInformantRegister/index.js:83"
+    }
+  }
+}

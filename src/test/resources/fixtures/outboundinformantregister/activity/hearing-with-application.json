@@ -1,0 +1,782 @@
+{
+  "id": "1828f356-f746-4f2d-932b-79ef2df95c80",
+  "jurisdictionType": "MAGISTRATES",
+  "courtCentre": {
+    "name": "Name Of Court Center",
+    "roomName": "Room name",
+    "lja": {
+      "ljaName": "Coventry and Warwickshire (Warwickshire) Magistrates' Court"
+    }
+  },
+  "hearingLanguage": "ENGLISH",
+  "hasSharedResults": true,
+  "defendantReferralReasons": [],
+  "type": {
+    "description": "Sentence",
+    "id": "c6d76309-c912-436b-a21b-a4c4450bc052"
+  },
+  "hearingDays": [
+    {
+      "sittingDay": "2020-03-12",
+      "startTime": "09:00:00"
+    },
+    {
+      "sittingDay": "2020-03-13",
+      "startTime": "10:00:00"
+    },
+    {
+      "sittingDay": "2020-03-14",
+      "startTime": "11:00:00"
+    },
+    {
+      "sittingDay": "2020-01-20T10:00:00Z",
+      "startTime": "11:00:00"
+    }
+  ],
+  "judiciary": [],
+  "defendantJudicialResults": [
+    {
+      "masterDefendantId": "6647df67-a065-4d07-90ba-a8daa064ecc4",
+      "judicialResult": {
+        "judicialResultId": "b3303496-c090-4365-adc6-b2e6fe7a40fe",
+        "judicialResultTypeId": "9ea0d845-5096-44f6-9ce0-8ae801141eac",
+        "orderedHearingId": "e100d08a-ed4e-43a2-aae2-e9c5735713b0",
+        "label": "Collection order",
+        "isAdjournmentResult": false,
+        "isFinancialResult": true,
+        "isConvictedResult": false,
+        "isAvailableForCourtExtract": true,
+        "orderedDate": "20-01-2020",
+        "category": "Fine",
+        "resultText": "collection order",
+        "terminatesOffenceProceedings": "",
+        "isLifeDuration": false,
+        "isPublishedAsAPrompt": false,
+        "isExcludedFromResults": false,
+        "isAlwaysPublished": true,
+        "isUrgent": false,
+        "isD20": false
+      }
+    },
+    {
+      "masterDefendantId": "ded76309-c912-436b-a21b-a4c4450bc052",
+      "judicialResult": {
+        "judicialResultId": "b3303496-c090-4365-adc6-b2e6fe7a40fe",
+        "judicialResultTypeId": "d6e93aae-5dd7-11e8-9c2d-fa7ae01bbebc",
+        "orderedHearingId": "e100d08a-ed4e-43a2-aae2-e9c5735713b0",
+        "label": "Reserve Terms Lump sum plus instalments",
+        "isAdjournmentResult": false,
+        "isFinancialResult": true,
+        "isConvictedResult": false,
+        "isAvailableForCourtExtract": true,
+        "orderedDate": "20-01-2020",
+        "category": "Fine",
+        "resultText": "Reserve Terms Lump",
+        "terminatesOffenceProceedings": "",
+        "isLifeDuration": false,
+        "isPublishedAsAPrompt": false,
+        "isExcludedFromResults": false,
+        "isAlwaysPublished": true,
+        "isUrgent": false,
+        "isD20": false
+      }
+    }
+  ],
+  "prosecutionCases": [
+    {
+      "id": "c10e3b71-6a6d-45ef-9b62-34df4d54971a",
+      "prosecutionCaseIdentifier": {
+        "prosecutionAuthorityId": "31af405e-7b60-4dd8-a244-c24c2d3fa595",
+        "prosecutionAuthorityCode": "TFL",
+        "prosecutionAuthorityOUCode": "GAFTL00",
+        "prosecutionAuthorityReference": "TFL4359536"
+      },
+      "initiationCode": "J",
+      "caseStatus": "SJP_REFERRAL",
+      "statementOfFacts": "Prosecution Facts",
+      "defendants": [
+        {
+          "id": "6647df67-a065-4d07-90ba-a8daa064ecc4",
+          "masterDefendantId": "6647df67-a065-4d07-90ba-a8daa064ecc4",
+          "prosecutionCaseId": "c10e3b71-6a6d-45ef-9b62-34df4d54971a",
+          "numberOfPreviousConvictionsCited": 99,
+          "defendantCaseJudicialResults" : [
+            {
+              "judicialResultId": "8b13e723-07a5-47ad-b378-62478ad17001",
+              "judicialResultTypeId": "a09bbfa0-5dd5-11e8-9c2d-fa7ae01bbebc",
+              "orderedHearingId": "e100d08a-ed4e-43a2-aae2-e9c5735713b0",
+              "label": "Reserve Terms Lump sum",
+              "cjsCode": "cjsCode - defendant level",
+              "resultText": "Pay by date - defendant"
+            },
+            {
+              "judicialResultId": "8b13e723-07a5-47ad-b378-62478ad17001",
+              "judicialResultTypeId": "a09bbfa0-5dd5-11e8-9c2d-fa7ae01bbebc",
+              "orderedHearingId": "e100d08a-ed4e-43a2-aae2-e9c5735713b0",
+              "label": "Reserve Terms Lump sum",
+              "cjsCode": "cjsCode - defendant level 2",
+              "resultText": "Pay by date - defendant 2"
+            }
+          ],
+          "offences": [
+            {
+              "id": "a154d828-1234-47f0-b8d5-e81227831d94",
+              "offenceDefinitionId": "20f3dd74-1d32-43fa-bec3-7ffca5b73ebe",
+              "offenceCode": "PS90010",
+              "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+              "offenceTitleWelsh": "",
+              "offenceLegislation": "Contrary to regulation 7(1)(a) of the Public Service Vehicles (Conduct of Drivers, Inspectors, Conductors and Passengers) Regulations 1990 and section 25 of the Public Passenger Vehicles Act 1981.",
+              "offenceLegislationWelsh": "",
+              "modeOfTrial": "Summary",
+              "wording": "On 02/07/2018 at Bond street, being a passenger on a vehicle, namely Volvo B9TL 30x, used for the carriage of passengers at separate fares, used a ticket which had been altered or defaced.",
+              "startDate": "2018-07-02",
+              "chargeDate": "2018-08-01",
+              "allocationDecision": {},
+              "convictionDate": "2019-11-14",
+              "count": 1,
+              "indicatedPlea": {},
+              "judicialResults": [
+                {
+                  "judicialResultId": "8b13e723-07a5-47ad-b378-62478ad17001",
+                  "judicialResultTypeId": "a09bbfa0-5dd5-11e8-9c2d-fa7ae01bbebc",
+                  "orderedHearingId": "e100d08a-ed4e-43a2-aae2-e9c5735713b0",
+                  "label": "Reserve Terms Lump sum",
+                  "isAdjournmentResult": false,
+                  "isFinancialResult": true,
+                  "isConvictedResult": false,
+                  "isAvailableForCourtExtract": true,
+                  "orderedDate": "20-01-2020",
+                  "category": "Fine",
+                  "resultText": "Pay by date /n Reserve Terms Lump sum",
+                  "terminatesOffenceProceedings": "",
+                  "isLifeDuration": false,
+                  "isPublishedAsAPrompt": false,
+                  "isExcludedFromResults": false,
+                  "isAlwaysPublished": true,
+                  "isUrgent": false,
+                  "isD20": false
+                }
+              ],
+              "notifiedPlea": {
+                "notifiedPleaDate": "2019-11-13",
+                "notifiedPleaValue": "NO_NOTIFICATION",
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94"
+              },
+              "orderIndex": 1,
+              "plea": {
+                "delegatedPowers": {
+                  "firstName": "FirstName",
+                  "lastName": "LastName",
+                  "userId": "7eaf9c85-220d-4040-845c-d84c919b3b6f"
+                },
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94",
+                "originatingHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                "pleaDate": "2019-11-14",
+                "pleaValue": "NOT_GUILTY"
+              },
+              "verdict": {
+                "jurors": {
+                  "numberOfJurors": 12,
+                  "numberOfSplitJurors": 0,
+                  "unanimous": true
+                },
+                "lesserOrAlternativeOffence": {
+                  "offenceCode": "PS90010",
+                  "offenceDefinitionId": "20f3dd74-1d32-43fa-bec3-7ffca5b73ebe",
+                  "offenceLegislation": "Contrary to regulation 7(1)(a) of the Public Service Vehicles (Conduct of Drivers, Inspectors, Conductors and Passengers) Regulations 1990 and section 25 of the Public Passenger Vehicles Act 1981.",
+                  "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket"
+                },
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94",
+                "originatingHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                "verdictDate": "2019-11-14",
+                "verdictType": {
+                  "category": "Guilty",
+                  "categoryType": "GUILTY_CONVICTED",
+                  "id": "165f95b1-fc13-4d87-9685-3eff703c1039"
+                }
+              },
+              "offenceFacts": {
+                "vehicleCode": "PASSENGER_CARRYING_VEHICLE",
+                "vehicleRegistrationMark": "TJ07JRD"
+              }
+            }
+          ],
+          "associatedPersons": [
+            {
+              "role": "parent",
+              "person": {
+                "address": {
+                  "address1": "Father - Flat 1",
+                  "address2": "Father - 1 Old Road",
+                  "address3": "Father - London",
+                  "address4": "Father - Merton",
+                  "postcode": "Father - SW99 1AA"
+                },
+                "contact": {
+                },
+                "dateOfBirth": "1965-12-27",
+                "documentationLanguageNeeds": "ENGLISH",
+                "ethnicity": {
+                },
+                "firstName": "Father - Fred",
+                "gender": "Father - MALE",
+                "lastName": "Father - Smith",
+                "title": "Father - MR"
+              }
+            }
+          ],
+          "personDefendant": {
+            "personDetails": {
+              "address": {
+                "address1": "Flat 1",
+                "address2": "1 Old Road",
+                "address3": "London",
+                "address4": "Merton",
+                "postcode": "SW99 1AA"
+              },
+              "contact": {
+                "home": "044-012345566",
+                "work": "01234-67859512",
+                "mobile": "0712345678",
+                "primaryEmail": "sajan@test.com"
+              },
+              "dateOfBirth": "1999-12-27",
+              "documentationLanguageNeeds": "ENGLISH",
+              "ethnicity": {
+              },
+              "firstName": "Fred",
+              "gender": "MALE",
+              "lastName": "Smith",
+              "title": "MR",
+              "nationalInsuranceNumber": "ABCD1234"
+            },
+            "arrestSummonsNumber": "ASN_1999999",
+            "employerPayrollReference": "EMP1025",
+            "employerOrganisation": {
+              "name": "HMCTS",
+              "address": {
+                "address1": "102",
+                "address2": "Petty France",
+                "address3": "Westminster",
+                "address4": "London",
+                "postcode": "W1H 9AJ"
+              },
+              "contact": {
+                "home": "044-012345566",
+                "work": "01234-67859512",
+                "mobile": "0712345678",
+                "primaryEmail": "sajan.chandran@hmcts.net"
+              }
+            }
+          }
+        },
+        {
+          "id": "ded76309-c912-436b-a21b-a4c4450bc052",
+          "masterDefendantId": "ded76309-c912-436b-a21b-a4c4450bc052",
+          "prosecutionCaseId": "c10e3b71-6a6d-45ef-9b62-34df4d54971a",
+          "numberOfPreviousConvictionsCited": 99,
+          "offences": [
+            {
+              "id": "a154d828-1234-47f0-b8d5-e81227831d94",
+              "offenceDefinitionId": "20f3dd74-1d32-43fa-bec3-7ffca5b73ebe",
+              "offenceCode": "PS90010",
+              "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+              "offenceTitleWelsh": "",
+              "offenceLegislation": "Contrary to regulation 7(1)(a) of the Public Service Vehicles (Conduct of Drivers, Inspectors, Conductors and Passengers) Regulations 1990 and section 25 of the Public Passenger Vehicles Act 1981.",
+              "offenceLegislationWelsh": "",
+              "modeOfTrial": "Summary",
+              "wording": "On 02/07/2018 at Bond street, being a passenger on a vehicle, namely Volvo B9TL 30x, used for the carriage of passengers at separate fares, used a ticket which had been altered or defaced.",
+              "startDate": "2018-07-02",
+              "chargeDate": "2018-08-01",
+              "allocationDecision": {},
+              "convictionDate": "2019-11-14",
+              "count": 1,
+              "indicatedPlea": {},
+              "judicialResults": [
+                {
+                  "judicialResultId": "c6d26764-5b6a-4e30-8860-2e1093f89a6e",
+                  "orderedHearingId": "f9f41ca5-a963-46ec-b2c2-a307883c1db5",
+                  "judicialResultTypeId": "76d43772-0660-4a33-b5c6-8f8ccaf6b4e3",
+                  "label": "Imprisonment",
+                  "isAdjournmentResult": false,
+                  "isFinancialResult": true,
+                  "isConvictedResult": false,
+                  "isAvailableForCourtExtract": true,
+                  "orderedDate": "20-01-2020",
+                  "category": "Prison",
+                  "resultText": "Imprisonment court order",
+                  "terminatesOffenceProceedings": "",
+                  "isLifeDuration": false,
+                  "isPublishedAsAPrompt": false,
+                  "isExcludedFromResults": false,
+                  "isAlwaysPublished": true,
+                  "isUrgent": false,
+                  "isD20": false
+                },
+                {
+                  "judicialResultId": "b8f91621-135a-4c26-8b38-e83dbeda0b3f",
+                  "judicialResultTypeId": "9ba8f03a-5dda-11e8-9c2d-fa7ae01bbebc",
+                  "orderedHearingId": "7669d6a3-ef75-40c7-ac13-8be3a9875c62",
+                  "label": "Reserve Terms Instalments only",
+                  "isAdjournmentResult": false,
+                  "isFinancialResult": true,
+                  "isConvictedResult": false,
+                  "isAvailableForCourtExtract": true,
+                  "orderedDate": "20-01-2020",
+                  "category": "Fine",
+                  "resultText": "Reserve Terms Instalments only",
+                  "terminatesOffenceProceedings": "",
+                  "isLifeDuration": false,
+                  "isPublishedAsAPrompt": false,
+                  "isExcludedFromResults": false,
+                  "isAlwaysPublished": true,
+                  "isUrgent": false,
+                  "isD20": false
+                }
+              ],
+              "notifiedPlea": {
+                "notifiedPleaDate": "2019-11-13",
+                "notifiedPleaValue": "NO_NOTIFICATION",
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94"
+              },
+              "orderIndex": 1,
+              "plea": {
+                "delegatedPowers": {
+                  "firstName": "FirstName",
+                  "lastName": "LastName",
+                  "userId": "7eaf9c85-220d-4040-845c-d84c919b3b6f"
+                },
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94",
+                "originatingHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                "pleaDate": "2019-11-14",
+                "pleaValue": "GUILTY"
+              },
+              "verdict": {
+                "jurors": {
+                  "numberOfJurors": 12,
+                  "numberOfSplitJurors": 0,
+                  "unanimous": true
+                },
+                "lesserOrAlternativeOffence": {
+                  "offenceCode": "PS90010",
+                  "offenceDefinitionId": "20f3dd74-1d32-43fa-bec3-7ffca5b73ebe",
+                  "offenceLegislation": "Contrary to regulation 7(1)(a) of the Public Service Vehicles (Conduct of Drivers, Inspectors, Conductors and Passengers) Regulations 1990 and section 25 of the Public Passenger Vehicles Act 1981.",
+                  "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket"
+                },
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94",
+                "originatingHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                "verdictDate": "2019-11-14",
+                "verdictType": {
+                  "category": "Guilty",
+                  "categoryType": "GUILTY_CONVICTED",
+                  "id": "165f95b1-fc13-4d87-9685-3eff703c1039"
+                }
+              }
+            }
+          ],
+          "personDefendant": {
+            "personDetails": {
+              "address": {
+                "address1": "Flat 1",
+                "address2": "1 Old Road",
+                "address3": "London",
+                "address4": "Merton",
+                "postcode": "SW99 1AA"
+              },
+              "contact": {
+              },
+              "dateOfBirth": "1965-12-27",
+              "documentationLanguageNeeds": "ENGLISH",
+              "ethnicity": {
+              },
+              "firstName": "Fred",
+              "gender": "MALE",
+              "lastName": "Daligarce",
+              "title": "MR"
+            },
+            "arrestSummonsNumber": "ASN_200000001"
+          }
+        }
+      ]
+    }
+  ],
+  "courtApplications": [
+    {
+      "allegationOrComplaintEndDate": "2021-03-10",
+      "allegationOrComplaintStartDate": "2021-02-02",
+      "applicant": {
+        "id": "cdb4268d-2075-4efc-b9b0-1123f401a4a0",
+        "notificationRequired": true,
+        "prosecutingAuthority": {
+          "address": {
+            "address1": "Criminal Justice Department",
+            "address2": "Derbyshire Constabulary",
+            "address3": "Butterley Hall",
+            "postcode": "DE5 3RS"
+          },
+          "contact": {
+            "primaryEmail": "CCSU@derbyshire.pnn.police.uk"
+          },
+          "name": "Derbyshire Police",
+          "prosecutionAuthorityCode": "DERPF",
+          "prosecutionAuthorityOUCode": "0300000",
+          "prosecutionAuthorityId": "31af405e-7b60-4dd8-a244-c24c2d3fa595",
+          "welshName": "Heddlu Derbyshire"
+        },
+        "summonsRequired": false
+      },
+      "applicationReceivedDate": "2021-01-01",
+      "applicationReference": "30V77690609",
+      "applicationStatus": "IN_PROGRESS",
+      "commissionerOfOath": false,
+      "courtOrder": {
+        "canBeSubjectOfBreachProceedings": true,
+        "canBeSubjectOfVariationProceedings": true,
+        "courtOrderOffences": [
+          {
+            "offence": {
+              "arrestDate": "2020-02-09",
+              "chargeDate": "2020-02-09",
+              "count": 0,
+              "id": "35a4e4bd-cdca-4a65-a30d-52ae3f8cd3ca",
+              "isDisposed": false,
+              "modeOfTrial": "Summary",
+              "offenceCode": "CJO3522",
+              "offenceDateCode": 1,
+              "offenceDefinitionId": "4023c959-fad1-3e47-b678-ff7f0c0c1f48",
+              "offenceLegislation": "Contrary to section 363(2) and (4) of the    Communications Act 2003.",
+              "offenceTitle": "Use / install a television set without a licence",
+              "orderIndex": 1,
+              "startDate": "2020-02-09",
+              "wording": "Resentenced Original code : CA03010, Original details: Has a violent past and fear that he will commit further offences and\n                interfere with witnesse"
+            },
+            "prosecutionCaseId": "2cca3ecf-0bde-49ab-aa3a-f7a65539afe5",
+            "prosecutionCaseIdentifier": {
+              "address": {
+                "address1": "Criminal Justice Department",
+                "address2": "Derbyshire Constabulary",
+                "address3": "Butterley Hall",
+                "postcode": "DE5 3RS"
+              },
+              "majorCreditorCode": "PF30",
+              "prosecutionAuthorityCode": "DERPF",
+              "prosecutionAuthorityId": "bdc190e7-c939-37ca-be4b-9f615d6ef40e",
+              "prosecutionAuthorityName": "Derbyshire Police",
+              "prosecutionAuthorityOUCode": "0300000",
+              "caseURN": "30V77690609"
+            }
+          },
+          {
+            "offence": {
+              "arrestDate": "2020-02-09",
+              "chargeDate": "2020-02-09",
+              "count": 0,
+              "id": "cbe71bec-e5d2-438e-8206-4308e97468ac",
+              "isDisposed": false,
+              "modeOfTrial": "Summary",
+              "offenceCode": "CJO3522",
+              "offenceDateCode": 1,
+              "offenceDefinitionId": "a2804f0e-ecb1-3855-947d-01ea5bb2a70b",
+              "offenceLegislation": "Contrary to section 363(3)(a) and (4) of the    Communications Act 2003.",
+              "offenceTitle": "Possess a television set with intent to install / use without a licence",
+              "orderIndex": 2,
+              "startDate": "2020-02-09",
+              "wording": "Resentenced Original code : CA03011, Original details: Has a violent past and fear that he will commit further offences and\n                interfere with witnesse"
+            },
+            "prosecutionCaseId": "2cca3ecf-0bde-49ab-aa3a-f7a65539afe5",
+            "prosecutionCaseIdentifier": {
+              "address": {
+                "address1": "Criminal Justice Department",
+                "address2": "Derbyshire Constabulary",
+                "address3": "Butterley Hall",
+                "postcode": "DE5 3RS"
+              },
+              "majorCreditorCode": "PF30",
+              "prosecutionAuthorityCode": "DERPF",
+              "prosecutionAuthorityId": "bdc190e7-c939-37ca-be4b-9f615d6ef40e",
+              "prosecutionAuthorityName": "Derbyshire Police",
+              "prosecutionAuthorityOUCode": "0300000",
+              "caseURN": "30V77690609"
+            }
+          },
+          {
+            "offence": {
+              "arrestDate": "2020-02-09",
+              "chargeDate": "2020-02-09",
+              "count": 0,
+              "id": "98689949-c53f-4e68-bbcc-47c46194486d",
+              "isDisposed": false,
+              "modeOfTrial": "Summary",
+              "offenceCode": "CJO3522",
+              "offenceDateCode": 1,
+              "offenceDefinitionId": "3722ce0f-660c-32ba-8088-e23f2f86057f",
+              "offenceLegislation": "Contrary to section 363(3)(b) and (4) of the    Communications Act 2003.",
+              "offenceTitle": "Possess / control TV set with intent another use install without a licence",
+              "orderIndex": 3,
+              "startDate": "2020-02-09",
+              "wording": "Resentenced Original code : CA03012, Original details: Has a violent past and fear that he will commit further offences and\n                interfere with witnesse"
+            },
+            "prosecutionCaseId": "2cca3ecf-0bde-49ab-aa3a-f7a65539afe5",
+            "prosecutionCaseIdentifier": {
+              "address": {
+                "address1": "Criminal Justice Department",
+                "address2": "Derbyshire Constabulary",
+                "address3": "Butterley Hall",
+                "postcode": "DE5 3RS"
+              },
+              "majorCreditorCode": "PF30",
+              "prosecutionAuthorityCode": "DERPF",
+              "prosecutionAuthorityId": "bdc190e7-c939-37ca-be4b-9f615d6ef40e",
+              "prosecutionAuthorityName": "Derbyshire Police",
+              "prosecutionAuthorityOUCode": "0300000",
+              "caseURN": "30V77690609"
+            }
+          }
+        ],
+        "defendantIds": [
+          "4780c981-49d7-4b17-b542-efd6cc562e23"
+        ],
+        "endDate": "2028-03-10",
+        "id": "157e8b47-3c02-4bba-94c9-89ac9f1f67fe",
+        "isSJPOrder": false,
+        "judicialResultTypeId": "56e808c5-cd8f-4882-b8e2-c2f615e09c11",
+        "label": "Criminal behaviour order",
+        "masterDefendantId": "4780c981-49d7-4b17-b542-efd6cc562e23",
+        "orderDate": "2021-03-10",
+        "orderingCourt": {
+          "address": {
+            "address1": "176A Lavender Hill",
+            "address2": "London",
+            "address3": "",
+            "address4": "",
+            "address5": "",
+            "postcode": "SW11 1JU"
+          },
+          "code": "B01LY00",
+          "id": "f8254db1-1683-483e-afb3-b87fde5a0a26",
+          "lja": {
+            "ljaCode": "2577",
+            "ljaName": "South West London Magistrates' Court"
+          },
+          "name": "Lavender Hill Magistrates' Court",
+          "roomId": "b4562684-9209-3ec4-a544-7f80dabd94d8",
+          "roomName": "Courtroom 02"
+        },
+        "orderingHearingId": "608c2415-e9f1-4843-89e4-b2be2b2eec70",
+        "startDate": "2021-03-10"
+      },
+      "futureSummonsHearing": {
+        "courtCentre": {
+          "id": "c133d0de-c989-48b9-bd20-0431943e347e",
+          "name": "City of London Magistrates' Court",
+          "roomId": "4294a92c-8827-3296-be53-c74b7e9e31d8",
+          "roomName": "Courtroom 01"
+        },
+        "earliestStartDateTime": "2021-03-16T10:00:00.000Z",
+        "estimatedMinutes": 20,
+        "jurisdictionType": "MAGISTRATES"
+      },
+      "hasSummonsSupplied": false,
+      "id": "14e41d27-c073-434b-9b98-766c52c7a187",
+      "judicialResults": [
+        {
+          "alwaysPublished": false,
+          "canBeSubjectOfBreach": false,
+          "canBeSubjectOfVariation": false,
+          "category": "INTERMEDIARY",
+          "courtClerk": {
+            "firstName": "Erica",
+            "lastName": "Wilson",
+            "userId": "a085e359-6069-4694-8820-7810e7dfe762"
+          },
+          "d20": false,
+          "excludedFromResults": false,
+          "isAdjournmentResult": false,
+          "isAvailableForCourtExtract": true,
+          "isConvictedResult": false,
+          "isDeleted": false,
+          "isFinancialResult": false,
+          "isUnscheduled": false,
+          "judicialResultId": "27e96363-14b4-4ddf-b02c-0fee6011fde8",
+          "judicialResultPrompts": [
+            {
+              "isAvailableForCourtExtract": true,
+              "publishedForNows": false,
+              "courtExtract": "N",
+              "isFinancialImposition": false,
+              "judicialResultPromptTypeId": "428e2b37-88f9-4f9c-beda-450b96bac466",
+              "label": "Prosecution costs",
+              "promptReference": "prosecutionCosts",
+              "promptSequence": 100,
+              "type": "CURR",
+              "usergroups": [
+                "CPS",
+                "Defence",
+                "Judiciary",
+                "NCES",
+                "Probation",
+                "YOTs",
+                "Prosecuting Authorities"
+              ],
+              "value": "£100.00",
+              "welshValue": "£100.00"
+            },
+            {
+              "isAvailableForCourtExtract": true,
+              "publishedForNows": false,
+              "courtExtract": "N",
+              "isFinancialImposition": false,
+              "judicialResultPromptTypeId": "04d5d843-f530-43e4-927f-57942b310d5c",
+              "label": "THIS SUMMONS IS FOR PERSONAL SERVICE",
+              "promptReference": "tHISSUMMONSISFORPERSONALSERVICE",
+              "promptSequence": 200,
+              "type": "BOOLEAN",
+              "usergroups": [
+                "CPS",
+                "Defence",
+                "Judiciary",
+                "Probation",
+                "NCES",
+                "Prosecuting Authorities",
+                "YOTs"
+              ],
+              "value": "true",
+              "welshValue": "true"
+            },
+            {
+              "isAvailableForCourtExtract": true,
+              "publishedForNows": false,
+              "courtExtract": "N",
+              "isFinancialImposition": false,
+              "judicialResultPromptTypeId": "1d068bf5-5149-4bb2-b333-7c8b288ca119",
+              "label": "This summons will be served by a Prosecutor",
+              "promptReference": "thisSummonsWillBeServedByAProsecutor",
+              "promptSequence": 300,
+              "type": "BOOLEAN",
+              "usergroups": [
+                "CPS",
+                "Defence",
+                "Judiciary",
+                "NCES",
+                "Probation",
+                "Prosecuting Authorities",
+                "YOTs"
+              ],
+              "value": "true",
+              "welshValue": "true"
+            },
+            {
+              "isAvailableForCourtExtract": true,
+              "publishedForNows": false,
+              "courtExtract": "N",
+              "isFinancialImposition": false,
+              "judicialResultPromptTypeId": "7d881e55-50ee-4098-9d3a-9b9c8f9eb834",
+              "label": "Prosecutor's email address (used summons notification)",
+              "promptReference": "prosecutorsEmailAddressUsedSummonsNotification",
+              "promptSequence": 400,
+              "type": "TXT",
+              "usergroups": [],
+              "value": "s@w.com",
+              "welshValue": "s@w.com"
+            }
+          ],
+          "judicialResultTypeId": "0f44eeb9-2c81-430d-9a60-bbdaf8c4a093",
+          "label": "Summons approved",
+          "lastSharedDateTime": "2021-03-11",
+          "level": "C",
+          "lifeDuration": false,
+          "orderedDate": "2021-03-11",
+          "orderedHearingId": "053cb01f-def9-4182-8fef-d4970afeb1da",
+          "postHearingCustodyStatus": "A",
+          "publishedAsAPrompt": false,
+          "publishedForNows": false,
+          "rank": 16300,
+          "resultText": "Summons approved\nProsecution costs £100.00\nTHIS SUMMONS IS FOR PERSONAL SERVICE true\nThis summons will be served by a Prosecutor true\nProsecutor's email address (used summons notification) s@w.com",
+          "rollUpPrompts": false,
+          "rootJudicialResultId": "27e96363-14b4-4ddf-b02c-0fee6011fde8",
+          "rootJudicialResultTypeId": "0f44eeb9-2c81-430d-9a60-bbdaf8c4a093",
+          "terminatesOffenceProceedings": false,
+          "urgent": false,
+          "usergroups": []
+        }
+      ],
+      "respondents": [
+        {
+          "id": "4780c981-49d7-4b17-b542-efd6cc562e23",
+          "masterDefendant": {
+            "associatedPersons": [
+              {
+                "person": {
+                  "address": {
+                    "address1": "line1",
+                    "postcode": "SL2 5FZ"
+                  },
+                  "firstName": "gfghff",
+                  "gender": "NOT_SPECIFIED",
+                  "lastName": "ghfhgfhg"
+                },
+                "role": "PARENT"
+              }
+            ],
+            "isYouth": true,
+            "masterDefendantId": "4780c981-49d7-4b17-b542-efd6cc562e23",
+            "personDefendant": {
+              "arrestSummonsNumber": "TFL",
+              "bailStatus": {
+                "code": "A",
+                "description": "Not applicable",
+                "id": "86009c70-759d-3308-8de4-194886ff9a77"
+              },
+              "personDetails": {
+                "address": {
+                  "address1": "34",
+                  "address2": "Unknown Street",
+                  "address3": "Locality"
+                },
+                "dateOfBirth": "2005-05-04",
+                "documentationLanguageNeeds": "ENGLISH",
+                "firstName": "test7",
+                "gender": "MALE",
+                "lastName": "NOWSPROS",
+                "nationalityDescription": "Unknown",
+                "nationalityId": "22ef7a73-df50-4349-8c72-ca3b9ace6363"
+              }
+            }
+          },
+          "notificationRequired": true,
+          "summonsRequired": true
+        }
+      ],
+      "subject": {
+        "id": "4780c981-49d7-4b17-b542-efd6cc562e23",
+        "notificationRequired": true,
+        "summonsRequired": true
+      },
+      "type": {
+        "appealFlag": false,
+        "applicantAppellantFlag": false,
+        "boxworkNotifTemplate": "NOT_APPLICABLE",
+        "breachType": "GENERIC_BREACH",
+        "categoryCode": "CB",
+        "code": "PC00504",
+        "commrOfOathFlag": false,
+        "courtExtractAvlFlag": true,
+        "courtOfAppealFlag": false,
+        "hearingCode": "APN",
+        "id": "66ad04e1-79bd-3ab6-9d33-41c1ddd25c7c",
+        "jurisdiction": "MAGISTRATES",
+        "legislation": "In accordance with section 26(5)(b) of the Powers of Criminal Courts (Sentencing) Act 2000.",
+        "linkType": "LINKED",
+        "listingNotifTemplate": "NOT_APPLICABLE",
+        "offenceActiveOrder": "COURT_ORDER",
+        "pleaApplicableFlag": false,
+        "prefix": "Resentenced",
+        "prosecutorThirdPartyFlag": false,
+        "resentencingActivationCode": "CJO3522",
+        "spiOutApplicableFlag": true,
+        "summonsTemplateType": "BREACH",
+        "type": "Reference by Youth Offender Panel - Breach of contract"
+      }
+    }
+  ]
+}

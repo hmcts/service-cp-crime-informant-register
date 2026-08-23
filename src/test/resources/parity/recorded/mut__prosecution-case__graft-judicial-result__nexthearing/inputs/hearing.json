@@ -1,0 +1,887 @@
+{
+  "id": "1828f356-f746-4f2d-932b-79ef2df95c80",
+  "jurisdictionType": "MAGISTRATES",
+  "courtCentre": {},
+  "hearingLanguage": "ENGLISH",
+  "hasSharedResults": true,
+  "defendantReferralReasons": [],
+  "type": {
+    "description": "Sentence",
+    "id": "c6d76309-c912-436b-a21b-a4c4450bc052"
+  },
+  "hearingDays": [],
+  "judiciary": [],
+  "prosecutionCases": [
+    {
+      "id": "c10e3b71-6a6d-45ef-9b62-34df4d54971a",
+      "prosecutionCaseIdentifier": {
+        "prosecutionAuthorityId": "31af405e-7b60-4dd8-a244-c24c2d3fa595",
+        "prosecutionAuthorityCode": "TFL",
+        "prosecutionAuthorityOUCode": "GAFTL00",
+        "prosecutionAuthorityReference": "TFL4359536"
+      },
+      "initiationCode": "J",
+      "caseStatus": "SJP_REFERRAL",
+      "statementOfFacts": "Prosecution Facts",
+      "defendants": [
+        {
+          "id": "6647df67-a065-4d07-90ba-a8daa064ecc4",
+          "masterDefendantId": "6647df67-a065-4d07-90ba-a8daa064ecc4",
+          "prosecutionCaseId": "c10e3b71-6a6d-45ef-9b62-34df4d54971a",
+          "numberOfPreviousConvictionsCited": 99,
+          "offences": [
+            {
+              "id": "a154d828-1234-47f0-b8d5-e81227831d94",
+              "offenceDefinitionId": "20f3dd74-1d32-43fa-bec3-7ffca5b73ebe",
+              "offenceCode": "PS90010",
+              "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+              "offenceTitleWelsh": "",
+              "offenceLegislation": "Contrary to regulation 7(1)(a) of the Public Service Vehicles (Conduct of Drivers, Inspectors, Conductors and Passengers) Regulations 1990 and section 25 of the Public Passenger Vehicles Act 1981.",
+              "offenceLegislationWelsh": "",
+              "modeOfTrial": "Summary",
+              "wording": "On 02/07/2018 at Bond street, being a passenger on a vehicle, namely Volvo B9TL 30x, used for the carriage of passengers at separate fares, used a ticket which had been altered or defaced.",
+              "startDate": "2018-07-02",
+              "chargeDate": "2018-08-01",
+              "allocationDecision": {},
+              "convictionDate": "2019-11-14",
+              "count": 1,
+              "indicatedPlea": {},
+              "judicialResults": [
+                {
+                  "alwaysPublished": false,
+                  "category": "INTERMEDIARY",
+                  "cjsCode": "4028",
+                  "courtClerk": {
+                    "firstName": "Erica",
+                    "lastName": "Wilson",
+                    "userId": "31ec3a16-8721-498c-8da5-f099390ee254"
+                  },
+                  "d20": false,
+                  "excludedFromResults": false,
+                  "isAdjournmentResult": false,
+                  "isAvailableForCourtExtract": true,
+                  "isConvictedResult": false,
+                  "isDeleted": false,
+                  "isFinancialResult": false,
+                  "isUnscheduled": false,
+                  "judicialResultId": "bd56177f-3833-49d7-905c-522bd914b895",
+                  "judicialResultPrompts": [
+                    {
+                      "courtExtract": "Y",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "49f9ee68-3dee-4ed1-8020-377818c3697f",
+                      "label": "Remand basis",
+                      "promptReference": "remandBasis",
+                      "promptSequence": 500,
+                      "type": "FIXL",
+                      "usergroups": [],
+                      "value": "Before conviction",
+                      "welshLabel": "Sail remand",
+                      "welshValue": "Before conviction"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "7b2e6219-ddcb-4afa-8615-8de978e60af1",
+                      "label": "Bail exception",
+                      "promptReference": "bailException",
+                      "promptSequence": 600,
+                      "qualifier": "MN,MJ,MV",
+                      "type": "FIXLM",
+                      "usergroups": [],
+                      "value": "Already in custody, Likely to offend, Likely to offend (physical or mental injury)",
+                      "welshLabel": "Eithriad rhag caniatáu mechnïaeth",
+                      "welshValue": "Already in custody###Likely to offend###Likely to offend (physical or mental injury)"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "53ac8d08-49a9-4495-ab3a-0ef94ca9e560",
+                      "label": "Bail exception reason",
+                      "promptReference": "bailExceptionReason",
+                      "promptSequence": 800,
+                      "type": "FIXLOM",
+                      "usergroups": [],
+                      "value": "Nature and seriousness of offence, Offended on bail, Previous record and character",
+                      "welshLabel": "Rheswm dros beidio â chaniatáu mechnïaeth",
+                      "welshValue": "Nature and seriousness of offence###Offended on bail###Previous record and character"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "2d6330a2-1f12-45fb-bb72-65f4c1215e9c",
+                      "label": "Prison organisation name",
+                      "promptReference": "prisonOrganisationName",
+                      "promptSequence": 300,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "HMP/YOI Nottingham",
+                      "welshValue": "HMP/YOI Nottingham"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "2d6330a2-1f12-45fb-bb72-65f4c1215e9c",
+                      "label": "Prison email address 1",
+                      "promptReference": "prisonEmailAddress1",
+                      "promptSequence": 300,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "Courts.Nottingham@justice.gov.uk",
+                      "welshValue": "Courts.Nottingham@justice.gov.uk"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "2d6330a2-1f12-45fb-bb72-65f4c1215e9c",
+                      "label": "Prison email address 2",
+                      "promptReference": "prisonEmailAddress2",
+                      "promptSequence": 300,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "Reception.Nottingham@justice.gov.uk",
+                      "welshValue": "Reception.Nottingham@justice.gov.uk"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "6927b6ac-4c85-4532-838d-88ac00ea83f9",
+                      "label": "Conveyor / custodian name organisation name",
+                      "promptReference": "conveyorcustodiannameOrganisationName",
+                      "promptSequence": 400,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "Derby Justice Centre (aka Derby St Mary Adult): PECS",
+                      "welshValue": "Derby Justice Centre (aka Derby St Mary Adult): PECS"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "6927b6ac-4c85-4532-838d-88ac00ea83f9",
+                      "label": "Conveyor / custodian name email address 1",
+                      "promptReference": "conveyorcustodiannameEmailAddress1",
+                      "promptSequence": 400,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "derbymc@geoamey.co.uk",
+                      "welshValue": "derbymc@geoamey.co.uk"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "judicialResultPromptTypeId": "4958de15-8a0a-4d2b-9f7e-56e037cf03da",
+                      "label": "For the trial to take place",
+                      "promptReference": "4f6e4372-df83-4b43-bd98-c54d5194273e",
+                      "promptSequence": 900,
+                      "qualifier": "GC",
+                      "usergroups": [],
+                      "value": "",
+                      "welshLabel": " Er mwyn cynnal y treial"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "judicialResultPromptTypeId": "7fc17a01-2f5a-4433-aae9-28e0c959f73b",
+                      "label": "Adjournment reasons",
+                      "promptReference": "ee32442b-fb9d-4ebb-a29a-453ea10277ae",
+                      "promptSequence": 1000,
+                      "usergroups": [],
+                      "value": "",
+                      "welshLabel": "Rheswm dros ohirio:"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "judicialResultPromptTypeId": "70c98fa6-804d-11e8-adc0-fa7ae01bbebc",
+                      "label": "Next hearing in magistrates' court",
+                      "promptReference": "a4898ab1-c51d-4c28-bb2c-1759892e7e78",
+                      "promptSequence": 0,
+                      "usergroups": [],
+                      "value": "Date of hearing:10/12/2020\nTime of hearing:14:00\nCourtroom:Courtroom 09\nHearing type:Trial\nEstimated duration:6 HOURS\nBooking reference:5a567ac0-ebf7-4999-94ae-7fee40ace81a\nCourthouse organisation name:Westminster Magistrates' Court\nCourthouse address line 1:181 Marylebone Road\nCourthouse address line 2:London\nCourthouse post code:NW1 5BR",
+                      "welshLabel": "Ni wnaeth y Llys barhau â’r treial yn absenoldeb y diffynnydd"
+                    }
+                  ],
+                  "judicialResultTypeId": "d0a369c9-5a28-40ec-99cb-da7943550b18",
+                  "label": "Remanded in custody",
+                  "lastSharedDateTime": "2020-12-01",
+                  "lifeDuration": false,
+                  "nextHearing": {
+                    "adjournmentReason": "For the trial to take place",
+                    "bookingReference": "5a567ac0-ebf7-4999-94ae-7fee40ace81a",
+                    "courtCentre": {
+                      "address": {
+                        "address1": "181 Marylebone Road",
+                        "address2": "London",
+                        "postcode": "NW1 5BR"
+                      },
+                      "courtHearingLocation": "B01IX09",
+                      "id": "67aa82ba-67bb-4699-8176-5f572048352b",
+                      "name": "Westminster Magistrates' Court",
+                      "psaCode": 2570,
+                      "roomId": "852e2013-4a5e-33e9-a859-9f9aa12b9fa1",
+                      "roomName": "Courtroom 09",
+                      "welshName": "Llys Ynadon Westminster"
+                    },
+                    "estimatedMinutes": 360,
+                    "jurisdictionType": "MAGISTRATES",
+                    "listedStartDateTime": "2020-12-10T14:00:00.000Z",
+                    "type": {
+                      "description": "Trial",
+                      "id": "bf8155e1-90b9-4080-b133-bfbad895d6e4"
+                    }
+                  },
+                  "orderedDate": "2020-12-01",
+                  "orderedHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                  "postHearingCustodyStatus": "C",
+                  "publishedAsAPrompt": false,
+                  "publishedForNows": false,
+                  "qualifier": "MN,MJ,MV,GC",
+                  "rank": 5100,
+                  "resultDefinitionGroup": "Remand in custody",
+                  "resultText": "Remanded in custody\nRemand basis Before conviction\nBail exception Already in custody, Likely to offend, Likely to offend (physical or mental injury)\nBail exception reason Nature and seriousness of offence, Offended on bail, Previous record and character\nPrison organisation name HMP/YOI Nottingham\nPrison email address 1 Courts.Nottingham@justice.gov.uk\nPrison email address 2 Reception.Nottingham@justice.gov.uk\nConveyor / custodian name organisation name Derby Justice Centre (aka Derby St Mary Adult): PECS\nConveyor / custodian name email address 1 derbymc@geoamey.co.uk\nFor the trial to take place \nAdjournment reasons \nNext hearing in magistrates' court Date of hearing:10/12/2020\nTime of hearing:14:00\nCourtroom:Courtroom 09\nHearing type:Trial\nEstimated duration:6 HOURS\nBooking reference:5a567ac0-ebf7-4999-94ae-7fee40ace81a\nCourthouse organisation name:Westminster Magistrates' Court\nCourthouse address line 1:181 Marylebone Road\nCourthouse address line 2:London\nCourthouse post code:NW1 5BR",
+                  "rollUpPrompts": true,
+                  "rootJudicialResultId": "bd56177f-3833-49d7-905c-522bd914b894",
+                  "rootJudicialResultTypeId": "d0a369c9-5a28-40ec-99cb-da7943550b18",
+                  "terminatesOffenceProceedings": false,
+                  "urgent": false,
+                  "usergroups": [],
+                  "welshLabel": "Rydych wedi’ch remandio yn y ddalfa"
+                }
+              ],
+              "notifiedPlea": {
+                "notifiedPleaDate": "2019-11-13",
+                "notifiedPleaValue": "NO_NOTIFICATION",
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94"
+              },
+              "orderIndex": 1,
+              "plea": {
+                "delegatedPowers": {
+                  "firstName": "FirstName",
+                  "lastName": "LastName",
+                  "userId": "7eaf9c85-220d-4040-845c-d84c919b3b6f"
+                },
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94",
+                "originatingHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                "pleaDate": "2019-11-14",
+                "pleaValue": "NOT_GUILTY"
+              },
+              "verdict": {
+                "jurors": {
+                  "numberOfJurors": 12,
+                  "numberOfSplitJurors": 0,
+                  "unanimous": true
+                },
+                "lesserOrAlternativeOffence": {
+                  "offenceCode": "PS90010",
+                  "offenceDefinitionId": "20f3dd74-1d32-43fa-bec3-7ffca5b73ebe",
+                  "offenceLegislation": "Contrary to regulation 7(1)(a) of the Public Service Vehicles (Conduct of Drivers, Inspectors, Conductors and Passengers) Regulations 1990 and section 25 of the Public Passenger Vehicles Act 1981.",
+                  "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket"
+                },
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94",
+                "originatingHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                "verdictDate": "2019-11-14",
+                "verdictType": {
+                  "category": "Guilty",
+                  "categoryType": "GUILTY_CONVICTED",
+                  "id": "165f95b1-fc13-4d87-9685-3eff703c1039"
+                }
+              }
+            }
+          ],
+          "personDefendant": {
+            "personDetails": {
+              "address": {
+                "address1": "Flat 1",
+                "address2": "1 Old Road",
+                "address3": "London",
+                "address4": "Merton",
+                "postcode": "SW99 1AA"
+              },
+              "contact": {},
+              "dateOfBirth": "1965-12-27",
+              "documentationLanguageNeeds": "ENGLISH",
+              "ethnicity": {},
+              "firstName": "Fred",
+              "gender": "MALE",
+              "lastName": "Smith",
+              "title": "MR"
+            }
+          }
+        },
+        {
+          "id": "ded76309-c912-436b-a21b-a4c4450bc052",
+          "masterDefendantId": "ded76309-c912-436b-a21b-a4c4450bc052",
+          "prosecutionCaseId": "c10e3b71-6a6d-45ef-9b62-34df4d54971a",
+          "numberOfPreviousConvictionsCited": 99,
+          "offences": [
+            {
+              "id": "a154d828-1234-47f0-b8d5-e81227831d94",
+              "offenceDefinitionId": "20f3dd74-1d32-43fa-bec3-7ffca5b73ebe",
+              "offenceCode": "PS90010",
+              "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+              "offenceTitleWelsh": "",
+              "offenceLegislation": "Contrary to regulation 7(1)(a) of the Public Service Vehicles (Conduct of Drivers, Inspectors, Conductors and Passengers) Regulations 1990 and section 25 of the Public Passenger Vehicles Act 1981.",
+              "offenceLegislationWelsh": "",
+              "modeOfTrial": "Summary",
+              "wording": "On 02/07/2018 at Bond street, being a passenger on a vehicle, namely Volvo B9TL 30x, used for the carriage of passengers at separate fares, used a ticket which had been altered or defaced.",
+              "startDate": "2018-07-02",
+              "chargeDate": "2018-08-01",
+              "allocationDecision": {},
+              "convictionDate": "2019-11-14",
+              "count": 1,
+              "indicatedPlea": {},
+              "judicialResults": [
+                {
+                  "alwaysPublished": false,
+                  "category": "INTERMEDIARY",
+                  "cjsCode": "4028",
+                  "courtClerk": {
+                    "firstName": "Erica",
+                    "lastName": "Wilson",
+                    "userId": "31ec3a16-8721-498c-8da5-f099390ee254"
+                  },
+                  "d20": false,
+                  "excludedFromResults": false,
+                  "isAdjournmentResult": false,
+                  "isAvailableForCourtExtract": true,
+                  "isConvictedResult": false,
+                  "isDeleted": false,
+                  "isFinancialResult": false,
+                  "isUnscheduled": false,
+                  "judicialResultId": "bd56177f-3833-49d7-905c-522bd914b896",
+                  "judicialResultPrompts": [
+                    {
+                      "courtExtract": "Y",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "49f9ee68-3dee-4ed1-8020-377818c3697f",
+                      "label": "Remand basis",
+                      "promptReference": "remandBasis",
+                      "promptSequence": 500,
+                      "type": "FIXL",
+                      "usergroups": [],
+                      "value": "Before conviction",
+                      "welshLabel": "Sail remand",
+                      "welshValue": "Before conviction"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "7b2e6219-ddcb-4afa-8615-8de978e60af1",
+                      "label": "Bail exception",
+                      "promptReference": "bailException",
+                      "promptSequence": 600,
+                      "qualifier": "MN,MJ,MV",
+                      "type": "FIXLM",
+                      "usergroups": [],
+                      "value": "Already in custody, Likely to offend, Likely to offend (physical or mental injury)",
+                      "welshLabel": "Eithriad rhag caniatáu mechnïaeth",
+                      "welshValue": "Already in custody###Likely to offend###Likely to offend (physical or mental injury)"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "53ac8d08-49a9-4495-ab3a-0ef94ca9e560",
+                      "label": "Bail exception reason",
+                      "promptReference": "bailExceptionReason",
+                      "promptSequence": 800,
+                      "type": "FIXLOM",
+                      "usergroups": [],
+                      "value": "Nature and seriousness of offence, Offended on bail, Previous record and character",
+                      "welshLabel": "Rheswm dros beidio â chaniatáu mechnïaeth",
+                      "welshValue": "Nature and seriousness of offence###Offended on bail###Previous record and character"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "2d6330a2-1f12-45fb-bb72-65f4c1215e9c",
+                      "label": "Prison organisation name",
+                      "promptReference": "prisonOrganisationName",
+                      "promptSequence": 300,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "HMP/YOI Nottingham",
+                      "welshValue": "HMP/YOI Nottingham"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "2d6330a2-1f12-45fb-bb72-65f4c1215e9c",
+                      "label": "Prison email address 1",
+                      "promptReference": "prisonEmailAddress1",
+                      "promptSequence": 300,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "Courts.Nottingham@justice.gov.uk",
+                      "welshValue": "Courts.Nottingham@justice.gov.uk"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "2d6330a2-1f12-45fb-bb72-65f4c1215e9c",
+                      "label": "Prison email address 2",
+                      "promptReference": "prisonEmailAddress2",
+                      "promptSequence": 300,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "Reception.Nottingham@justice.gov.uk",
+                      "welshValue": "Reception.Nottingham@justice.gov.uk"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "6927b6ac-4c85-4532-838d-88ac00ea83f9",
+                      "label": "Conveyor / custodian name organisation name",
+                      "promptReference": "conveyorcustodiannameOrganisationName",
+                      "promptSequence": 400,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "Derby Justice Centre (aka Derby St Mary Adult): PECS",
+                      "welshValue": "Derby Justice Centre (aka Derby St Mary Adult): PECS"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "6927b6ac-4c85-4532-838d-88ac00ea83f9",
+                      "label": "Conveyor / custodian name email address 1",
+                      "promptReference": "conveyorcustodiannameEmailAddress1",
+                      "promptSequence": 400,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "derbymc@geoamey.co.uk",
+                      "welshValue": "derbymc@geoamey.co.uk"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "judicialResultPromptTypeId": "4958de15-8a0a-4d2b-9f7e-56e037cf03da",
+                      "label": "For the trial to take place",
+                      "promptReference": "4f6e4372-df83-4b43-bd98-c54d5194273e",
+                      "promptSequence": 900,
+                      "qualifier": "GC",
+                      "usergroups": [],
+                      "value": "",
+                      "welshLabel": " Er mwyn cynnal y treial"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "judicialResultPromptTypeId": "7fc17a01-2f5a-4433-aae9-28e0c959f73b",
+                      "label": "Adjournment reasons",
+                      "promptReference": "ee32442b-fb9d-4ebb-a29a-453ea10277ae",
+                      "promptSequence": 1000,
+                      "usergroups": [],
+                      "value": "",
+                      "welshLabel": "Rheswm dros ohirio:"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "judicialResultPromptTypeId": "70c98fa6-804d-11e8-adc0-fa7ae01bbebc",
+                      "label": "Next hearing in magistrates' court",
+                      "promptReference": "a4898ab1-c51d-4c28-bb2c-1759892e7e78",
+                      "promptSequence": 0,
+                      "usergroups": [],
+                      "value": "Date of hearing:10/12/2020\nTime of hearing:14:00\nCourtroom:Courtroom 09\nHearing type:Trial\nEstimated duration:6 HOURS\nBooking reference:5a567ac0-ebf7-4999-94ae-7fee40ace81a\nCourthouse organisation name:Westminster Magistrates' Court\nCourthouse address line 1:181 Marylebone Road\nCourthouse address line 2:London\nCourthouse post code:NW1 5BR",
+                      "welshLabel": "Ni wnaeth y Llys barhau â’r treial yn absenoldeb y diffynnydd"
+                    }
+                  ],
+                  "judicialResultTypeId": "d0a369c9-5a28-40ec-99cb-da7943550b18",
+                  "label": "Remanded in custody",
+                  "lastSharedDateTime": "2020-12-01",
+                  "lifeDuration": false,
+                  "nextHearing": {
+                    "adjournmentReason": "For the trial to take place",
+                    "bookingReference": "5a567ac0-ebf7-4999-94ae-7fee40ace81a",
+                    "courtCentre": {
+                      "address": {
+                        "address1": "181 Marylebone Road",
+                        "address2": "London",
+                        "postcode": "NW1 5BR"
+                      },
+                      "courtHearingLocation": "B01IX09",
+                      "id": "67aa82ba-67bb-4699-8176-5f572048352b",
+                      "name": "Westminster Magistrates' Court",
+                      "psaCode": 2570,
+                      "roomId": "852e2013-4a5e-33e9-a859-9f9aa12b9fa1",
+                      "roomName": "Courtroom 09",
+                      "welshName": "Llys Ynadon Westminster"
+                    },
+                    "estimatedMinutes": 360,
+                    "jurisdictionType": "MAGISTRATES",
+                    "listedStartDateTime": "2020-12-10T14:00:00.000Z",
+                    "type": {
+                      "description": "Trial",
+                      "id": "bf8155e1-90b9-4080-b133-bfbad895d6e4"
+                    }
+                  },
+                  "orderedDate": "2020-12-01",
+                  "orderedHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                  "postHearingCustodyStatus": "C",
+                  "publishedAsAPrompt": false,
+                  "publishedForNows": false,
+                  "qualifier": "MN,MJ,MV,GC",
+                  "rank": 5100,
+                  "resultDefinitionGroup": "Remand in custody",
+                  "resultText": "Remanded in custody\nRemand basis Before conviction\nBail exception Already in custody, Likely to offend, Likely to offend (physical or mental injury)\nBail exception reason Nature and seriousness of offence, Offended on bail, Previous record and character\nPrison organisation name HMP/YOI Nottingham\nPrison email address 1 Courts.Nottingham@justice.gov.uk\nPrison email address 2 Reception.Nottingham@justice.gov.uk\nConveyor / custodian name organisation name Derby Justice Centre (aka Derby St Mary Adult): PECS\nConveyor / custodian name email address 1 derbymc@geoamey.co.uk\nFor the trial to take place \nAdjournment reasons \nNext hearing in magistrates' court Date of hearing:10/12/2020\nTime of hearing:14:00\nCourtroom:Courtroom 09\nHearing type:Trial\nEstimated duration:6 HOURS\nBooking reference:5a567ac0-ebf7-4999-94ae-7fee40ace81a\nCourthouse organisation name:Westminster Magistrates' Court\nCourthouse address line 1:181 Marylebone Road\nCourthouse address line 2:London\nCourthouse post code:NW1 5BR",
+                  "rollUpPrompts": true,
+                  "rootJudicialResultId": "bd56177f-3833-49d7-905c-522bd914b894",
+                  "rootJudicialResultTypeId": "d0a369c9-5a28-40ec-99cb-da7943550b18",
+                  "terminatesOffenceProceedings": false,
+                  "urgent": false,
+                  "usergroups": [],
+                  "welshLabel": "Rydych wedi’ch remandio yn y ddalfa"
+                }
+              ],
+              "notifiedPlea": {
+                "notifiedPleaDate": "2019-11-13",
+                "notifiedPleaValue": "NO_NOTIFICATION",
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94"
+              },
+              "orderIndex": 1,
+              "plea": {
+                "delegatedPowers": {
+                  "firstName": "FirstName",
+                  "lastName": "LastName",
+                  "userId": "7eaf9c85-220d-4040-845c-d84c919b3b6f"
+                },
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94",
+                "originatingHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                "pleaDate": "2019-11-14",
+                "pleaValue": "GUILTY"
+              },
+              "verdict": {
+                "jurors": {
+                  "numberOfJurors": 12,
+                  "numberOfSplitJurors": 0,
+                  "unanimous": true
+                },
+                "lesserOrAlternativeOffence": {
+                  "offenceCode": "PS90010",
+                  "offenceDefinitionId": "20f3dd74-1d32-43fa-bec3-7ffca5b73ebe",
+                  "offenceLegislation": "Contrary to regulation 7(1)(a) of the Public Service Vehicles (Conduct of Drivers, Inspectors, Conductors and Passengers) Regulations 1990 and section 25 of the Public Passenger Vehicles Act 1981.",
+                  "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket"
+                },
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94",
+                "originatingHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                "verdictDate": "2019-11-14",
+                "verdictType": {
+                  "category": "Guilty",
+                  "categoryType": "GUILTY_CONVICTED",
+                  "id": "165f95b1-fc13-4d87-9685-3eff703c1039"
+                }
+              }
+            }
+          ],
+          "personDefendant": {
+            "personDetails": {
+              "address": {
+                "address1": "Flat 1",
+                "address2": "1 Old Road",
+                "address3": "London",
+                "address4": "Merton",
+                "postcode": "SW99 1AA"
+              },
+              "contact": {},
+              "dateOfBirth": "1965-12-27",
+              "documentationLanguageNeeds": "ENGLISH",
+              "ethnicity": {},
+              "firstName": "Fred",
+              "gender": "MALE",
+              "lastName": "Smith",
+              "title": "MR"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "caf8311f-65b6-474b-990a-976e51589f83",
+      "prosecutionCaseIdentifier": {
+        "prosecutionAuthorityId": "9d3ad709-cb0c-4711-8ad5-f9e60d6b0530",
+        "prosecutionAuthorityCode": "TVL",
+        "prosecutionAuthorityOUCode": "GAEAA01",
+        "prosecutionAuthorityReference": "TVL298320922"
+      },
+      "initiationCode": "J",
+      "caseStatus": "SJP_REFERRAL",
+      "statementOfFacts": "Prosecution Facts",
+      "defendants": [
+        {
+          "id": "b48a6e2e-a3e5-47e3-8243-ac17b378d04d",
+          "masterDefendantId": "b48a6e2e-a3e5-47e3-8243-ac17b378d04d",
+          "prosecutionCaseId": "9d3ad709-cb0c-4711-8ad5-f9e60d6b0530",
+          "numberOfPreviousConvictionsCited": 99,
+          "offences": [
+            {
+              "id": "9d1e5276-f9ee-402b-b00e-9eed6fa0bbf0",
+              "offenceDefinitionId": "20f3dd74-1d32-43fa-bec3-7ffca5b73ebe",
+              "offenceCode": "PS90010",
+              "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+              "offenceTitleWelsh": "",
+              "offenceLegislation": "Contrary to regulation 7(1)(a) of the Public Service Vehicles (Conduct of Drivers, Inspectors, Conductors and Passengers) Regulations 1990 and section 25 of the Public Passenger Vehicles Act 1981.",
+              "offenceLegislationWelsh": "",
+              "modeOfTrial": "Summary",
+              "wording": "On 02/07/2018 at Bond street, being a passenger on a vehicle, namely Volvo B9TL 30x, used for the carriage of passengers at separate fares, used a ticket which had been altered or defaced.",
+              "startDate": "2018-07-02",
+              "chargeDate": "2018-08-01",
+              "allocationDecision": {},
+              "convictionDate": "2019-11-14",
+              "count": 1,
+              "indicatedPlea": {},
+              "judicialResults": [
+                {
+                  "alwaysPublished": false,
+                  "category": "INTERMEDIARY",
+                  "cjsCode": "4028",
+                  "courtClerk": {
+                    "firstName": "Erica",
+                    "lastName": "Wilson",
+                    "userId": "31ec3a16-8721-498c-8da5-f099390ee254"
+                  },
+                  "d20": false,
+                  "excludedFromResults": false,
+                  "isAdjournmentResult": false,
+                  "isAvailableForCourtExtract": true,
+                  "isConvictedResult": false,
+                  "isDeleted": false,
+                  "isFinancialResult": false,
+                  "isUnscheduled": false,
+                  "judicialResultId": "bd56177f-3833-49d7-905c-522bd914b897",
+                  "judicialResultPrompts": [
+                    {
+                      "courtExtract": "Y",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "49f9ee68-3dee-4ed1-8020-377818c3697f",
+                      "label": "Remand basis",
+                      "promptReference": "remandBasis",
+                      "promptSequence": 500,
+                      "type": "FIXL",
+                      "usergroups": [],
+                      "value": "Before conviction",
+                      "welshLabel": "Sail remand",
+                      "welshValue": "Before conviction"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "7b2e6219-ddcb-4afa-8615-8de978e60af1",
+                      "label": "Bail exception",
+                      "promptReference": "bailException",
+                      "promptSequence": 600,
+                      "qualifier": "MN,MJ,MV",
+                      "type": "FIXLM",
+                      "usergroups": [],
+                      "value": "Already in custody, Likely to offend, Likely to offend (physical or mental injury)",
+                      "welshLabel": "Eithriad rhag caniatáu mechnïaeth",
+                      "welshValue": "Already in custody###Likely to offend###Likely to offend (physical or mental injury)"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "53ac8d08-49a9-4495-ab3a-0ef94ca9e560",
+                      "label": "Bail exception reason",
+                      "promptReference": "bailExceptionReason",
+                      "promptSequence": 800,
+                      "type": "FIXLOM",
+                      "usergroups": [],
+                      "value": "Nature and seriousness of offence, Offended on bail, Previous record and character",
+                      "welshLabel": "Rheswm dros beidio â chaniatáu mechnïaeth",
+                      "welshValue": "Nature and seriousness of offence###Offended on bail###Previous record and character"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "2d6330a2-1f12-45fb-bb72-65f4c1215e9c",
+                      "label": "Prison organisation name",
+                      "promptReference": "prisonOrganisationName",
+                      "promptSequence": 300,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "HMP/YOI Nottingham",
+                      "welshValue": "HMP/YOI Nottingham"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "2d6330a2-1f12-45fb-bb72-65f4c1215e9c",
+                      "label": "Prison email address 1",
+                      "promptReference": "prisonEmailAddress1",
+                      "promptSequence": 300,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "Courts.Nottingham@justice.gov.uk",
+                      "welshValue": "Courts.Nottingham@justice.gov.uk"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "2d6330a2-1f12-45fb-bb72-65f4c1215e9c",
+                      "label": "Prison email address 2",
+                      "promptReference": "prisonEmailAddress2",
+                      "promptSequence": 300,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "Reception.Nottingham@justice.gov.uk",
+                      "welshValue": "Reception.Nottingham@justice.gov.uk"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "6927b6ac-4c85-4532-838d-88ac00ea83f9",
+                      "label": "Conveyor / custodian name organisation name",
+                      "promptReference": "conveyorcustodiannameOrganisationName",
+                      "promptSequence": 400,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "Derby Justice Centre (aka Derby St Mary Adult): PECS",
+                      "welshValue": "Derby Justice Centre (aka Derby St Mary Adult): PECS"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "6927b6ac-4c85-4532-838d-88ac00ea83f9",
+                      "label": "Conveyor / custodian name email address 1",
+                      "promptReference": "conveyorcustodiannameEmailAddress1",
+                      "promptSequence": 400,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "derbymc@geoamey.co.uk",
+                      "welshValue": "derbymc@geoamey.co.uk"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "judicialResultPromptTypeId": "4958de15-8a0a-4d2b-9f7e-56e037cf03da",
+                      "label": "For the trial to take place",
+                      "promptReference": "4f6e4372-df83-4b43-bd98-c54d5194273e",
+                      "promptSequence": 900,
+                      "qualifier": "GC",
+                      "usergroups": [],
+                      "value": "",
+                      "welshLabel": " Er mwyn cynnal y treial"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "judicialResultPromptTypeId": "7fc17a01-2f5a-4433-aae9-28e0c959f73b",
+                      "label": "Adjournment reasons",
+                      "promptReference": "ee32442b-fb9d-4ebb-a29a-453ea10277ae",
+                      "promptSequence": 1000,
+                      "usergroups": [],
+                      "value": "",
+                      "welshLabel": "Rheswm dros ohirio:"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "judicialResultPromptTypeId": "70c98fa6-804d-11e8-adc0-fa7ae01bbebc",
+                      "label": "Next hearing in magistrates' court",
+                      "promptReference": "a4898ab1-c51d-4c28-bb2c-1759892e7e78",
+                      "promptSequence": 0,
+                      "usergroups": [],
+                      "value": "Date of hearing:10/12/2020\nTime of hearing:14:00\nCourtroom:Courtroom 09\nHearing type:Trial\nEstimated duration:6 HOURS\nBooking reference:5a567ac0-ebf7-4999-94ae-7fee40ace81a\nCourthouse organisation name:Westminster Magistrates' Court\nCourthouse address line 1:181 Marylebone Road\nCourthouse address line 2:London\nCourthouse post code:NW1 5BR",
+                      "welshLabel": "Ni wnaeth y Llys barhau â’r treial yn absenoldeb y diffynnydd"
+                    }
+                  ],
+                  "judicialResultTypeId": "d0a369c9-5a28-40ec-99cb-da7943550b18",
+                  "label": "Remanded in custody",
+                  "lastSharedDateTime": "2020-12-01",
+                  "lifeDuration": false,
+                  "nextHearing": {
+                    "adjournmentReason": "For the trial to take place",
+                    "bookingReference": "5a567ac0-ebf7-4999-94ae-7fee40ace81a",
+                    "courtCentre": {
+                      "address": {
+                        "address1": "181 Marylebone Road",
+                        "address2": "London",
+                        "postcode": "NW1 5BR"
+                      },
+                      "courtHearingLocation": "B01IX09",
+                      "id": "67aa82ba-67bb-4699-8176-5f572048352b",
+                      "name": "Westminster Magistrates' Court",
+                      "psaCode": 2570,
+                      "roomId": "852e2013-4a5e-33e9-a859-9f9aa12b9fa1",
+                      "roomName": "Courtroom 09",
+                      "welshName": "Llys Ynadon Westminster"
+                    },
+                    "estimatedMinutes": 360,
+                    "jurisdictionType": "MAGISTRATES",
+                    "listedStartDateTime": "2020-12-10T14:00:00.000Z",
+                    "type": {
+                      "description": "Trial",
+                      "id": "bf8155e1-90b9-4080-b133-bfbad895d6e4"
+                    }
+                  },
+                  "orderedDate": "2020-12-01",
+                  "orderedHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                  "postHearingCustodyStatus": "C",
+                  "publishedAsAPrompt": false,
+                  "publishedForNows": false,
+                  "qualifier": "MN,MJ,MV,GC",
+                  "rank": 5100,
+                  "resultDefinitionGroup": "Remand in custody",
+                  "resultText": "Remanded in custody\nRemand basis Before conviction\nBail exception Already in custody, Likely to offend, Likely to offend (physical or mental injury)\nBail exception reason Nature and seriousness of offence, Offended on bail, Previous record and character\nPrison organisation name HMP/YOI Nottingham\nPrison email address 1 Courts.Nottingham@justice.gov.uk\nPrison email address 2 Reception.Nottingham@justice.gov.uk\nConveyor / custodian name organisation name Derby Justice Centre (aka Derby St Mary Adult): PECS\nConveyor / custodian name email address 1 derbymc@geoamey.co.uk\nFor the trial to take place \nAdjournment reasons \nNext hearing in magistrates' court Date of hearing:10/12/2020\nTime of hearing:14:00\nCourtroom:Courtroom 09\nHearing type:Trial\nEstimated duration:6 HOURS\nBooking reference:5a567ac0-ebf7-4999-94ae-7fee40ace81a\nCourthouse organisation name:Westminster Magistrates' Court\nCourthouse address line 1:181 Marylebone Road\nCourthouse address line 2:London\nCourthouse post code:NW1 5BR",
+                  "rollUpPrompts": true,
+                  "rootJudicialResultId": "bd56177f-3833-49d7-905c-522bd914b894",
+                  "rootJudicialResultTypeId": "d0a369c9-5a28-40ec-99cb-da7943550b18",
+                  "terminatesOffenceProceedings": false,
+                  "urgent": false,
+                  "usergroups": [],
+                  "welshLabel": "Rydych wedi’ch remandio yn y ddalfa"
+                }
+              ],
+              "notifiedPlea": {
+                "notifiedPleaDate": "2019-11-13",
+                "notifiedPleaValue": "NO_NOTIFICATION",
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94"
+              },
+              "orderIndex": 1,
+              "plea": {
+                "delegatedPowers": {
+                  "firstName": "FirstName",
+                  "lastName": "LastName",
+                  "userId": "7eaf9c85-220d-4040-845c-d84c919b3b6f"
+                },
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94",
+                "originatingHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                "pleaDate": "2019-11-14",
+                "pleaValue": "GUILTY"
+              },
+              "verdict": {
+                "jurors": {
+                  "numberOfJurors": 12,
+                  "numberOfSplitJurors": 0,
+                  "unanimous": true
+                },
+                "lesserOrAlternativeOffence": {
+                  "offenceCode": "PS90010",
+                  "offenceDefinitionId": "20f3dd74-1d32-43fa-bec3-7ffca5b73ebe",
+                  "offenceLegislation": "Contrary to regulation 7(1)(a) of the Public Service Vehicles (Conduct of Drivers, Inspectors, Conductors and Passengers) Regulations 1990 and section 25 of the Public Passenger Vehicles Act 1981.",
+                  "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket"
+                },
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94",
+                "originatingHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                "verdictDate": "2019-11-14",
+                "verdictType": {
+                  "category": "Guilty",
+                  "categoryType": "GUILTY_CONVICTED",
+                  "id": "165f95b1-fc13-4d87-9685-3eff703c1039"
+                }
+              }
+            }
+          ],
+          "personDefendant": {
+            "personDetails": {
+              "address": {
+                "address1": "Flat 1",
+                "address2": "1 Old Road",
+                "address3": "London",
+                "address4": "Merton",
+                "postcode": "SW99 1AA"
+              },
+              "contact": {},
+              "dateOfBirth": "1965-12-27",
+              "documentationLanguageNeeds": "ENGLISH",
+              "ethnicity": {},
+              "firstName": "Fred",
+              "gender": "MALE",
+              "lastName": "Smith",
+              "title": "MR"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

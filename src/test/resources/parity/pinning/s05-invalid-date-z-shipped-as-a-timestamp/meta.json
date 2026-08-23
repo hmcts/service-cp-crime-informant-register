@@ -1,0 +1,75 @@
+{
+  "caseId": "s05-invalid-date-z-shipped-as-a-timestamp",
+  "defect": "consequence of D9 + D10 (not separately numbered in the register)",
+  "title": "When a date cannot be parsed the literal string \"Invalid dateZ\" is POSTed where a timestamp belongs",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 1,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "no edits. The fixture is byte-identical to OutboundInformantRegister/test/hearing-with-application.json.",
+      "params.sharedTime \"2020-01-20T11:00:00Z\" is the value build-corpus.js records for base__outbound-hearing-with-application; it is CHOSEN by the harness, not taken from a Jest test (that fixture was only ever exercised at mapper level) — see oracle/README.md §6 gap 5. It is a GMT instant, so it also serves as the D9 control."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "be2791f9410c924b3e880284e0e66c7f42f8b6b78e3f010c6517d72e3d572d04",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "1a120fbfba4446527face04bdad19962683766374b974900a7a4d34ac34ae73f",
+    "expected": "3dacdbc63790e82e267ee4eecb9b519fd37a0782449fc1f295c44e9a63037025"
+  },
+  "nodeEvidence": [
+    {
+      "file": "NowsHelper/service/DateService.js",
+      "lines": "36-38",
+      "what": "getLocalDateTime never fails: an unparseable input makes moment's format() return the string \"Invalid date\", to which the code appends 'Z'."
+    },
+    {
+      "file": "NowsHelper/service/RegisterFragmentService.js",
+      "lines": "46-55",
+      "what": "getHearingDate returns getLocalDateTime(orderedDate) when no hearingDay matches — and orderedDate is whatever getLatestOrderedDate produced, which may be undefined or unparseable."
+    },
+    {
+      "file": "SetInformantRegister/index.js",
+      "lines": "82",
+      "what": "the result becomes fragment.hearingDate..."
+    },
+    {
+      "file": "OutboundInformantRegister/index.js",
+      "lines": "21",
+      "what": "...and is copied to the outbound body unvalidated."
+    },
+    {
+      "file": "ProcessOutboundInformantRegister/index.js",
+      "lines": "19-27",
+      "what": "the body is POSTed and the response is swallowed, so a schema rejection at the Results end is invisible here."
+    }
+  ],
+  "assertion": "The input is the outbound-hearing-with-application fixture exactly as the corpus already records it. Assert EXACTLY: hearingDate is the STRING \"Invalid dateZ\". Assert the literal. This is not a synthesised edge case — recorded/base__outbound-hearing-with-application and recorded/base__outbound-hearing are UNMODIFIED real Jest fixtures from the function app and both produce it. `hearingDate` is declared a date-time string in the frozen add-informant-register contract, so Node is POSTing a contract-violating body on ordinary data and never learns that it did. This entry pins the OBSERVATION, not the desired behaviour. The Java port cannot simply reproduce it: emitting \"Invalid dateZ\" would be knowingly POSTing an invalid body, and dropping it silently would be the swallowed failure this service exists to remove. The required action is a DECISION, recorded in doc/DEVIATIONS.md and agreed with the Results team alongside the null-propagation finding (parity-pack/README.md §5 finding 6): reproduce, or dead-letter as a contract violation. Until that decision exists, this test's job is to make sure nobody quietly picks one. Whichever way it goes, keep an assertion that the string \"Invalid date\" never appears in a Java-produced document unless a deviation row says it may."
+}

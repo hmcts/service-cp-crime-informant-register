@@ -1,0 +1,74 @@
+{
+  "caseId": "mut__case-and-application__subscriptions-cardinality__reversed",
+  "recordedAt": null,
+  "oracle": {
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js, as the Durable Task extension serialises them; OutboundInformantRegister therefore receives the ORCHESTRATOR's hearing, not the copy SetInformantRegister mutated",
+    "runner": "oracle/run-transform.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "recorded/provenance.json"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 3,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "refdataCallCount": 1,
+    "refdataCalls": [
+      {
+        "verb": "GET",
+        "url": "http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2021-03-11",
+        "on": "2021-03-11",
+        "headers": {
+          "CJSCPPUID": "00000000-0000-0000-0000-000000000000",
+          "Accept": "application/vnd.referencedata.query.get-now-subscriptions+json"
+        },
+        "attempt": 1,
+        "answered": "resolve status=200"
+      }
+    ]
+  },
+  "deterministic": true,
+  "clockDependent": false,
+  "clockProbe": null,
+  "digests": {
+    "hearing": "555445e7b53cf6f3bd0ef30c2d8cde83a525bf2dc00710d80976340048801154",
+    "subscriptions": "6ff1b2001b4318ea528bdf497d7717442c640c9c0817b2c2da1663955d407d24",
+    "params": "914cac66e9f394a6f0e39872d5747524e198630f849f02ae66603fa8f9e3452c",
+    "expected": "cb8e2cf962feba6cbb6328c8fc288fd31319e204bcb6fa97d9381756aa6bfead"
+  },
+  "contract": {
+    "status": "IN_CONTRACT",
+    "basis": "cpp-context-reference-data/referencedata-query/referencedata-query-api/src/raml/json/schema/referencedata.query.get-now-subscriptions.json places no ordering constraint on nowSubscriptions",
+    "note": "Parity obligation: the Java port must reproduce this."
+  },
+  "evidence": "CONSTRUCTED — the captured list is reversed by this harness",
+  "provenance": {
+    "kind": "mutation",
+    "baseCase": "case-and-application",
+    "baseFixture": "fixtures/hearings/hearing-results-from-case-and-application.json",
+    "baseFixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/SetInformantRegister/test/hearing-results-from-case-and-application.json",
+    "subscriptionsInput": "fixtures/subscriptions/now-subscriptions-ir-sample.json",
+    "subscriptionsOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/NowsVariantsSubscriptions/test/subscriptions.json (first 5 informant-register entries, verbatim)",
+    "sharedTimeSource": "SetInformantRegister/test/index.test.js:456",
+    "operator": "subscriptions-cardinality",
+    "operatorVariant": "reversed",
+    "note": "Three authorities across cases and an application — the multi-document base.",
+    "operatorScope": "subscriptions",
+    "operatorDescription": "Duplicates or reorders the informant-register subscriptions.",
+    "operatorRationale": "SubscriptionsService.js:17-42 pushes matches in input order and de-duplicates nothing, so RecipientMapper emits one recipient per match, in order. Duplicate and reversed inputs pin both facts.",
+    "operatorDetail": {
+      "why": "recipient order follows subscription order",
+      "reader": "SubscriptionsService.js:17",
+      "majorCreditorCodeForced": true
+    }
+  }
+}

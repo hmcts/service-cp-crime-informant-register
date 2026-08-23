@@ -1,0 +1,74 @@
+{
+  "caseId": "mut__group-master-case__subscriptions-recipient__custom-email-template",
+  "recordedAt": null,
+  "oracle": {
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js, as the Durable Task extension serialises them; OutboundInformantRegister therefore receives the ORCHESTRATOR's hearing, not the copy SetInformantRegister mutated",
+    "runner": "oracle/run-transform.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "recorded/provenance.json"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 1,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "refdataCallCount": 1,
+    "refdataCalls": [
+      {
+        "verb": "GET",
+        "url": "http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2021-09-27",
+        "on": "2021-09-27",
+        "headers": {
+          "CJSCPPUID": "00000000-0000-0000-0000-000000000000",
+          "Accept": "application/vnd.referencedata.query.get-now-subscriptions+json"
+        },
+        "attempt": 1,
+        "answered": "resolve status=200"
+      }
+    ]
+  },
+  "deterministic": true,
+  "clockDependent": false,
+  "clockProbe": null,
+  "digests": {
+    "hearing": "5ee84f1eca16ab60c80d9fe3b029416a90952e076a3f478a80cc55dd8703432c",
+    "subscriptions": "5e088c84f424c8ae1ee13b1ff0739f7af656791f997db31ec1c802613d1f2468",
+    "params": "bffc94ac365db6ea5582818bd310de55f6c1aeba7ba016536e28b6fe0154ec70",
+    "expected": "1742a1f69f70eb477372011d2f897e24ca7e1ae60b74984c8c6ab724f12a4fc6"
+  },
+  "contract": {
+    "status": "IN_CONTRACT",
+    "basis": "cpp-context-reference-data/referencedata-query/referencedata-query-api/src/raml/json/schema/referencedata.query.get-now-subscriptions.json required does not include emailTemplateName",
+    "note": "Parity obligation: the Java port must reproduce this."
+  },
+  "evidence": "CONSTRUCTED — a real captured subscription is edited by this harness. UNSPECIFIED whether any production informant-register subscription carries this shape: the corpus has no captured informant-register now-subscriptions response (oracle/README.md §6.1)",
+  "provenance": {
+    "kind": "mutation",
+    "baseCase": "group-master-case",
+    "baseFixture": "fixtures/hearings/group-master-case.json",
+    "baseFixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/SetInformantRegister/test/group-master-case.json",
+    "subscriptionsInput": "fixtures/subscriptions/now-subscriptions-ir-sample.json",
+    "subscriptionsOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/NowsVariantsSubscriptions/test/subscriptions.json (first 5 informant-register entries, verbatim)",
+    "sharedTimeSource": "SetInformantRegister/test/index.test.js:213",
+    "operator": "subscriptions-recipient",
+    "operatorVariant": "custom-email-template",
+    "note": "The only real fixture carrying majorCreditorCode (PF45) and isGroupMaster/groupId.",
+    "operatorScope": "subscriptions",
+    "operatorDescription": "Varies the recipient block of every informant-register subscription.",
+    "operatorRationale": "RecipientMapper.js:15-24 gates on three flags and then drops the recipient if emailAddress1 is undefined, and RecipientMapper.js:42 trims addresses. RecipientMapper.js:20 defaults emailTemplateName to \"ir_standard\". Each branch here is one wire-visible difference in the outbound document.",
+    "operatorDetail": {
+      "why": "overrides the ir_standard default at RecipientMapper.js:20",
+      "reader": "RecipientMapper.js",
+      "majorCreditorCodeForced": true
+    }
+  }
+}

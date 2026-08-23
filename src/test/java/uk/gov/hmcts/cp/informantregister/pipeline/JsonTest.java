@@ -257,6 +257,95 @@ class JsonTest {
     }
 
     @Nested
+    @DisplayName("dereferenced")
+    class Dereferenced {
+
+        @Test
+        @DisplayName("refuses an absent field, because `undefined.anything` throws")
+        void refuses_an_absent_field() {
+            assertThatThrownBy(() -> Json.dereferenced(tree("{}"), "f"))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
+
+        @Test
+        @DisplayName("refuses an explicit null field, which throws the same way")
+        void refuses_an_explicit_null_field() {
+            assertThatThrownBy(() -> Json.dereferenced(tree("{\"f\":null}"), "f"))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
+
+        @Test
+        @DisplayName("returns every value a property read answers `undefined` for")
+        void returns_values_a_property_read_answers_undefined_for() {
+            // `(0).x`, `"".x`, `[].x` and `({}).x` are all `undefined` — falsy, never a TypeError —
+            // so none of these is a refusal, and each behaves exactly as the legacy behaves.
+            assertThat(Json.dereferenced(tree("{\"f\":0}"), "f")).isEqualTo(tree("0"));
+            assertThat(Json.dereferenced(tree("{\"f\":\"\"}"), "f")).isEqualTo(tree("\"\""));
+            assertThat(Json.dereferenced(tree("{\"f\":false}"), "f")).isEqualTo(tree("false"));
+            assertThat(Json.dereferenced(tree("{\"f\":[]}"), "f")).isEqualTo(tree("[]"));
+        }
+
+        @Test
+        @DisplayName("names the field it refused and never quotes what was in it")
+        void names_the_field_it_refused() {
+            assertThatThrownBy(() -> Json.dereferenced(tree("{}"), "courtCentre"))
+                    .hasMessageContaining("courtCentre");
+        }
+    }
+
+    @Nested
+    @DisplayName("dereferencedElement")
+    class DereferencedElement {
+
+        @Test
+        @DisplayName("refuses an explicit null element, because `null.anything` throws")
+        void refuses_an_explicit_null_element() {
+            assertThatThrownBy(() -> Json.dereferencedElement(tree("null"), "f"))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
+
+        @Test
+        @DisplayName("refuses a Java null element, which is the absent one the legacy pushed")
+        void refuses_a_java_null_element() {
+            // `judicialResults.push(result.judicialResult)` pushes `undefined` when the result has
+            // none, and `undefined.judicialResultPrompts` throws exactly as `null` does.
+            assertThatThrownBy(() -> Json.dereferencedElement(null, "f"))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
+
+        @Test
+        @DisplayName("passes through every value a property read answers `undefined` for")
+        void passes_through_values_a_property_read_answers_undefined_for() {
+            // `(0).x`, `"".x`, `[].x` and `({}).x` are all `undefined` — falsy, never a TypeError —
+            // so none of these is a refusal, and each behaves exactly as the legacy behaves.
+            assertThat(Json.dereferencedElement(tree("0"), "f")).isEqualTo(tree("0"));
+            assertThat(Json.dereferencedElement(tree("\"\""), "f")).isEqualTo(tree("\"\""));
+            assertThat(Json.dereferencedElement(tree("false"), "f")).isEqualTo(tree("false"));
+            assertThat(Json.dereferencedElement(tree("[]"), "f")).isEqualTo(tree("[]"));
+            assertThat(Json.dereferencedElement(tree("{}"), "f")).isEqualTo(tree("{}"));
+        }
+
+        @Test
+        @DisplayName("names the collection it refused and never quotes what was in it")
+        void names_the_collection_it_refused() {
+            assertThatThrownBy(() -> Json.dereferencedElement(tree("null"), "judicialResults"))
+                    .hasMessageContaining("judicialResults");
+        }
+
+        @Test
+        @DisplayName("classifies a refusal as non-transient, so no redelivery is spent on it")
+        void classifies_a_refusal_as_non_transient() {
+            assertThatThrownBy(() -> Json.dereferencedElement(null, "f"))
+                    .asInstanceOf(throwable(TransformationFailedException.class))
+                    .satisfies(failure -> {
+                        assertThat(failure.classification())
+                                .isEqualTo(FailureClassification.NON_TRANSIENT);
+                        assertThat(failure.reason()).isEqualTo(ReasonCode.TRANSFORMATION_FAILED);
+                    });
+        }
+    }
+
+    @Nested
     @DisplayName("nonEmptyArray")
     class NonEmptyArray {
 

@@ -1,0 +1,72 @@
+{
+  "caseId": "s01-court-extract-filter-result-and-prompt-level",
+  "defect": "design doc §2.2 step 2 (behaviour-lock)",
+  "title": "Results need isAvailableForCourtExtract AND !publishedForNows; prompts fall back to courtExtract === \"Y\"",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 2,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "hearing: prosecutionCases[0].defendants[0].offences[0].judicialResults replaced with seven results, each a clone of the fixture's own judicialResults[0] with its two court-extract flags deleted and then set explicitly. resultText and label name the expected fate.",
+      "results a1-a4 cover the RESULT-level rule: available+not-published, available+published-for-nows, not-available, and flag-absent.",
+      "results b1-b3 cover the PROMPT-level rule. Each is isFinancialResult with isFinancialImposition prompts, because resultData.amount is the only path by which a prompt becomes visible in the outbound body. b1: a dropped £99.00 prompt BEFORE a kept £11.00 one, so the surviving amount proves the earlier prompt was removed rather than merely ignored. b2: a single prompt kept only by the legacy courtExtract \"y\" fallback, given in lower case. b3: two prompts, one courtExtract \"n\" and one with no flag at all, so both are dropped and resultData disappears entirely.",
+      "Nothing else in the fixture is touched; the second TFL defendant and the whole TVL case are untouched controls."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "89c8bbd44588004788fd4c37fe75d85a6c8d168a41255036ce5fddf2f3a20938",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "b2926b436a2dbdafc1cf72d20289cadb84330290c68a26ef83d906fd97ff0116"
+  },
+  "nodeEvidence": [
+    {
+      "file": "NowsHelper/service/RegisterFragmentService.js",
+      "lines": "6",
+      "what": "`filter(r => (r.judicialResult.isAvailableForCourtExtract && !r.judicialResult.publishedForNows))` — BOTH conditions, at result level. A result marked available but already published for NOWs is dropped."
+    },
+    {
+      "file": "NowsHelper/service/RegisterFragmentService.js",
+      "lines": "12-17",
+      "what": "prompt level: `if (prompt.isAvailableForCourtExtract === undefined) return prompt.courtExtract ? prompt.courtExtract.toUpperCase() === \"Y\" : false; return prompt.isAvailableForCourtExtract;` — the legacy courtExtract string is consulted ONLY when the boolean is absent, is upper-cased before comparison, and an absent courtExtract means false, not true."
+    },
+    {
+      "file": "NowsHelper/service/RegisterFragmentService.js",
+      "lines": "11, 21",
+      "what": "the filtered arrays REPLACE the originals on the hearing object — this is the payload mutation described in oracle/README.md §1."
+    },
+    {
+      "file": "SetInformantRegister/index.js",
+      "lines": "76",
+      "what": "filterResultsAvailableForCourtExtract is applied once, to the whole defendant-context list, before any fragment is built."
+    }
+  ],
+  "assertion": "The TFL defendant's single offence is given seven judicial results. Four exercise the RESULT-level filter and carry self-describing resultText; three exercise the PROMPT-level filter and make it observable through resultData.amount, which is the only route by which a prompt reaches the outbound body (ResultDataMapper.js:27-31 takes the FIRST surviving prompt with isFinancialImposition). Assert EXACTLY, on the TFL document, defendant[0], offences[0].offenceResults — length 4, in this order, with these resultText values and these resultData: [0] \"KEPT available-and-not-published\" with NO resultData key (it carries no prompts, no nextHearing and no durationElement) ; [1] \"PROMPT first-surviving-financial-prompt-wins\" with resultData.amount \"£11.00\" — NOT \"£99.00\", which is the earlier prompt in the array and was dropped by the prompt-level filter ; [2] \"PROMPT legacy-courtExtract-fallback\" with resultData.amount \"£22.00\" — the prompt was kept on the strength of courtExtract \"y\", supplied in LOWER CASE and upper-cased at RegisterFragmentService.js:14 before comparison ; [3] \"PROMPT all-prompts-dropped\" with NO resultData key at all — every prompt was filtered out, so judicialResultPrompts became empty and canCreateResultData (ResultDataMapper.js:37-40) went false. And assert ABSENT from offenceResults: \"DROPPED available-but-published-for-nows\", \"DROPPED not-available\", \"DROPPED flag-absent\". Seven rules, seven assertions, each naming itself on failure. The two that catch a well-meaning port: (a) publishedForNows true DROPS a result even though isAvailableForCourtExtract is true — \"available for court extract\" is necessary, not sufficient; (b) at RESULT level an ABSENT isAvailableForCourtExtract means DROPPED and the legacy courtExtract string is NOT consulted — the fallback exists only at PROMPT level. A Java port that treats an absent flag as permissive, or that applies the courtExtract fallback at both levels, changes what appears on every register in the estate, and nothing downstream would notice."
+}

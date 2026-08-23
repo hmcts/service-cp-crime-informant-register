@@ -1,0 +1,75 @@
+{
+  "caseId": "d04-subscription-matched-on-major-creditor-code",
+  "defect": "D4",
+  "title": "ouCode fed to the matcher is majorCreditorCode; prosecutionAuthorityOuCode is never used for matching",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 2,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "hearing: prosecutionCases[0].prosecutionCaseIdentifier.majorCreditorCode set to \"CDE04\". Nothing else changed; prosecutionAuthorityOUCode stays \"GAFTL00\" as the fixture has it.",
+      "subscriptions: four copies of nowSubscriptions[0] of now-subscriptions-ir-sample.json, each with a fresh id / name / recipient.organisationName / recipient.emailAddress1, its informantCode removed, and then exactly one matching field set: informantCode CDE04, informantCode GAFTL00, selectedCourtHouses [CDE04], selectedCourtHouses [GAFTL00]. Every other field of the real captured subscription is unchanged, including applySubscriptionRules: false."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "336ffa95eaeb8ed8bf44bc8f5e70dae3932cfbcf4c7e66cc1d88c88ea7972453",
+    "subscriptions": "1feabff6f2fdfea52bde486b34ecb73030154ca2dc3452727f89f98b3484eb13",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "f0562eac9871986a2b5c0cf8c0a370e218febc640806f03e8b0e3922fb8f8acc"
+  },
+  "nodeEvidence": [
+    {
+      "file": "InformantRegisterSubscriptions/index.js",
+      "lines": "47",
+      "what": "`subscriptionObj.ouCode = informantRegister.majorCreditorCode;` — the field named \"ouCode\" is populated from the major-creditor code."
+    },
+    {
+      "file": "NowsHelper/service/SubscriptionsService.js",
+      "lines": "48-50",
+      "what": "`matchProsecutor(subscription, ouCode) => subscription.informantCode && subscription.informantCode === ouCode` — so informantCode is compared against a major-creditor code."
+    },
+    {
+      "file": "NowsHelper/service/SubscriptionsService.js",
+      "lines": "52-54",
+      "what": "`matchCourtHouse(subscription, ouCode) => subscription.selectedCourtHouses && subscription.selectedCourtHouses.includes(ouCode)` — likewise."
+    },
+    {
+      "file": "SetInformantRegister/index.js",
+      "lines": "87",
+      "what": "`informantRegisterFragment.prosecutionAuthorityOuCode = detail.prosecutionAuthorityOUCode;` — the OU code is carried on the fragment."
+    },
+    {
+      "file": "OutboundInformantRegister/index.js",
+      "lines": "25",
+      "what": "...and copied straight to the outbound document. A whole-repo grep for prosecutionAuthorityOuCode / prosecutionAuthorityOUCode outside test files returns only SetInformantRegister/index.js:14,46,62,87, OutboundInformantRegister/index.js:25, the model field, and an unrelated NOWs ProsecutorMapper — it is never read by the matcher."
+    }
+  ],
+  "assertion": "Four subscriptions are supplied, all with isInformantRegisterSubscription true, all forDistribution + emailDelivery with a recipient. The hearing gives TFL majorCreditorCode \"CDE04\" and prosecutionAuthorityOuCode \"GAFTL00\". Assert EXACTLY: the TFL document's `recipients` array contains exactly two entries, in this order — the one whose subscription informantCode is \"CDE04\" (recipientName \"match-informant-code-is-major-creditor\") and the one whose subscription selectedCourtHouses is [\"CDE04\"] (recipientName \"match-court-house-is-major-creditor\"); and it contains NEITHER of the two subscriptions keyed on \"GAFTL00\", the real OU code. Also assert the TVL document, which has no majorCreditorCode, has NO `recipients` key at all. Write the assertion on recipientName so the failure message names which subscription leaked in. THIS IS THE HIGHEST-RISK PIN IN THE PACK. The field name \"ouCode\" makes the Node code look like a typo, and a Java developer porting SubscriptionMatcher will be strongly tempted to match on prosecutionAuthorityOuCode \"because that is obviously what was meant\". If they do, this test fails — which is the point. D4 is a priority-2 defect: it is only allowed to change AFTER the SIT now_subscriptions verification named in the design doc §13 Q8, and then only via a doc/DEVIATIONS.md entry. Until that entry exists, matching on the OU code is a defect, not a fix."
+}

@@ -1,0 +1,97 @@
+{
+  "caseId": "mut__group-master-case__re-share-duplicate__fresh-payload",
+  "recordedAt": null,
+  "oracle": {
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "runner": "oracle/build-corpus.js (two deliveries)",
+    "clockPinIso": "2026-08-21T09:15:00.000Z"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "recorded/provenance.json"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 1,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "refdataCallCount": 1,
+    "refdataCalls": [
+      {
+        "verb": "GET",
+        "url": "http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2021-09-27",
+        "on": "2021-09-27",
+        "headers": {
+          "CJSCPPUID": "00000000-0000-0000-0000-000000000000",
+          "Accept": "application/vnd.referencedata.query.get-now-subscriptions+json"
+        },
+        "attempt": 1,
+        "answered": "resolve status=200"
+      }
+    ]
+  },
+  "reshare": {
+    "payloadSharedBetweenDeliveries": false,
+    "secondDeliveryObserved": {
+      "outcome": "documents",
+      "stage": "complete",
+      "documentCount": 1,
+      "subscriptionsReturnedUndefined": false,
+      "swallowedErrors": [],
+      "refdataCallCount": 1,
+      "refdataCalls": [
+        {
+          "verb": "GET",
+          "url": "http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2021-09-27",
+          "on": "2021-09-27",
+          "headers": {
+            "CJSCPPUID": "00000000-0000-0000-0000-000000000000",
+            "Accept": "application/vnd.referencedata.query.get-now-subscriptions+json"
+          },
+          "attempt": 1,
+          "answered": "resolve status=200"
+        }
+      ]
+    },
+    "secondDeliveryIdentical": true,
+    "expectedSecondFile": "expected-second-delivery.json"
+  },
+  "deterministic": true,
+  "digests": {
+    "hearing": "d09d71aea71dcf3f9f99f0e53a25b813773a1ce3cb50f4844306eed908f30f46",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "bffc94ac365db6ea5582818bd310de55f6c1aeba7ba016536e28b6fe0154ec70",
+    "expected": "08f65887fc31ea213f257143e50ee3ee59d8a60f4022a17cdc31aa72578fc653"
+  },
+  "contract": {
+    "status": "IN_CONTRACT",
+    "basis": "a re-shared hearing is delivered twice with the same bytes; this is the documented re-share behaviour of the results context",
+    "note": "Parity obligation: the Java port must reproduce this."
+  },
+  "evidence": "CONSTRUCTED — the second delivery is issued by this harness",
+  "provenance": {
+    "kind": "mutation",
+    "baseCase": "group-master-case",
+    "baseFixture": "fixtures/hearings/group-master-case.json",
+    "baseFixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/SetInformantRegister/test/group-master-case.json",
+    "subscriptionsInput": "fixtures/subscriptions/now-subscriptions-ir-sample.json",
+    "subscriptionsOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/NowsVariantsSubscriptions/test/subscriptions.json (first 5 informant-register entries, verbatim)",
+    "sharedTimeSource": "SetInformantRegister/test/index.test.js:213",
+    "operator": "re-share-duplicate",
+    "operatorVariant": "fresh-payload",
+    "note": "The only real fixture carrying majorCreditorCode (PF45) and isGroupMaster/groupId.",
+    "operatorScope": "delivery",
+    "operatorDescription": "Runs the transform twice. Variant \"fresh-payload\" re-reads the inputs; variant \"shared-payload\" feeds the SAME in-memory hearing object to the second run.",
+    "operatorRationale": "A re-shared hearing is delivered twice, and SetInformantRegister mutates the hearing it is given — DefendantContextBaseService.js:77,90,107-118 write level/prosecutionCaseId/offenceId/offenceTitle onto judicialResult nodes, and RegisterFragmentService.js:11-17 REPLACES judicialResultPrompts with the court-extract-filtered subset. \"fresh-payload\" is the honest re-delivery and is the parity obligation: same bytes in, identical documents out. \"shared-payload\" is retained as a NEGATIVE CONTROL and is marked PRODUCER_IMPLAUSIBLE, because two deliveries cannot share a JS object: each is a separate orchestration whose hearing arrives through HearingResultedCacheQuery as freshly parsed JSON, and each activity call is a serialised boundary (oracle/lib/boundary.js). Its value is that it now PROVES the mutation cannot cross a delivery — the two variants are identical by construction, and a future change that makes them diverge is a harness defect, not a discovery.",
+    "operatorDetail": {
+      "why": "the honest re-delivery: same bytes in, output must be identical",
+      "mode": "reparse-between-runs"
+    }
+  }
+}

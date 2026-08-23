@@ -1,0 +1,69 @@
+{
+  "caseId": "o01-group-proceedings-not-skipped",
+  "defect": "sanctioned oddity: \"group proceedings are not skipped by this flow (unlike other register flows)\"",
+  "title": "isGroupProceedings gates the court-register / court-order / prison-court-register flows but not this one",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 2,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "hearing: top-level isGroupProceedings set to true. This is the exact field the other three orchestrators read."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "bc00e95c36b1fe7be9288862af4c480e42c06759810a4e439b957407acc53b0f",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "1d92a11c4c4d38fd0c7667375f3fafd28a8436c49606acf3c94a979fd819263e"
+  },
+  "nodeEvidence": [
+    {
+      "file": "CourtRegisterOrchestrator/index.js",
+      "lines": "21-23",
+      "what": "`const isGroupProceedings = hearingResultedObj.hearing.isGroupProceedings; if (isGroupProceedings == null || isGroupProceedings == false) {` — the court-register flow SKIPS group proceedings."
+    },
+    {
+      "file": "CourtOrderOrchestrator/index.js",
+      "lines": "20-22",
+      "what": "the same guard, same shape."
+    },
+    {
+      "file": "PrisonCourtRegisterOrchestrator/index.js",
+      "lines": "20-22",
+      "what": "the same guard again."
+    },
+    {
+      "file": "InformantRegisterOrchestrator/index.js",
+      "lines": "19-27",
+      "what": "NO such guard. The only condition between the cache query and SetInformantRegister is `if (hearingResultedObj)`. A whole-repo grep for isGroupProceedings outside node_modules and test files returns exactly the three orchestrators above and nothing in the informant-register reach."
+    }
+  ],
+  "assertion": "The input is the prosecution-case fixture with one field added — isGroupProceedings: true at the top level of the hearing. Assert EXACTLY: the document array is byte-for-byte equal, under the pack's comparator rules, to recorded/base__prosecution-case/expected.json — two documents, TFL then TVL, every field identical. isGroupProceedings makes no difference to this flow because nothing in the flow reads it. The trap is a developer who has ported, or read, one of the other register services and carries the guard across \"for consistency\". That would silently stop producing informant registers for every group hearing, and because the request would end COMPLETED with no authorities it would look like a normal quiet day. This oddity is named in design_rules.md as intended behaviour here; skipping group proceedings needs a DEVIATIONS.md entry and business sign-off."
+}

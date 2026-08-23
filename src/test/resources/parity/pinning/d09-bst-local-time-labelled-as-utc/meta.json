@@ -1,0 +1,79 @@
+{
+  "caseId": "d09-bst-local-time-labelled-as-utc",
+  "defect": "D9",
+  "title": "Timestamps are London local time with a literal Z appended — BST values are an hour wrong",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 2,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "no edits at all. This is base__prosecution-case re-recorded under pinning/ so the D9 assertion has a case of its own that a future edit to the corpus cannot quietly move."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "373baa08132f420cf1eb9f328fbfabdb225889a94380af6dad3ae8651c42a92b",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "1d92a11c4c4d38fd0c7667375f3fafd28a8436c49606acf3c94a979fd819263e"
+  },
+  "nodeEvidence": [
+    {
+      "file": "NowsHelper/service/DateService.js",
+      "lines": "36-38",
+      "what": "getLocalDateTime: `moment_timeZone.tz(dateString, \"Europe/London\").format('YYYY-MM-DDTHH:mm:ss') + 'Z'` — the value is converted INTO London local time and then given a UTC designator. During BST the printed instant is one hour later than the instant it claims to be."
+    },
+    {
+      "file": "SetInformantRegister/index.js",
+      "lines": "83",
+      "what": "registerDate goes through it."
+    },
+    {
+      "file": "NowsHelper/service/RegisterFragmentService.js",
+      "lines": "50, 52",
+      "what": "hearingDate goes through it."
+    },
+    {
+      "file": "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/ResultDataMapper.js",
+      "lines": "15",
+      "what": "nextHearingDate goes through it."
+    },
+    {
+      "file": "NowsHelper/service/DateService.js",
+      "lines": "42",
+      "what": "formatDateAndGetLocalDateTime — durationStartDate / durationEndDate — appends the same literal Z."
+    },
+    {
+      "file": "OutboundInformantRegister/index.js",
+      "lines": "48",
+      "what": "populateFileName uses getLocalDate (DateService.js:29, 'YYYY-MM-DD' London local), so around midnight the filename date and the registerDate date can disagree with UTC."
+    }
+  ],
+  "assertion": "The input is the prosecution-case fixture with sharedTime \"2020-06-01T10:00:00Z\" — 1 June, British Summer Time, 11:00 in London. Assert EXACTLY, on both documents: registerDate equals the STRING \"2020-06-01T11:00:00Z\", and fileName equals \"InformantRegister_TFL_2020-06-01.csv\" / \"InformantRegister_TVL_2020-06-01.csv\". Assert on the exact string. Do NOT parse it into an Instant/OffsetDateTime and compare instants — that comparison passes for both the right answer and the wrong one and pins nothing. THE CONTROL: recorded/base__outbound-hearing has sharedTime \"2020-01-20T11:00:00Z\" (GMT) and registerDate \"2020-01-20T11:00:00Z\" — unchanged, because London is UTC in January. The pair proves the +1h is a BST artefact, not a constant. A java.time port that does the honest thing — sharedTime.atZone(ZoneId.of(\"Europe/London\")).toOffsetDateTime() rendered as \"2020-06-01T11:00:00+01:00\", or the instant re-rendered as \"2020-06-01T10:00:00Z\" — is CORRECT and MUST STILL FAIL this test. D9 is priority-2: prosecuting authorities parse these values out of the CSV (design doc §13 Q9), so the correction cannot ship before that check and a DEVIATIONS.md entry. This test is the tripwire that makes an unauthorised correction visible in CI on the day it is written."
+}

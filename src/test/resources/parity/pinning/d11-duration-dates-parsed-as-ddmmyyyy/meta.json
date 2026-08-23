@@ -1,0 +1,66 @@
+{
+  "caseId": "d11-duration-dates-parsed-as-ddmmyyyy",
+  "defect": "D11",
+  "title": "durationStartDate / durationEndDate are parsed with a hardcoded DD/MM/YYYY, ignoring the arguments",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 2,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "hearing: prosecutionCases[0].defendants[0].offences[0].judicialResults replaced with the real fixture judicialResult-with-durationElement.json (fixtures/judicial-results/, copied byte-identically from the function app's Mapper/test tree).",
+      "that grafted result: durationElement.durationStartDate set to \"03/04/2019\" and durationElement.durationEndDate to \"2021-07-26\" — one DD/MM/YYYY value and one ISO value, so the single hardcoded parse is visible on both.",
+      "that grafted result: isAvailableForCourtExtract true, publishedForNows false, orderedDate \"2020-01-20\" — the minimum needed for the court-extract filter (RegisterFragmentService.js:6) to keep it and for the date sort to behave as in the base case."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "2f66b06fb22dc345472f4274f282a5a66386f6e6af8f1f298c0388fbe49f7af1",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "c758e06dc3622b326d01a48b82841eb82989bc7f2f039e57d630c266a179dd23"
+  },
+  "nodeEvidence": [
+    {
+      "file": "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/ResultDataMapper.js",
+      "lines": "24-25",
+      "what": "`dateService.formatDateAndGetLocalDateTime(durationElement.durationStartDate)` — called with ONE argument, so sourceFormat and targetFormat are undefined."
+    },
+    {
+      "file": "NowsHelper/service/DateService.js",
+      "lines": "40-43",
+      "what": "formatDateAndGetLocalDateTime(dateString, sourceFormat, targetFormat) forwards all three to formatDate..."
+    },
+    {
+      "file": "NowsHelper/service/DateService.js",
+      "lines": "6-8",
+      "what": "...and formatDate IGNORES sourceFormat and targetFormat entirely: `return moment(dateString, 'DD/MM/YYYY').format('YYYY-MM-DD');`. The parameters exist only to make the call sites look configurable."
+    }
+  ],
+  "assertion": "The hearing's offence results are replaced with the real judicialResult-with-durationElement.json fixture — whose own dates are \"26/02/2019\" and \"26/07/2021\", i.e. the producer really does send DD/MM/YYYY — and the two dates are then changed to expose the parse: durationStartDate \"03/04/2019\" (DD/MM/YYYY) and durationEndDate \"2021-07-26\" (ISO). Assert EXACTLY, on the TFL document's single offence result, resultData: (1) durationStartDate is the STRING \"2019-04-03T00:00:00Z\" — the DD/MM/YYYY input read as 3 April, correctly for this producer; (2) durationEndDate is the STRING \"Invalid dateZ\" — the ISO input is NOT understood, moment returns the literal \"Invalid date\", and DateService.js:42 appends \"Z\" and POSTs it into a field the frozen contract types as a date-time; (3) durationValue is the STRING \"5\" and secondaryDurationValue the STRING \"2\", not numbers (ResultDataMapper.js:21,23 call .toString()); (4) durationUnit \"M\", secondaryDurationUnit \"Y\". Assertion (2) is the one that matters. It shows the hardcoded parse is not a harmless mislabel — a date arriving in any format other than DD/MM/YYYY is silently converted into a garbage string and shipped. A java.time port using ISO_LOCAL_DATE, or a lenient multi-format parser that gets both dates right, disagrees with this recording on both fields and MUST fail. D11 is priority-3 but the same rule applies: correcting the parse changes values prosecuting authorities read, so it ships with a DEVIATIONS.md entry or it does not ship. See also s05-invalid-date-z-shipped-as-a-timestamp — the same \"Invalid dateZ\" leak, reached from a different direction on an unmodified fixture."
+}

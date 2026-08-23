@@ -1,0 +1,64 @@
+{
+  "caseId": "s04-case-reference-urn-then-authority-reference",
+  "defect": "design doc §2.2 step 4 (behaviour-lock)",
+  "title": "caseOrApplicationReference and originatingCaseUrn are caseURN ?? prosecutionAuthorityReference",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 2,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "hearing: prosecutionCases[0].prosecutionCaseIdentifier.caseURN set to \"TFL-URN-WINS\". prosecutionCases[1] (TVL) is left alone so both halves of the rule are in one document array."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "d69146b0c8376dffc06ffaf3f9a13140f491edae14e0da62b89f8e5afd12970a",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "30c6d98ef3ebc7ad015696418d3fd70c325759b2fe150cddcaf8e9a9865a20ca"
+  },
+  "nodeEvidence": [
+    {
+      "file": "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/ProsecutionCaseOrApplicationMapper.js",
+      "lines": "20-23",
+      "what": "`prosecutionCase.prosecutionCaseIdentifier.caseURN ? ...caseURN : ...prosecutionAuthorityReference` — a TRUTHY test, so an empty-string caseURN falls back too."
+    },
+    {
+      "file": "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/OffenceMapper.js",
+      "lines": "79-82",
+      "what": "deriveCaseUrn applies the identical rule for the offence's originatingCaseUrn."
+    },
+    {
+      "file": "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/ProsecutionCaseOrApplicationMapper.js",
+      "lines": "39",
+      "what": "applications use a different field again: `courtApplication.applicationReference`, with no fallback."
+    }
+  ],
+  "assertion": "The hearing gives TFL a caseURN \"TFL-URN-WINS\" (the fixture has none) and leaves TVL with only its prosecutionAuthorityReference. Assert EXACTLY: (1) in the TFL document, both defendants' prosecutionCasesOrApplications[0].caseOrApplicationReference equal \"TFL-URN-WINS\", AND the nested offences[0].originatingCaseUrn also equals \"TFL-URN-WINS\" — the same rule is applied twice, in two different mappers, and both must be pinned; (2) in the TVL document, caseOrApplicationReference and originatingCaseUrn both equal \"TVL298320922\", the prosecutionAuthorityReference, because that case has no caseURN. The recorded control for the fallback half is recorded/base__prosecution-case, where neither case has a caseURN. Note the rule is `truthy`, not `!= null`: an empty-string caseURN falls back to the authority reference. Do NOT write the Java as Objects.requireNonNullElse(caseUrn, authorityReference) — that returns \"\" for an empty URN and diverges on a case this corpus does not contain. Prefer StringUtils.isNotEmpty or an explicit blank check, and say why in a comment pointing at this entry."
+}

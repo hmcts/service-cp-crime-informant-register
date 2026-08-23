@@ -1,0 +1,74 @@
+{
+  "caseId": "mut__prosecution-case__graft-judicial-result__financialresult-and-empty-prompts",
+  "recordedAt": null,
+  "oracle": {
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js, as the Durable Task extension serialises them; OutboundInformantRegister therefore receives the ORCHESTRATOR's hearing, not the copy SetInformantRegister mutated",
+    "runner": "oracle/run-transform.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "recorded/provenance.json"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 2,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "refdataCallCount": 1,
+    "refdataCalls": [
+      {
+        "verb": "GET",
+        "url": "http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2020-06-01",
+        "on": "2020-06-01",
+        "headers": {
+          "CJSCPPUID": "00000000-0000-0000-0000-000000000000",
+          "Accept": "application/vnd.referencedata.query.get-now-subscriptions+json"
+        },
+        "attempt": 1,
+        "answered": "resolve status=200"
+      }
+    ]
+  },
+  "deterministic": true,
+  "clockDependent": false,
+  "clockProbe": null,
+  "digests": {
+    "hearing": "80d051ce9b198fba47309ec865fc77b2ec1e7a52698cc226bae62ea242835ed3",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "5d57a5fa267edba7d2cb093f3f53efad46d12043e09e59198af4c0207e194a9f"
+  },
+  "contract": {
+    "status": "IN_CONTRACT",
+    "basis": "cpp-platform-core-domain/criminal-court-public-model/src/main/resources/json/schema/global/offence.json judicialResults.minItems = 1 is satisfied by the single grafted result; the result body is a byte-identical copy of a real judicialResult-*.json Jest fixture, and its judicialResultId / orderedHearingId are re-identified so the hearing stays internally consistent",
+    "note": "Parity obligation: the Java port must reproduce this."
+  },
+  "evidence": "OBSERVED body, CONSTRUCTED position — the judicialResult is a byte-identical real fixture; placing it on every offence, and re-identifying judicialResultId/orderedHearingId, is this harness's doing",
+  "provenance": {
+    "kind": "mutation",
+    "baseCase": "prosecution-case",
+    "baseFixture": "fixtures/hearings/hearing-results-from-prosecution-case.json",
+    "baseFixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/SetInformantRegister/test/hearing-results-from-prosecution-case.json",
+    "subscriptionsInput": "fixtures/subscriptions/now-subscriptions-ir-sample.json",
+    "subscriptionsOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/NowsVariantsSubscriptions/test/subscriptions.json (first 5 informant-register entries, verbatim)",
+    "sharedTimeSource": "SetInformantRegister/test/index.test.js:12",
+    "operator": "graft-judicial-result",
+    "operatorVariant": "financialresult-and-empty-prompts",
+    "note": "Two prosecution authorities (TFL, TVL), no courtCentre fields, hearingDays empty.",
+    "operatorScope": "hearing",
+    "operatorDescription": "Replaces every offence-level judicialResults array with one real judicialResult fixture, reaching the resultData block that no real hearing fixture reaches.",
+    "operatorRationale": "judicialResult-with-financialResult.json: isFinancialResult + an isFinancialImposition CURR prompt \"£188.00\" -> resultData.amount (ResultDataMapper.js:27-31); its sibling CREDNAME prompt has courtExtract \"N\" and must be filtered out (RegisterFragmentService.js:13-15) | judicialResult-with-financialResult-and-empty-prompts.json: isFinancialResult with an EMPTY prompts array — canCreateResultData (ResultDataMapper.js:37-40) must be false, so resultData is absent entirely | judicialResult-with-durationElement.json: durationElement -> the five duration fields; durationStartDate/EndDate go through DateService.formatDateAndGetLocalDateTime, which reformats DD/MM/YYYY (DateService.js:7) | judicialResult-with-nextHearing.json: nextHearing -> nextHearingDate + nextCourtLocation (ResultDataMapper.js:13-17) | judicialResult-with-no-resultdata-details.json: the control: prompts present, but none of the three resultData triggers — resultData must be absent",
+    "operatorDetail": {
+      "fixture": "fixtures/judicial-results/judicialResult-with-financialResult-and-empty-prompts.json",
+      "why": "isFinancialResult with an EMPTY prompts array — canCreateResultData (ResultDataMapper.js:37-40) must be false, so resultData is absent entirely",
+      "reader": "ResultDataMapper.js"
+    }
+  }
+}

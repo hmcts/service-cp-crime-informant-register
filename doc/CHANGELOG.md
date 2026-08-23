@@ -7,6 +7,157 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- 2026-08-23 — **The transformation runs, and the parity pack is armed against it.** The three
+  ported steps are chained as `InformantRegisterOrchestrator` chains them, behind a new
+  `RegisterTransformer` port, and `DistributionPipeline` calls it between the payload fetch and the
+  submission loop — so the loop that was written to execute zero times now executes once per
+  prosecuting authority. The listener is untouched.
+  - **384 differential cases** run the whole chain against recordings of the real function app
+    (Node commit `a8d3c00b`, clock pinned) and compare with the golden comparator: **382 pass, 0
+    fail, 2 are held back** on the open `s05` question and name it in the skip message. Each case is
+    asserted against what the corpus says it is owed — an input the producer cannot send owes an
+    explicit outcome and not Node's body, because eighteen of those recordings violate the frozen
+    contract on the way out.
+  - **26 pinning tests**, one per manifest entry: 19 assert against a recorded run, 7 are disabled
+    carrying the manifest's own reason and the suite that does cover them. Six of the nineteen are
+    places the port deliberately answers differently, all of them registered and none of them a
+    register reaching an authority.
+  - **The comparator's own contract** is pinned by the pack's 57 adversarial vectors, bound to
+    `JsonParity`: 116 assertions, none skipped.
+  - The reference-data fetch is a port (`NowSubscriptionsSource`) whose adapter is a later story.
+    Until it exists the port **refuses** rather than answering "nobody is subscribed" — the two are
+    indistinguishable downstream, and answering would let a real hearing be filed to nobody and
+    recorded done. Deviations #14, sign-off pending.
+  - Deviations #14 added. A completion now records *which* success it was: `no-authorities` or
+    `authorities-submitted`.
+
+### Fixed
+- 2026-08-23 — **Two ordered-date defects the differential corpus found**, both of which made the
+  port refuse hearings the legacy files — the one direction a bug-for-bug port must not drift in.
+  - **The parse format is a token walk, not the pattern it looks like.** `DateService.parse` is
+    `moment(value, 'YYYY/MM/DD')` with no strict flag, so moment walks the format's tokens and gives
+    each a width — up to four digits of year, two of month, two of day — skipping whatever separates
+    them, and applies its two-digit-year rule on the way. `20-01-2020`, the ordered date both
+    unmodified `OutboundInformantRegister` fixtures carry, is therefore 20 January 2020 and not a
+    refusal. `HearingDates.orderingKey` reproduces the walk; the `moment.tz` fallback it used to
+    share a pattern with is a different parser and is left alone.
+  - **`Array.prototype.sort` decides whether a bad date is fatal.** It never calls the comparator on
+    a lone element, and it moves `undefined` elements to the end without comparing them — so an
+    unreadable ordered date is harmless alone and fatal in company (defect D10, pin `s06`), and a
+    result carrying no ordered date cannot destroy a hearing at all. New `pipeline/OrderedDates`
+    carries both rules for the two call sites that need them, and keeps an absent date apart from an
+    explicit JSON null, because `sort` does.
+
+- 2026-08-23 — **Post-review parity corrections to the aggregation mapper.** Every one is a place
+  where the port answered differently from the Node source, found by reading the two side by side;
+  each is traced to the legacy line it reproduces.
+  - **An unreadable date is rendered, not refused.** `moment` does not throw — it flags the moment
+    invalid and `format` answers the literal `"Invalid date"` — so `HearingDates.localDate` and
+    `.localDateTime` now render `"Invalid date"` / `"Invalid dateZ"` where they previously raised a
+    transformation failure. Both call sites read the payload directly: a sitting day
+    (`CourtSessionMapper.js:26-28`) and a next hearing's start (`ResultDataMapper.js:15`). Refusing
+    there parked hearings the legacy renders. `DateService.parse` really does throw and
+    `HearingDates.orderingKey` still does, now including the case where three numbers read but are
+    not a calendar day. Deviations #13 records the forms V8's date parser resolves and this does not.
+  - **A null array member is a `TypeError`, and is refused rather than skipped.** The legacy
+    dereferences each member as it iterates — `subscription.forDistribution`
+    (`RecipientMapper.js:15`), `prompt.isFinancialImposition` (`ResultDataMapper.js:28`, inside
+    `find`, so only up to the match), `offence.offenceCode` (`OffenceMapper.js:62`), `pcase.id`
+    (`ProsecutionCaseOrApplicationMapper.js:55`). Reading a null as "nothing set" emitted a register
+    the legacy never sent, to a real prosecuting authority. New `Json.dereferencedElement`.
+  - **Three unguarded identifier dereferences** were being read null-safely and are now refusals:
+    `prosecutionCase.prosecutionCaseIdentifier` at `OffenceMapper.js:17` (read for *every* case in
+    the hearing, before any filtering) and `ProsecutionCaseOrApplicationMapper.js:20`, and the
+    `deriveCaseUrn` argument at `OffenceMapper.js:41,51`.
+  - **The legal-entity branch is reached lazily.** Every legacy site that dereferences
+    `legalEntityDefendant.organisation` is an `else if`, so a defendant carrying a populated
+    `personDefendant` beside an empty `legalEntityDefendant` maps cleanly there; resolving it up
+    front refused the whole hearing.
+  - **`orderIndex` is no longer truncated.** A fractional or oversized value is absent rather than
+    silently narrowed to an `int` — truncating `1.5` to `1` produced a body that *passes* the
+    consumer's schema carrying an index the payload never sent. Deviations #11.
+  - **Identifier strictness at the typed boundary.** `UUID.fromString` accepts shorthand
+    (`1-1-1-1-1` → `00000001-0001-…`), so the canonical 8-4-4-4-12 shape is checked before parsing.
+    The case normalisation that remains — an upper-case identifier can only render back in lower —
+    is now recorded on deviations #10, whose "byte for byte" claim was not true of it.
+  - **`trim` is ECMAScript's.** New `JsStrings.trim` strips what `String.prototype.trim` strips,
+    including `U+00A0`, which neither `String.trim()` nor `String.strip()` removes; used for email
+    addresses (`RecipientMapper.js:41`) and the joined full name (`DefendantMapper.js:167`).
+  - **Three assertions that did not check what they claimed**: the D8 pinning case now asserts each
+    duplicated offence's `originatingCaseUrn` (on a hearing built here, because the byte-identical
+    legacy fixture gives both cases the same reference and cannot show it); the `ResultMapper` twin
+    asserts the whole multiline `resultText` its Jest original asserts, not a prefix; and the null
+    email address is now asserted on the **serialised** body, where the omitted-key divergence is
+    actually visible.
+  - Deviations #11, #12 and #13 added, all sign-off pending; #10 amended. #12 records a collapse the
+    fragment model cannot currently express — an id list cannot tell an absent id from an explicit
+    null — and flags that closing it is a model decision for the parity review, not a mapper change.
+
+### Added
+- 2026-08-23 — **Subscription matching: who receives the register is now decided in Java.** The
+  second transformation step is ported — `pipeline/SubscriptionRules` (the shared
+  `SubscriptionsService` kernel) and `pipeline/SubscriptionMatcher` (the
+  `InformantRegisterSubscriptions` activity) — producing
+  `RegisterFragmentWithSubscriptions`, the fragment plus the subscriptions it matched.
+  - The oddities are ported, not tidied: `ouCode` is the **major creditor code** rather than the
+    authority's OU code, so on the twelve real hearing fixtures that carry no creditor code nothing
+    can match; the whole register's vocabulary is the **first** defendant's; judicial results are
+    pooled across every defendant; a subscription that is both a NOW and a prison-court-register
+    subscription is matched **twice**, because the NOW branch has no `return`; and an
+    `includedNOWS` of `[]` rejects every NOW, because an empty array is truthy.
+  - An answer with nothing in it is not a failure. No body, no `nowSubscriptions` member, or none
+    of them for the informant register, and the fragments come back with **no**
+    `matchedSubscriptions` member at all — a different document from one carrying an empty array,
+    and both shapes are pinned.
+  - The step is **pure**: the legacy activity fetches reference data itself, and here the answer is
+    passed in. `registerDate(fragments)` is the value that fetch must be dated with, and it is
+    derived inside `match` as well, because the legacy dereferences it before the fetch and a
+    fragment set carrying no register date must never reach reference data (blind spot BS-12).
+  - Twinned twice over. All twenty-one `SubscriptionsService` Jest cases are twinned against
+    byte-identical copies of their seven fixtures, asserting *which* subscriptions came back and not
+    only how many — every Jest case asserts a length alone, and **three** of them are named for
+    branches they never enter. The three `InformantRegisterSubscriptions` cases are twinned as what
+    they actually are: all three mock reference data with a bare array and return before any matching
+    runs, which is blind spot **BS-01**, the largest false-confidence surface in the legacy suite.
+  - Six further cases close BS-01 against goldens captured from the **real** legacy activity chain
+    (parity-pack `recorded/` inputs, Node commit `a8d3c00b`, clock pinned), covering the
+    informant-register filter, the empty-match short-circuit, the creditor-code wiring, duplicate
+    subscriptions and the vocabulary gate actually refusing a match.
+
+- 2026-08-23 — **The aggregation mapper: a fragment becomes the command body that is sent for it.**
+  The last of the three transformation steps, ported from `OutboundInformantRegister/index.js` and
+  its eight-mapper tree into `pipeline/`, producing the typed `InformantRegisterDocument` that
+  already existed in `domain/`. Pure — a hearing tree, a fragment and its matched subscriptions in,
+  one document out — so the golden files alone decide whether the port is right.
+  - **Forty-five Jest cases have JUnit twins**, against byte-identical copies of the legacy's
+    fifteen fixtures, plus a Java translation of the `ModelObjects.js` builder six of those files
+    depend on. Where the Jest suite mocks a collaborator away, the twins do not: the fixture is
+    completed instead, and the case the mock was hiding gets its own assertion.
+  - **Whole-document golden parity** on the three activity-level cases, compared field for field
+    against output captured by invoking the real legacy handler. The transcribed Jest assertions
+    check the fields their author happened to name; the goldens check every field of every offence
+    of every case of every defendant.
+  - **The oddities are pinned, not tidied.** D8 (every case entry carries the defendant's whole
+    offence list, each offence still naming the case it really came from), D9 (`hearingStartTime`
+    and `registerDate` are London wall-clock time labelled `Z`, asserted as exact strings with a
+    January control beside them), D11 (duration dates are re-read as `DD/MM/YYYY` and anything else
+    becomes the literal `"Invalid dateZ"`), D17 (letter delivery is logged and ignored, and a
+    recipient with no address is dropped silently), s04 (a case reference is its URN when *truthy*,
+    not when non-null) and the file name's second reading of the register date, `undefined` included
+    when an authority has no code.
+  - **Five of the parity pack's coverage findings are answered rather than inherited** — BS-05
+    (cross-authority offence isolation, whose false leg the legacy suite never runs), BS-06
+    (organisation defendants, a whole defendant class with no assertion anywhere), BS-07
+    (application-level results, unexecuted repo-wide), BS-09 and BS-10 (every optional-value false
+    leg of the recipient and result-data mappers), BS-14 and BS-15. Each path is ported from the
+    source and covered by a deterministic case; none is left to the first real hearing to discover.
+  - Two new deviations, both **sign-off pending**: #9, an unmapped verdict code yields a verdict
+    with no type rather than a null one, which the closed contract cannot carry; and #10, a
+    register component that cannot be typed is parked and dead-lettered rather than POSTed for the
+    consumer's schema to reject. Neither changes a register that the legacy successfully sends.
+  - `HearingDates` gains `formattedLocalDateTime`, the `DateService.formatDateAndGetLocalDateTime`
+    port, whose every expectation was taken from the `moment` build vendored with the function app
+    rather than from a reading of what it ought to do.
 - 2026-08-22 — **The submission leg: `add-informant-register` is actually POSTed.** The stub
   submission client is replaced by `adapter/results/`, which posts one command per prosecuting
   authority to the results-owned endpoint at the exact vendor media type, and by the
@@ -34,6 +185,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - WireMock joins the build for this: one exact path, one exact vendor media type and a body the
     results-owned schema accepts are not assertable against a mocked HTTP client, which agrees with
     whatever the code does.
+
+### Fixed
+- 2026-08-23 — **A `null` in a reference-data or results array is refused, not quietly skipped.**
+  Wherever the legacy reads a property off an array element — `nowSubscriptions`
+  (`InformantRegisterSubscriptions/index.js:28`), a candidate or child subscription, a judicial
+  result (`SubscriptionsService.js:213`, `:234`, `:286`) or one of a result's prompts (`:224`,
+  `:287`) — a `null` element is a `TypeError` there and the hearing produces **no register for any
+  authority**. The port had been reading it as "a candidate that matches nothing" and carrying on,
+  which could hand a real prosecuting authority a register the legacy never sent. It is now
+  `TransformationFailedException`, dead-lettered, under `doc/DEVIATIONS.md` entry 7 with every other
+  legacy `TypeError`.
+  - `Json.dereferenced` reproduces the legacy's *reach*, not a blanket refusal. `some` and `find`
+    stop at the first answer, `filter` completes its pass whatever it has already found, and
+    `[].some(cb)` never runs `cb` at all — so an empty `includedResults`/`excludedResults` list still
+    answers false without reading a judicial result, because refusing there would lose a register the
+    legacy produces.
+
+### Changed
+- 2026-08-23 — **The subscription-matching coverage claim now matches the coverage.** Prompted by
+  review, the branch coverage of the two matching classes was measured rather than asserted:
+  `SubscriptionRules` was at 151 of 272 branches and `SubscriptionMatcher` at 22 of 26, against a
+  changelog and a test javadoc that read as though BS-01 were closed.
+  - The Jest twin named *"Should Not include subscriptions if excluded Prompts are matched with
+    result prompts"* was the third case found to pass for a reason its name does not describe: the
+    subscription first demands the included prompt `suretyNameAndAddress`, which the fixture's
+    results do not carry, so `excludedPrompts` was never evaluated and the case would have passed
+    with that logic deleted. It now asserts what actually decided it, and the branch it is named for
+    is driven separately.
+  - New cases drive what the twenty-one Jest cases and the six goldens leave unexecuted: EDT-only
+    matching, a rejected child subscription, a prison-register candidate the vocabulary gate refuses,
+    an informant-code match, the case-sensitivity of both code comparisons, `includedNOWS: []`
+    against an absent one, `userGroupVariants` as `[]` and as `null`, a missing
+    `subscriptionVocabulary`, the CPS shortcut and its `=== true`, every attendance, court, defendant,
+    custody and custodial-result combination the legacy writes, both included/excluded prompt and
+    result outcomes, a reference-data prompt with no `resultPromptReference`, and every positive
+    major-creditor path — which the informant register itself can never reach, because its vocabulary
+    is built with the two-argument constructor.
+  - Two claims the six goldens cannot decide are separated on hand-built fragments, because no
+    recorded hearing distinguishes them: the register's vocabulary being the **first** defendant's
+    (`index.js:46`) and judicial results being **pooled across every** defendant (`:53-64`). Both were
+    verified by mutation — inverting either one leaves all six goldens green and fails these.
+  - `SubscriptionRules` is now at 240 of 276 branches and `SubscriptionMatcher` at 23 of 26; the
+    residue is defensive null halves, not unpinned matching behaviour.
 
 ### Fixed
 - 2026-08-23 — **The startup time budget now covers the whole payload fetch** (second Story 1

@@ -1,0 +1,84 @@
+{
+  "caseId": "d07-unparseable-register-date-loses-hearing",
+  "defect": "D7",
+  "title": "An unparseable sharedTime destroys the hearing three catch blocks deep",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "swallowed-exception",
+    "stage": "OutboundInformantRegister",
+    "documentCount": null,
+    "subscriptionsReturnedUndefined": true,
+    "swallowedErrors": [
+      "[Hearing ID: e100d08a-ed4e-43a2-aae2-e9c5735713b0] - Exception in InformantRegisterSubscriptions RangeError: Invalid time value",
+      "[Hearing ID: 1828f356-f746-4f2d-932b-79ef2df95c80] -Exception in OutboundInformantRegister TypeError: Cannot read properties of undefined (reading 'length')"
+    ],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "hearing: unmodified byte-identical fixture.",
+      "params.sharedTime: \"not-a-timestamp\" — the one edit. This is the value HearingResultedCacheQuery would have returned as `.sharedTime`; the oracle takes it exactly where InformantRegisterOrchestrator/index.js:23 passes it."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "373baa08132f420cf1eb9f328fbfabdb225889a94380af6dad3ae8651c42a92b",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "41e651b568c20ef03ec32311858e9c0a73d6d5643e110f6790758531862fa151",
+    "expected": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+  },
+  "nodeEvidence": [
+    {
+      "file": "InformantRegisterSubscriptions/index.js",
+      "lines": "17-18",
+      "what": "the defect as written in the register: `informantRegisters.find(register => register.registerDate)` then `.registerDate` on the result. UNREACHABLE AS WRITTEN — see the demonstration note below."
+    },
+    {
+      "file": "SetInformantRegister/index.js",
+      "lines": "83",
+      "what": "`registerDate = dateService.getLocalDateTime(this.sharedTime)`."
+    },
+    {
+      "file": "NowsHelper/service/DateService.js",
+      "lines": "36-38",
+      "what": "getLocalDateTime always returns a String — `moment.tz(...).format(...) + \"Z\"` — which for an unparseable input is the literal \"Invalid dateZ\". A non-empty String is truthy, so the .find at InformantRegisterSubscriptions/index.js:17 ALWAYS matches the first fragment and the TypeError at :18 cannot fire from this path."
+    },
+    {
+      "file": "NowsHelper/service/ReferenceDataService.js",
+      "lines": "38",
+      "what": "THE REACHABLE TWIN: `const orderDate = new Date(on).toISOString().slice(0, 10);` sits OUTSIDE the try block, which only starts at line 41. `new Date(\"Invalid dateZ\").toISOString()` throws RangeError: Invalid time value, and no catch in this function sees it."
+    },
+    {
+      "file": "InformantRegisterSubscriptions/index.js",
+      "lines": "89-92",
+      "what": "the RangeError escapes to the activity catch, is logged, and the activity returns undefined."
+    },
+    {
+      "file": "OutboundInformantRegister/index.js",
+      "lines": "17, 57-59",
+      "what": "`.length` on that undefined throws, and is swallowed. Same terminal silence as D6."
+    }
+  ],
+  "assertion": "The input is the prosecution-case fixture, unmodified, with sharedTime \"not-a-timestamp\". Assert EXACTLY: (1) expected.json is JSON null — no documents; (2) meta.json observed.outcome is \"swallowed-exception\"; (3) observed.swallowedErrors mentions RangeError. Parity requirement for the Java port: zero documents. But the Java port MUST NOT get there by the Node route. Two things must be asserted about HOW: (a) an unparseable sharedTime must be rejected as a non-transient contract violation with a reason code, dead-lettered, and persisted FAILED — never allowed to travel through the pipeline as the string \"Invalid dateZ\"; (b) the string \"Invalid date\" must never appear in any field of any document the Java port emits. Sub-assertion (b) is the one that catches a lazy port: a Java implementation that mirrors moment's forgiving formatting will happily ship \"Invalid dateZ\" into a registerDate the frozen schema types as a date-time, exactly as Node does elsewhere (see s05-invalid-date-z-shipped-as-a-timestamp). Note for whoever maintains this: if someone \"fixes\" the Node-side D7 line, this case does not change at all — the case pins the reachable RangeError, not the unreachable TypeError.",
+  "demonstrationNote": "D7 as written in the design register (a TypeError at InformantRegisterSubscriptions/index.js:18) is UNREACHABLE through the orchestrator, and the pack says so rather than inventing a case for it: SetInformantRegister/index.js:83 always assigns a non-empty String, so the .find always matches. What IS reachable — and is the same failure in the same region, \"the register date is not usable\" — is the RangeError at ReferenceDataService.js:38. That is what this case records."
+}

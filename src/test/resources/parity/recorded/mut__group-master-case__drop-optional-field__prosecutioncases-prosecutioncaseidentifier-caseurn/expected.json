@@ -1,0 +1,77 @@
+[
+  {
+    "registerDate": "2021-09-27T14:02:32Z",
+    "hearingDate": "2021-09-29T11:00:00Z",
+    "hearingId": "2d209c6b-2b5e-428c-a668-938f223370fb",
+    "prosecutionAuthorityId": "764bff92-a135-34cb-b858-8bb6b4b66301",
+    "prosecutionAuthorityCode": "SURRPF",
+    "prosecutionAuthorityOuCode": "0450000",
+    "fileName": "InformantRegister_SURRPF_2021-09-27.csv",
+    "hearingVenue": {
+      "courtHouse": "Lavender Hill Magistrates' Court",
+      "ljaName": "South West London Magistrates' Court",
+      "courtSessions": [
+        {
+          "courtRoom": "Courtroom 01",
+          "hearingStartTime": "2021-09-29T11:00:00Z",
+          "defendants": [
+            {
+              "name": "Aditya Ondricka",
+              "address1": "849 Akeem Stravenue",
+              "postCode": "CR0 1XG",
+              "firstName": "Aditya",
+              "lastName": "Ondricka",
+              "prosecutionCasesOrApplications": [
+                {
+                  "offences": [
+                    {
+                      "offenceCode": "RT88007",
+                      "orderIndex": 1,
+                      "offenceTitle": "Drive motor vehicle when alcohol level above limit",
+                      "offenceResults": [
+                        {
+                          "cjsResultCode": "3107",
+                          "resultText": "Residence\nAddress sdsds\nPeriod of residence 3 Years"
+                        },
+                        {
+                          "cjsResultCode": "1116",
+                          "resultText": "Community order England / Wales\nEnd Date 03/03/2022\nResponsible officer an officer of a provider of probation services\nSupervising Court Central London Magistrates' Court\nProbation team to be notified organisation name dfs\nProbation team to be notified email address 1 sddss@sfsdsff.com\nProbation team to be notified email address 2 ssddss@sfsdsff.com"
+                        },
+                        {
+                          "cjsResultCode": "3111",
+                          "resultText": "Attendance centre\nNumber of hours 4 Hours"
+                        }
+                      ]
+                    },
+                    {
+                      "offenceCode": "RT88007",
+                      "orderIndex": 1,
+                      "offenceTitle": "Drive motor vehicle when alcohol level above limit",
+                      "offenceResults": [
+                        {
+                          "cjsResultCode": "1116",
+                          "resultText": "Community order England / Wales\nEnd Date 03/03/2022\nResponsible officer an officer of a provider of probation services\nSupervising Court Central London Magistrates' Court\nProbation team to be notified organisation name dfs\nProbation team to be notified email address 1 sddss@sfsdsff.com\nProbation team to be notified email address 2 ssddss@sfsdsff.com"
+                        },
+                        {
+                          "cjsResultCode": "3107",
+                          "resultText": "Residence\nAddress sdsds\nPeriod of residence 3 Years"
+                        },
+                        {
+                          "cjsResultCode": "3111",
+                          "resultText": "Attendance centre\nNumber of hours 4 Hours"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "groupId": "47a08b62-e790-474b-94da-0fd406d2bcc8",
+    "majorCreditorCode": "PF45",
+    "prosecutionAuthorityName": "Surrey Police"
+  }
+]

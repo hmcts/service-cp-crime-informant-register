@@ -1,0 +1,74 @@
+{
+  "caseId": "mut__group-master-case__subscriptions-cardinality__duplicated",
+  "recordedAt": null,
+  "oracle": {
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js, as the Durable Task extension serialises them; OutboundInformantRegister therefore receives the ORCHESTRATOR's hearing, not the copy SetInformantRegister mutated",
+    "runner": "oracle/run-transform.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "recorded/provenance.json"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 1,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "refdataCallCount": 1,
+    "refdataCalls": [
+      {
+        "verb": "GET",
+        "url": "http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2021-09-27",
+        "on": "2021-09-27",
+        "headers": {
+          "CJSCPPUID": "00000000-0000-0000-0000-000000000000",
+          "Accept": "application/vnd.referencedata.query.get-now-subscriptions+json"
+        },
+        "attempt": 1,
+        "answered": "resolve status=200"
+      }
+    ]
+  },
+  "deterministic": true,
+  "clockDependent": false,
+  "clockProbe": null,
+  "digests": {
+    "hearing": "5ee84f1eca16ab60c80d9fe3b029416a90952e076a3f478a80cc55dd8703432c",
+    "subscriptions": "901ee423d3c615f35391c180bcbf174ce4a4d764e434b3d543224ef44c797962",
+    "params": "bffc94ac365db6ea5582818bd310de55f6c1aeba7ba016536e28b6fe0154ec70",
+    "expected": "50de32c8ed3464913ad78899daaa8b5dd1d2232e50e0c58fe4e39f1fbddc8ba8"
+  },
+  "contract": {
+    "status": "PRODUCER_IMPLAUSIBLE",
+    "basis": "cpp-context-reference-data/referencedata-query/referencedata-query-api/src/raml/json/schema/referencedata.query.get-now-subscriptions.json makes nowSubscriptions[].id a required uuid and declares no uniqueness keyword, so a repeated subscription is schema-valid — but reference data does not return one subscription twice under one id. The case pins that SubscriptionsService.js:17-42 de-duplicates nothing, which is a real property reachable by other means",
+    "note": "The producer cannot emit this. The recording is what the Node app DOES with the input, and is evidence about robustness; it is NOT a parity obligation. The Java port's behaviour here is a design decision — see doc/DEVIATIONS.md and the message-contract gate in .claude/rules/workflow.md."
+  },
+  "evidence": "CONSTRUCTED — a captured subscription is appended to its own list by this harness",
+  "provenance": {
+    "kind": "mutation",
+    "baseCase": "group-master-case",
+    "baseFixture": "fixtures/hearings/group-master-case.json",
+    "baseFixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/SetInformantRegister/test/group-master-case.json",
+    "subscriptionsInput": "fixtures/subscriptions/now-subscriptions-ir-sample.json",
+    "subscriptionsOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/NowsVariantsSubscriptions/test/subscriptions.json (first 5 informant-register entries, verbatim)",
+    "sharedTimeSource": "SetInformantRegister/test/index.test.js:213",
+    "operator": "subscriptions-cardinality",
+    "operatorVariant": "duplicated",
+    "note": "The only real fixture carrying majorCreditorCode (PF45) and isGroupMaster/groupId.",
+    "operatorScope": "subscriptions",
+    "operatorDescription": "Duplicates or reorders the informant-register subscriptions.",
+    "operatorRationale": "SubscriptionsService.js:17-42 pushes matches in input order and de-duplicates nothing, so RecipientMapper emits one recipient per match, in order. Duplicate and reversed inputs pin both facts.",
+    "operatorDetail": {
+      "why": "the same subscription twice — the recipient must appear twice",
+      "reader": "SubscriptionsService.js:20",
+      "majorCreditorCodeForced": true
+    }
+  }
+}

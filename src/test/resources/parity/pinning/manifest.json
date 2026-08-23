@@ -1,0 +1,785 @@
+{
+  "purpose": "Pinning cases for every defect and sanctioned oddity in the informant-register port. These tests exist so that ported behaviour cannot be silently \"fixed\": each entry names a behaviour that looks wrong, states the exact assertion that locks it, and names what a well-meaning Java developer would naturally write instead. A change to any pinned behaviour is legitimate only when doc/DEVIATIONS.md gains a reviewed entry for it IN THE SAME COMMIT as the expectation change.",
+  "sourcesOfTruth": [
+    "analysis/results-distribution/InformantRegister/service-cp-crime-informant-register-design.md §2.2 and §8.1 (defect register D1-D17)",
+    "service-cp-crime-informant-register/doc/DEVIATIONS.md (registered deviations 1-3)",
+    "service-cp-crime-informant-register/.claude/rules/design_rules.md (\"Parity and the Deviations Register\" — the sanctioned oddities)"
+  ],
+  "sourcePinning": {
+    "nodeAppDir": "/home/sachin/moj/cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "nodeAppDirSource": "oracle/lib/paths.js DEFAULT_NODE_APP",
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "nodeAppDirtyPaths": null,
+    "packageLockSha256": "d7d9a9323992384615871d4732b848d2590e80919000ec800a83022f26c7d859",
+    "packageJsonSha256": "3d930ba3ae030352cf55264931e14c19d0d638518522312a5bd8efb70939d45f",
+    "nodeVersion": "v24.18.1",
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "note": "nodeAppCommit + packageLockSha256 identify the transform under test; oracleDigest identifies the harness. A regeneration that changes any expected.json without changing one of these three is a genuine non-determinism and must be investigated, not re-recorded."
+  },
+  "checkedProperties": {
+    "deterministicAtFixedClock": {
+      "cases": 19,
+      "of": 19,
+      "how": "each case run twice at clockPinIso through oracle/run-transform.js; document arrays compared"
+    },
+    "clockIndependent": {
+      "cases": 19,
+      "of": 19,
+      "how": "each case re-run at 2026-12-04T23:40:00.000Z, on the far side of both a London date boundary and the BST/GMT boundary"
+    },
+    "timezoneIndependent": {
+      "status": "CHECK IT YOURSELF, IT IS ONE COMMAND",
+      "how": "TZ=Asia/Tokyo IR_ORACLE_NO_TZ_PIN=1 node pinning/build-pinning.js, then diff the expected.json digests against a normal run. IR_ORACLE_NO_TZ_PIN is required: without it oracle/lib/stubs.js overwrites TZ with Europe/London, and the probe would test that overwrite rather than the transform.",
+      "lastRecordedResult": "see pinning/README.md — the result is recorded there with the date it was run, never inferred from this file"
+    }
+  },
+  "oracle": {
+    "runner": "parity-pack/oracle/run-transform.js",
+    "replay": "node oracle/run-transform.js --case pinning/<id>",
+    "rebuild": "node pinning/build-pinning.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "note": "Every DEMONSTRATED entry below was produced by running the REAL Node function-app code from cpp-context-azure-legalaidagency/azure-functions/durable-functions. Nothing is re-implemented and no expected.json was written by hand."
+  },
+  "comparatorRules": "Field-order-insensitive, array-order-sensitive, and absent != null != empty. A key missing from expected.json was undefined in Node and is absent from the POSTed body; assert key-absence explicitly wherever an assertion below says so.",
+  "howToUse": [
+    "Read `assertion` first. It is the contract for the JUnit pinning test and it is deliberately long: it names the exact fields, the exact values, and the plausible-looking Java implementation that would break the pin.",
+    "expected.json is the outbound add-informant-register document array as ProcessOutboundInformantRegister receives it (InformantRegisterOrchestrator/index.js:47). JSON null means the chain produced no array; meta.json observed.outcome says why.",
+    "Where an assertion says \"assert key-absent\", assert absence of the key, not a null value and not an empty collection. Node distinguishes all three on the wire.",
+    "Never regenerate an expected.json to make a Java test pass. Regeneration is only ever a response to the NODE source changing, and the Node app is frozen.",
+    "A pinned behaviour may only change in a commit that also adds the corresponding row to service-cp-crime-informant-register/doc/DEVIATIONS.md. That rule is the whole purpose of this directory."
+  ],
+  "deviationsRegisterMapping": {
+    "DEVIATIONS.md #1 (verified Redis TLS)": "d14-redis-tls-verification-disabled",
+    "DEVIATIONS.md #2 (transport reliability)": "d01-final-post-unretried-and-swallowed and d02-orchestrator-always-reports-success — these two are the legacy behaviour the deviation replaces",
+    "DEVIATIONS.md #3 (alert wiring waiver, CRA-220 only)": "v03-alert-wiring-waiver"
+  },
+  "decisionsStillOpen": [
+    "Inbound null propagating into a contract-violating outbound body — parity-pack/README.md §5 finding 6. Needs a decision with the Results team: reproduce the null or dead-letter as a contract violation. Not pinned here, because pinning it would presume the answer.",
+    "s05-invalid-date-z-shipped-as-a-timestamp and d11-duration-dates-parsed-as-ddmmyyyy both POST the literal string \"Invalid dateZ\" into date-time fields. Same decision, same conversation.",
+    "D4 / D5 subscription matching — blocked on the SIT now_subscriptions verification in the design doc §13 Q8. Until that lands, the current behaviour is pinned as-is.",
+    "D8 offence duplication and D9 timestamp labelling — both need a business decision before any correction; pinned as-is meanwhile."
+  ],
+  "counts": {
+    "total": 26,
+    "demonstrated": 19,
+    "blocked": 7
+  },
+  "entries": [
+    {
+      "id": "d01-final-post-unretried-and-swallowed",
+      "defect": "D1",
+      "description": "The outbound POST uses raw axios, is never retried, and every error is swallowed",
+      "status": "BLOCKED",
+      "blockedReason": "Outside the oracle. The oracle records the document array that ProcessOutboundInformantRegister RECEIVES (InformantRegisterOrchestrator/index.js:47); it deliberately does not run the POST leg, and oracle/lib/stubs.js:150 makes any axios.post throw so that a new outbound call fails loudly. There is therefore no input that makes the oracle exhibit this defect — it is a property of the delivery leg, not of the transform.",
+      "nodeEvidence": [
+        "ProcessOutboundInformantRegister/index.js:19-24 — `axiosStatic.post(...)` called directly — CommonUtility/AxiosRetryWrapper.js is not imported by this file at all, so the POST has no retry of any kind.",
+        "ProcessOutboundInformantRegister/index.js:25-27 — catch block logs via context.error and returns undefined; the caller cannot tell a 500 from a 201.",
+        "ProcessOutboundInformantRegister/index.js:33-35 — `for (let outboundInformantRegister of outboundInformantRegisters) await this.sendToInformantRegister(...)` — the loop continues regardless of outcome, so authority 2 is POSTed after authority 1 has silently failed.",
+        "ProcessOutboundInformantRegister/index.js:47-49 — the handler-level catch swallows a second time."
+      ],
+      "fixture": null,
+      "observed": null,
+      "demonstrationNote": null,
+      "testLevel": "Java: RegisterSubmissionClient adapter test (WireMock) + DistributionPipeline unit test. NOT a golden-parity test — there is no corpus case for it.",
+      "assertion": "Assert that the Java submission client does the OPPOSITE of the Node code, and that the difference is a REGISTERED deviation (doc/DEVIATIONS.md entry 2), not an accident. Specifically: (a) a 500 from add-informant-register must be retried and, when retries are exhausted, must surface as a TransientPipelineException that reaches the listener and causes abandon() — assert the exception type and the settlement call, not just \"it did not throw\"; (b) a 4xx other than 429 must surface as a NonTransientPipelineException and cause deadLetter() with a reason code; (c) a failure POSTing authority 1 of N must NOT be followed by a silent POST of authority 2 with the request recorded COMPLETED — assert the persisted processed_request status and the per-authority processed_output rows. If a future change makes any of these paths return normally after logging, THIS TEST MUST FAIL: swallowing the POST error is the single defect this service was built to remove, and the Node behaviour is only permitted to survive as a documented DEVIATIONS.md row, never as code."
+    },
+    {
+      "id": "d02-orchestrator-always-reports-success",
+      "defect": "D2",
+      "description": "Every failure ends as an orchestration that \"completed\"",
+      "status": "BLOCKED",
+      "blockedReason": "Outside the oracle. oracle/lib/pipeline.js runs activities 2-4 directly with the orchestrator's arguments; the orchestrator function itself is never executed (it is a Durable generator that needs the Functions host). The oracle reports the distinction the orchestrator loses — meta.json `outcome` is one of documents / no-fragments / swallowed-exception / uncaught-exception — which is exactly the information D2 destroys.",
+      "nodeEvidence": [
+        "InformantRegisterOrchestrator/index.js:54-57 — returns `{Success: true, Output: \"... executed successfully ...\"}` on the happy path — but the path taken when SetInformantRegister returned undefined (line 27 guard) reaches the SAME return, so \"no documents produced\" and \"two documents POSTed\" are indistinguishable to the caller.",
+        "InformantRegisterOrchestrator/index.js:59-65 — the catch-all returns `{Success: false, Error: err}` as a NORMAL orchestration result. Durable Functions marks the orchestration Completed, not Failed, so nothing retries and nothing alerts.",
+        "InformantRegisterOrchestrator/index.js:19, 27 — the two guards (`if (hearingResultedObj)`, `if (informantRegisters)`) fall through to the success return with no else branch and no log distinguishing them."
+      ],
+      "fixture": null,
+      "observed": null,
+      "demonstrationNote": null,
+      "testLevel": "Java: DistributionPipeline unit test + InformantRegisterMessageListener settlement test.",
+      "assertion": "Assert that the three outcomes the Node orchestrator collapses into \"Success\" stay DISTINCT and each is persisted before settlement: (a) documents produced -> processed_request.status COMPLETED and complete(); (b) no fragments produced -> processed_request.status COMPLETED with failureReason \"no-authorities\" (design_rules.md: a business outcome, not an error) and complete(); (c) any exception -> status FAILED or RETRYING with a reason, and deadLetter() or abandon() respectively. The test must assert on the PERSISTED status and the settlement method, because that pair is the thing D2 removed. A change that makes (b) and (c) both land on COMPLETED, or that lets any path return without a persisted status, has re-created D2 and MUST fail this test."
+    },
+    {
+      "id": "d03-refdata-failure-degrades-to-no-recipients",
+      "defect": "D3",
+      "description": "A reference-data failure silently produces a register with no recipients",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "CommonUtility/AxiosRetryWrapper.js:34 — `if (retriesLeft <= 1 || (error.response && status <= 429)) throw error;` — any response-bearing status at or below 429 is rethrown immediately, so 400, 401, 403, 404 and 429 are NEVER retried. Only >429 (i.e. 5xx) and connection-level errors reach the retry.",
+        "CommonUtility/AxiosRetryWrapper.js:38 — `await sleep(interval)` — a fixed interval, no exponential back-off and no Retry-After handling.",
+        "CommonUtility/AxiosRetryWrapper.js:10-11 — DEFAULT_RETRY_COUNT / DEFAULT_RETRY_INTERVAL are read from the environment ONCE at module load, so a config change needs a restart.",
+        "NowsHelper/service/ReferenceDataService.js:50-53 — the catch returns `null`. The failure is now indistinguishable from \"reference data legitimately returned nothing\".",
+        "InformantRegisterSubscriptions/index.js:22-25 — `if (!subscriptionsMetaData || ...) { log(\"No Subscriptions found.\"); return informantRegisters; }` — the fragments flow on with matchedSubscriptions still undefined.",
+        "OutboundInformantRegister/index.js:44 — `new RecipientMapper(this.context, informantRegister.matchedSubscriptions || [], ...)` — the `|| []` converts the outage into an empty recipient list.",
+        "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/RecipientMapper.js:36-38 — returns undefined when no recipients were built, so the `recipients` key is absent from the POSTed body entirely."
+      ],
+      "fixture": {
+        "caseDir": "pinning/d03-refdata-failure-degrades-to-no-recipients",
+        "hearing": "pinning/d03-refdata-failure-degrades-to-no-recipients/inputs/hearing.json",
+        "subscriptions": null,
+        "params": "pinning/d03-refdata-failure-degrades-to-no-recipients/inputs/params.json",
+        "expected": "pinning/d03-refdata-failure-degrades-to-no-recipients/expected.json",
+        "meta": "pinning/d03-refdata-failure-degrades-to-no-recipients/meta.json"
+      },
+      "observed": {
+        "outcome": "documents",
+        "documentCount": 2,
+        "swallowedErrorCount": 3,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case + a HearingPayloadSource/reference-data adapter test.",
+      "assertion": "The input is the prosecution-case fixture with majorCreditorCode CDE04 on case 0 — the SAME hearing as d04-subscription-matched-on-major-creditor-code, where reference data answers normally and TFL gets recipients. Here the now-subscriptions GET fails with HTTP 429. Assert EXACTLY: (1) two documents are still produced, for TFL and TVL, in that order; (2) NEITHER document has a `recipients` key at all — assert key-absent, not `recipients == null` and not `recipients.isEmpty()`, because absent/null/empty are three different wire bodies (README.md §3 comparator rules); (3) every other field is byte-identical to the d04 control document. The point of this pin is that a transient reference-data outage is INVISIBLE in the outbound body: Node ships a register that quietly reaches nobody. The Java port must reproduce these documents ONLY if it also classifies the refdata failure as transient and abandons/retries the message rather than POSTing this body — so the Java test MUST additionally assert that the pipeline raised a classified transient failure. A Java implementation that produces these two documents and reports success has reproduced the defect instead of the behaviour, and this test MUST fail it. NOT observable through the oracle, and therefore NOT assertable from this case: the number of GET attempts. 429 is attempted once and HTTP 500 twice (DEFAULT_PUBLISH_RETRY_COUNT=2 under the oracle, oracle/lib/stubs.js:92), but both produce the identical document array — compare recorded/mut__prosecution-case__refdata-unavailable__http-500. Retry policy must therefore be asserted in the adapter test, never inferred from a golden document."
+    },
+    {
+      "id": "d04-subscription-matched-on-major-creditor-code",
+      "defect": "D4",
+      "description": "ouCode fed to the matcher is majorCreditorCode; prosecutionAuthorityOuCode is never used for matching",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "InformantRegisterSubscriptions/index.js:47 — `subscriptionObj.ouCode = informantRegister.majorCreditorCode;` — the field named \"ouCode\" is populated from the major-creditor code.",
+        "NowsHelper/service/SubscriptionsService.js:48-50 — `matchProsecutor(subscription, ouCode) => subscription.informantCode && subscription.informantCode === ouCode` — so informantCode is compared against a major-creditor code.",
+        "NowsHelper/service/SubscriptionsService.js:52-54 — `matchCourtHouse(subscription, ouCode) => subscription.selectedCourtHouses && subscription.selectedCourtHouses.includes(ouCode)` — likewise.",
+        "SetInformantRegister/index.js:87 — `informantRegisterFragment.prosecutionAuthorityOuCode = detail.prosecutionAuthorityOUCode;` — the OU code is carried on the fragment.",
+        "OutboundInformantRegister/index.js:25 — ...and copied straight to the outbound document. A whole-repo grep for prosecutionAuthorityOuCode / prosecutionAuthorityOUCode outside test files returns only SetInformantRegister/index.js:14,46,62,87, OutboundInformantRegister/index.js:25, the model field, and an unrelated NOWs ProsecutorMapper — it is never read by the matcher."
+      ],
+      "fixture": {
+        "caseDir": "pinning/d04-subscription-matched-on-major-creditor-code",
+        "hearing": "pinning/d04-subscription-matched-on-major-creditor-code/inputs/hearing.json",
+        "subscriptions": "pinning/d04-subscription-matched-on-major-creditor-code/inputs/subscriptions.json",
+        "params": "pinning/d04-subscription-matched-on-major-creditor-code/inputs/params.json",
+        "expected": "pinning/d04-subscription-matched-on-major-creditor-code/expected.json",
+        "meta": "pinning/d04-subscription-matched-on-major-creditor-code/meta.json"
+      },
+      "observed": {
+        "outcome": "documents",
+        "documentCount": 2,
+        "swallowedErrorCount": 0,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case.",
+      "assertion": "Four subscriptions are supplied, all with isInformantRegisterSubscription true, all forDistribution + emailDelivery with a recipient. The hearing gives TFL majorCreditorCode \"CDE04\" and prosecutionAuthorityOuCode \"GAFTL00\". Assert EXACTLY: the TFL document's `recipients` array contains exactly two entries, in this order — the one whose subscription informantCode is \"CDE04\" (recipientName \"match-informant-code-is-major-creditor\") and the one whose subscription selectedCourtHouses is [\"CDE04\"] (recipientName \"match-court-house-is-major-creditor\"); and it contains NEITHER of the two subscriptions keyed on \"GAFTL00\", the real OU code. Also assert the TVL document, which has no majorCreditorCode, has NO `recipients` key at all. Write the assertion on recipientName so the failure message names which subscription leaked in. THIS IS THE HIGHEST-RISK PIN IN THE PACK. The field name \"ouCode\" makes the Node code look like a typo, and a Java developer porting SubscriptionMatcher will be strongly tempted to match on prosecutionAuthorityOuCode \"because that is obviously what was meant\". If they do, this test fails — which is the point. D4 is a priority-2 defect: it is only allowed to change AFTER the SIT now_subscriptions verification named in the design doc §13 Q8, and then only via a doc/DEVIATIONS.md entry. Until that entry exists, matching on the OU code is a defect, not a fix."
+    },
+    {
+      "id": "d05-matcher-has-no-informant-register-branch",
+      "defect": "D5",
+      "description": "Informant-register subscriptions match through the NOW / EDT / prison-court-register branches, never an IR branch",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "NowsHelper/service/SubscriptionsService.js:14-45 — getSubscriptions has exactly four branches: matchCourtHouse (:19), matchProsecutor (:24), `subscription.isNowSubscription || subscription.isEDTSubscription` (:29), and `subscription.isPrisonCourtRegisterSubscription` (:39). There is no `isInformantRegisterSubscription` branch. The flag is used only as a pre-filter at InformantRegisterSubscriptions/index.js:28.",
+        "NowsHelper/service/SubscriptionsService.js:56-59 — `matchCpsProsecuted` is declared and never called — a whole-repo grep for the identifier outside test files returns only this definition. Dead code.",
+        "NowsHelper/service/SubscriptionsService.js:114, 116, 208-209 — ``function matchVocabularyRules` (:114) opens with `if (subscription.applySubscriptionRules)` (:116) and, when that is falsy, skips the entire gate and reaches `return true` (:208-209). A NOW-flagged subscription with applySubscriptionRules false — which is every real informant-register subscription — matches unconditionally.",
+        "InformantRegisterSubscriptions/index.js:28 — the only use of isInformantRegisterSubscription in this flow: a filter, applied before the matcher ever sees the list."
+      ],
+      "fixture": {
+        "caseDir": "pinning/d05-matcher-has-no-informant-register-branch",
+        "hearing": "pinning/d05-matcher-has-no-informant-register-branch/inputs/hearing.json",
+        "subscriptions": "pinning/d05-matcher-has-no-informant-register-branch/inputs/subscriptions.json",
+        "params": "pinning/d05-matcher-has-no-informant-register-branch/inputs/params.json",
+        "expected": "pinning/d05-matcher-has-no-informant-register-branch/expected.json",
+        "meta": "pinning/d05-matcher-has-no-informant-register-branch/meta.json"
+      },
+      "observed": {
+        "outcome": "documents",
+        "documentCount": 2,
+        "swallowedErrorCount": 0,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case.",
+      "assertion": "Three subscriptions are supplied, ALL with isInformantRegisterSubscription true and NONE with an informantCode or selectedCourtHouses that matches anything in the hearing (all three carry informantCode \"ZZZ99\"; the hearing gives TFL majorCreditorCode \"CDE04\" and TVL none at all). Assert EXACTLY: BOTH documents — TFL and TVL — have a `recipients` array of length 2 containing, in this order, \"matched-via-now-branch\" (isNowSubscription true) and \"matched-via-prison-court-register-branch\" (isPrisonCourtRegisterSubscription true); and NEITHER contains \"not-matched-informant-register-only\" (isInformantRegisterSubscription true and nothing else). Assert on BOTH documents, not just TFL: TVL has no major-creditor code at all, so the fact that it still collects both recipients proves these two branches never consult the authority. Two things are pinned. (1) Being an informant-register subscription is, by itself, not a reason to be matched; being a NOW or prison-court-register subscription is. (2) Those two branches are authority-blind, so one such subscription fans the register out to every authority in the hearing. A Java SubscriptionMatcher written from the field names — \"this is the informant register flow, so match isInformantRegisterSubscription\" — gets the opposite answer on all three subscriptions and MUST fail this test. D5 is priority-2: changing it needs the same SIT reference-data verification as D4 (design doc §13 Q8) plus a DEVIATIONS.md entry. Separately, and NOT assertable from any oracle case: matchCpsProsecuted (SubscriptionsService.js:56-59) is unreachable dead code. Do not port it. If a Java port contains a live cpsProsecuted matching branch, that is an unregistered behaviour change even though no golden case can catch it — cover it with a static check or a reviewer note, not with a test over this corpus."
+    },
+    {
+      "id": "d06-empty-defendant-fragment-loses-whole-hearing",
+      "defect": "D6",
+      "description": "One authority with no defendants destroys the register for every other authority",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "SetInformantRegister/index.js:92-94 — `if (informantRegisterFragment.registerDefendants) { push }` — registerDefendants comes from getDefendantsFromContext (:121-139), which always returns an Array. `[]` is truthy, so the guard never rejects anything and an authority with no defendants gets a fragment.",
+        "SetInformantRegister/index.js:138 — `return defendantContextBaseList.filter(...)` — an Array, empty when no masterDefendantId matches.",
+        "InformantRegisterSubscriptions/index.js:46 — `subscriptionObj.vocabulary = informantRegister.registerDefendants[0].vocabulary;` — no length check. On the empty fragment this throws TypeError: Cannot read properties of undefined.",
+        "InformantRegisterSubscriptions/index.js:89-92 — the throw is caught and logged; the handler returns undefined for the WHOLE hearing, not just the bad fragment.",
+        "OutboundInformantRegister/index.js:17 — `this.informantRegisterWithSubscriptions.length` on that undefined throws a second TypeError...",
+        "OutboundInformantRegister/index.js:57-59 — ...which is swallowed in turn. No documents, no POST, no error anywhere the platform can see."
+      ],
+      "fixture": {
+        "caseDir": "pinning/d06-empty-defendant-fragment-loses-whole-hearing",
+        "hearing": "pinning/d06-empty-defendant-fragment-loses-whole-hearing/inputs/hearing.json",
+        "subscriptions": "pinning/d06-empty-defendant-fragment-loses-whole-hearing/inputs/subscriptions.json",
+        "params": "pinning/d06-empty-defendant-fragment-loses-whole-hearing/inputs/params.json",
+        "expected": "pinning/d06-empty-defendant-fragment-loses-whole-hearing/expected.json",
+        "meta": "pinning/d06-empty-defendant-fragment-loses-whole-hearing/meta.json"
+      },
+      "observed": {
+        "outcome": "swallowed-exception",
+        "documentCount": null,
+        "swallowedErrorCount": 2,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case + a DistributionPipeline failure-classification test.",
+      "assertion": "The input is the prosecution-case fixture with prosecutionCases[1] (TVL) emptied of defendants and NOTHING else changed. TFL is untouched and, on its own, produces a perfectly good document — recorded/base__prosecution-case/expected.json proves it. Assert EXACTLY: (1) expected.json is JSON null — the chain produced NO document array at all, so the healthy TFL register is lost along with the broken TVL one; (2) meta.json observed.outcome is \"swallowed-exception\"; (3) meta.json observed.swallowedErrors contains a TypeError. The Java port MUST produce zero documents for this input — that is the parity requirement — and MUST NOT produce a TFL-only document, because dropping the empty fragment and carrying on is the FIX described in the design register (D6, priority 1), and shipping a fix silently is exactly what this pack exists to prevent. It becomes correct behaviour only when doc/DEVIATIONS.md carries an entry for it; at that point this test is updated in the same commit as the deviation, never before. The Java port MUST ALSO, unlike Node, reach an explicit classified failure for this input rather than returning quietly: assert the pipeline raised a non-transient failure and the request was persisted FAILED with a reason before dead-lettering."
+    },
+    {
+      "id": "d07-unparseable-register-date-loses-hearing",
+      "defect": "D7",
+      "description": "An unparseable sharedTime destroys the hearing three catch blocks deep",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "InformantRegisterSubscriptions/index.js:17-18 — the defect as written in the register: `informantRegisters.find(register => register.registerDate)` then `.registerDate` on the result. UNREACHABLE AS WRITTEN — see the demonstration note below.",
+        "SetInformantRegister/index.js:83 — `registerDate = dateService.getLocalDateTime(this.sharedTime)`.",
+        "NowsHelper/service/DateService.js:36-38 — getLocalDateTime always returns a String — `moment.tz(...).format(...) + \"Z\"` — which for an unparseable input is the literal \"Invalid dateZ\". A non-empty String is truthy, so the .find at InformantRegisterSubscriptions/index.js:17 ALWAYS matches the first fragment and the TypeError at :18 cannot fire from this path.",
+        "NowsHelper/service/ReferenceDataService.js:38 — THE REACHABLE TWIN: `const orderDate = new Date(on).toISOString().slice(0, 10);` sits OUTSIDE the try block, which only starts at line 41. `new Date(\"Invalid dateZ\").toISOString()` throws RangeError: Invalid time value, and no catch in this function sees it.",
+        "InformantRegisterSubscriptions/index.js:89-92 — the RangeError escapes to the activity catch, is logged, and the activity returns undefined.",
+        "OutboundInformantRegister/index.js:17, 57-59 — `.length` on that undefined throws, and is swallowed. Same terminal silence as D6."
+      ],
+      "fixture": {
+        "caseDir": "pinning/d07-unparseable-register-date-loses-hearing",
+        "hearing": "pinning/d07-unparseable-register-date-loses-hearing/inputs/hearing.json",
+        "subscriptions": "pinning/d07-unparseable-register-date-loses-hearing/inputs/subscriptions.json",
+        "params": "pinning/d07-unparseable-register-date-loses-hearing/inputs/params.json",
+        "expected": "pinning/d07-unparseable-register-date-loses-hearing/expected.json",
+        "meta": "pinning/d07-unparseable-register-date-loses-hearing/meta.json"
+      },
+      "observed": {
+        "outcome": "swallowed-exception",
+        "documentCount": null,
+        "swallowedErrorCount": 2,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": "D7 as written in the design register (a TypeError at InformantRegisterSubscriptions/index.js:18) is UNREACHABLE through the orchestrator, and the pack says so rather than inventing a case for it: SetInformantRegister/index.js:83 always assigns a non-empty String, so the .find always matches. What IS reachable — and is the same failure in the same region, \"the register date is not usable\" — is the RangeError at ReferenceDataService.js:38. That is what this case records.",
+      "testLevel": "Java: golden-parity test over this case + a DistributionCommand validation test.",
+      "assertion": "The input is the prosecution-case fixture, unmodified, with sharedTime \"not-a-timestamp\". Assert EXACTLY: (1) expected.json is JSON null — no documents; (2) meta.json observed.outcome is \"swallowed-exception\"; (3) observed.swallowedErrors mentions RangeError. Parity requirement for the Java port: zero documents. But the Java port MUST NOT get there by the Node route. Two things must be asserted about HOW: (a) an unparseable sharedTime must be rejected as a non-transient contract violation with a reason code, dead-lettered, and persisted FAILED — never allowed to travel through the pipeline as the string \"Invalid dateZ\"; (b) the string \"Invalid date\" must never appear in any field of any document the Java port emits. Sub-assertion (b) is the one that catches a lazy port: a Java implementation that mirrors moment's forgiving formatting will happily ship \"Invalid dateZ\" into a registerDate the frozen schema types as a date-time, exactly as Node does elsewhere (see s05-invalid-date-z-shipped-as-a-timestamp). Note for whoever maintains this: if someone \"fixes\" the Node-side D7 line, this case does not change at all — the case pins the reachable RangeError, not the unreachable TypeError."
+    },
+    {
+      "id": "d08-offences-duplicated-onto-every-case",
+      "defect": "D8",
+      "description": "Every case entry carries the defendant's full offence list, not its own offences",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/ProsecutionCaseOrApplicationMapper.js:85-87 — `getOffenceMapper() { return new OffenceMapper(this.hearingJson, this.informantRegister, this.registerDefendant).build(); }` — no case or application argument is passed in.",
+        "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/ProsecutionCaseOrApplicationMapper.js:26, 41 — the SAME zero-argument call is made once per case (:26) and once per application (:41), inside loops over the defendant's cases and applications.",
+        "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/OffenceMapper.js:16-28 — build() loops over EVERY prosecutionCase belonging to the authority (`for (let prosecutionCase of this.hearing.prosecutionCases || [])`, filtered only by prosecutionAuthorityId at :17) and accumulates into one derivedOffences array.",
+        "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/OffenceMapper.js:24 — `derivedOffence.originatingCaseUrn = this.deriveCaseUrn(prosecutionCase.prosecutionCaseIdentifier);` — the offence DOES carry the reference of the case it really came from. So the duplicated entries are self-contradictory: caseOrApplicationReference says one case, the nested offence's originatingCaseUrn says another."
+      ],
+      "fixture": {
+        "caseDir": "pinning/d08-offences-duplicated-onto-every-case",
+        "hearing": "pinning/d08-offences-duplicated-onto-every-case/inputs/hearing.json",
+        "subscriptions": "pinning/d08-offences-duplicated-onto-every-case/inputs/subscriptions.json",
+        "params": "pinning/d08-offences-duplicated-onto-every-case/inputs/params.json",
+        "expected": "pinning/d08-offences-duplicated-onto-every-case/expected.json",
+        "meta": "pinning/d08-offences-duplicated-onto-every-case/meta.json"
+      },
+      "observed": {
+        "outcome": "documents",
+        "documentCount": 2,
+        "swallowedErrorCount": 0,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case.",
+      "assertion": "The hearing gives TFL two prosecution cases (references TFL4359536 and TFL-SECOND-CASE) that share one master defendant, each case carrying one distinct offence (PS90010 orderIndex 1 in the first, XX99999 orderIndex 7 in the second). Assert EXACTLY, on the TFL document, for the defendant that appears on both cases: (1) prosecutionCasesOrApplications has exactly 2 entries, with caseOrApplicationReference \"TFL4359536\" then \"TFL-SECOND-CASE\" in that order; (2) BOTH entries have an `offences` array of length 2; (3) in BOTH entries the offences are [offenceCode PS90010 with originatingCaseUrn \"TFL4359536\", offenceCode XX99999 with originatingCaseUrn \"TFL-SECOND-CASE\"] — i.e. the entry whose caseOrApplicationReference is \"TFL4359536\" still contains the OTHER case's offence, and that offence still points back at the other case. Assert the contradiction explicitly and by name; a test that only checks \"offences.size() == 2\" would pass a correct implementation too and would pin nothing. D8 is priority-2 in the design register: scoping offences to their own case changes what prosecuting authorities receive and needs a business decision plus a DEVIATIONS.md entry. A Java OffenceMapper that takes a caseId — the obvious, tidy design — produces one offence per entry and MUST fail this test until that decision is recorded."
+    },
+    {
+      "id": "d09-bst-local-time-labelled-as-utc",
+      "defect": "D9",
+      "description": "Timestamps are London local time with a literal Z appended — BST values are an hour wrong",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "NowsHelper/service/DateService.js:36-38 — getLocalDateTime: `moment_timeZone.tz(dateString, \"Europe/London\").format('YYYY-MM-DDTHH:mm:ss') + 'Z'` — the value is converted INTO London local time and then given a UTC designator. During BST the printed instant is one hour later than the instant it claims to be.",
+        "SetInformantRegister/index.js:83 — registerDate goes through it.",
+        "NowsHelper/service/RegisterFragmentService.js:50, 52 — hearingDate goes through it.",
+        "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/ResultDataMapper.js:15 — nextHearingDate goes through it.",
+        "NowsHelper/service/DateService.js:42 — formatDateAndGetLocalDateTime — durationStartDate / durationEndDate — appends the same literal Z.",
+        "OutboundInformantRegister/index.js:48 — populateFileName uses getLocalDate (DateService.js:29, 'YYYY-MM-DD' London local), so around midnight the filename date and the registerDate date can disagree with UTC."
+      ],
+      "fixture": {
+        "caseDir": "pinning/d09-bst-local-time-labelled-as-utc",
+        "hearing": "pinning/d09-bst-local-time-labelled-as-utc/inputs/hearing.json",
+        "subscriptions": "pinning/d09-bst-local-time-labelled-as-utc/inputs/subscriptions.json",
+        "params": "pinning/d09-bst-local-time-labelled-as-utc/inputs/params.json",
+        "expected": "pinning/d09-bst-local-time-labelled-as-utc/expected.json",
+        "meta": "pinning/d09-bst-local-time-labelled-as-utc/meta.json"
+      },
+      "observed": {
+        "outcome": "documents",
+        "documentCount": 2,
+        "swallowedErrorCount": 0,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case, with the GMT control named below.",
+      "assertion": "The input is the prosecution-case fixture with sharedTime \"2020-06-01T10:00:00Z\" — 1 June, British Summer Time, 11:00 in London. Assert EXACTLY, on both documents: registerDate equals the STRING \"2020-06-01T11:00:00Z\", and fileName equals \"InformantRegister_TFL_2020-06-01.csv\" / \"InformantRegister_TVL_2020-06-01.csv\". Assert on the exact string. Do NOT parse it into an Instant/OffsetDateTime and compare instants — that comparison passes for both the right answer and the wrong one and pins nothing. THE CONTROL: recorded/base__outbound-hearing has sharedTime \"2020-01-20T11:00:00Z\" (GMT) and registerDate \"2020-01-20T11:00:00Z\" — unchanged, because London is UTC in January. The pair proves the +1h is a BST artefact, not a constant. A java.time port that does the honest thing — sharedTime.atZone(ZoneId.of(\"Europe/London\")).toOffsetDateTime() rendered as \"2020-06-01T11:00:00+01:00\", or the instant re-rendered as \"2020-06-01T10:00:00Z\" — is CORRECT and MUST STILL FAIL this test. D9 is priority-2: prosecuting authorities parse these values out of the CSV (design doc §13 Q9), so the correction cannot ship before that check and a DEVIATIONS.md entry. This test is the tripwire that makes an unauthorised correction visible in CI on the day it is written."
+    },
+    {
+      "id": "d10-latest-ordered-date-catch-block-throws",
+      "defect": "D10",
+      "description": "The date-sort error handler is itself broken, so a bad orderedDate loses the hearing",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "NowsHelper/service/RegisterFragmentService.js:30-34 — `const getLatestOrderedDate = (datesToSort) => { try { [...datesToSort].sort((a,b) => dateService.parse(b).getTime() - dateService.parse(a).getTime()) ...` — a module-scope ARROW function, so `this` is the module scope, not an object with a context.",
+        "NowsHelper/service/DateService.js:10-18 — parse(dateString, format = 'YYYY/MM/DD') throws `new Error('Invalid date format')` when moment cannot parse. Note the default format is slash-separated while the fixture data is hyphen-separated ISO; moment's non-strict parsing tolerates the mismatch, which is why this has never been noticed.",
+        "NowsHelper/service/RegisterFragmentService.js:38-41 — `catch (ex) { //TODO HOW THE ORCHESTRATOR WILL HANDLE THIS.  this.context.log(...) }` — `this.context` is undefined here, so the catch block throws TypeError: Cannot read properties of undefined (reading 'log'). The error handler destroys the error.",
+        "SetInformantRegister/index.js:74, 159-161 — getLatestOrderedDate is called at :74, outside any inner try, so the TypeError escapes to the activity catch at :159 and the hearing is lost."
+      ],
+      "fixture": {
+        "caseDir": "pinning/d10-latest-ordered-date-catch-block-throws",
+        "hearing": "pinning/d10-latest-ordered-date-catch-block-throws/inputs/hearing.json",
+        "subscriptions": "pinning/d10-latest-ordered-date-catch-block-throws/inputs/subscriptions.json",
+        "params": "pinning/d10-latest-ordered-date-catch-block-throws/inputs/params.json",
+        "expected": "pinning/d10-latest-ordered-date-catch-block-throws/expected.json",
+        "meta": "pinning/d10-latest-ordered-date-catch-block-throws/meta.json"
+      },
+      "observed": {
+        "outcome": "swallowed-exception",
+        "documentCount": null,
+        "swallowedErrorCount": 1,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case.",
+      "assertion": "Each of the two TFL defendants is reduced to exactly ONE judicial result, and the second defendant's orderedDate is \"not/a/date\". Both details are load-bearing and neither may be \"simplified\": one result per defendant keeps DefendantContextBaseService.getLatestOrderedDate (which sorts PER DEFENDANT and would otherwise throw first — see s06-unguarded-date-parse-in-defendant-context) below the two-element threshold at which Array#sort invokes a comparator, while the two DISTINCT dates across defendants push RegisterFragmentService.getLatestOrderedDate above it. Assert EXACTLY: (1) expected.json is JSON null; (2) meta.json observed.outcome is \"swallowed-exception\"; (3) observed.swallowedErrors has exactly one entry, from SetInformantRegister, and it is a TypeError whose message names 'log' — NOT the Error(\"Invalid date format\") that was actually raised. Assert on the TypeError specifically. It is the fingerprint of the broken catch block: the error handler destroyed the diagnosis before anyone could read it, and the operator is left with a hearing that vanished and a message about a missing property. Parity requirement: zero documents. The Java port MUST NOT sort defensively past a bad date and MUST NOT pick the parseable date and carry on — either would be an unregistered fix. It MUST, unlike Node, classify and persist the failure. If a future reader is tempted to make the Java sort null-safe \"because it is obviously a bug\": it is, and fixing it is welcome, in a commit that also adds the DEVIATIONS.md row and updates this expectation."
+    },
+    {
+      "id": "s06-unguarded-date-parse-in-defendant-context",
+      "defect": "D10 (adjacent — this call site is not named in the register)",
+      "description": "DefendantContextBaseService sorts orderedDates with the same broken parser and no error handling at all",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "NowsHelper/service/DefendantContextBaseService.js:294-297 — `getLatestOrderedDate(defendantContextBase) { return defendantContextBase.results.filter(...).map(...orderedDate).sort((a, b) => dateService.parse(b).getTime() - dateService.parse(a).getTime())[0]; }` — the same dateService.parse, and here there is no try/catch of any kind.",
+        "NowsHelper/service/DefendantContextBaseService.js:51 — called once per defendant while the contexts are being built, i.e. at SetInformantRegister/index.js:71 — BEFORE getLatestOrderedDate at :74. It therefore throws first whenever a single defendant has two or more results.",
+        "SetInformantRegister/index.js:159-161 — the Error(\"Invalid date format\") reaches the activity catch unchanged and the hearing is lost."
+      ],
+      "fixture": {
+        "caseDir": "pinning/s06-unguarded-date-parse-in-defendant-context",
+        "hearing": "pinning/s06-unguarded-date-parse-in-defendant-context/inputs/hearing.json",
+        "subscriptions": "pinning/s06-unguarded-date-parse-in-defendant-context/inputs/subscriptions.json",
+        "params": "pinning/s06-unguarded-date-parse-in-defendant-context/inputs/params.json",
+        "expected": "pinning/s06-unguarded-date-parse-in-defendant-context/expected.json",
+        "meta": "pinning/s06-unguarded-date-parse-in-defendant-context/meta.json"
+      },
+      "observed": {
+        "outcome": "swallowed-exception",
+        "documentCount": null,
+        "swallowedErrorCount": 1,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case.",
+      "assertion": "This is the byte-identical prosecution-case fixture with ONE orderedDate changed to \"not/a/date\", and nothing else — in particular the judicial results are NOT truncated, so each defendant keeps the fixture's two results. Assert EXACTLY: (1) expected.json is JSON null; (2) observed.outcome is \"swallowed-exception\"; (3) observed.swallowedErrors names Error \"Invalid date format\" raised in SetInformantRegister — NOT a TypeError. Compare with d10-latest-ordered-date-catch-block-throws, which is the SAME bad date in the same fixture and reports a TypeError instead. The pair is the pin: which of the two unrelated failures you get depends on how many judicial results a defendant happens to have, and neither one names the field that was actually malformed. Assert both cases; asserting only one lets a Java port that guards a single call site pass while the other stays broken. Parity requirement for both: zero documents, plus — unlike Node — a classified, persisted, dead-lettered failure that DOES name the offending field."
+    },
+    {
+      "id": "d11-duration-dates-parsed-as-ddmmyyyy",
+      "defect": "D11",
+      "description": "durationStartDate / durationEndDate are parsed with a hardcoded DD/MM/YYYY, ignoring the arguments",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/ResultDataMapper.js:24-25 — `dateService.formatDateAndGetLocalDateTime(durationElement.durationStartDate)` — called with ONE argument, so sourceFormat and targetFormat are undefined.",
+        "NowsHelper/service/DateService.js:40-43 — formatDateAndGetLocalDateTime(dateString, sourceFormat, targetFormat) forwards all three to formatDate...",
+        "NowsHelper/service/DateService.js:6-8 — ...and formatDate IGNORES sourceFormat and targetFormat entirely: `return moment(dateString, 'DD/MM/YYYY').format('YYYY-MM-DD');`. The parameters exist only to make the call sites look configurable."
+      ],
+      "fixture": {
+        "caseDir": "pinning/d11-duration-dates-parsed-as-ddmmyyyy",
+        "hearing": "pinning/d11-duration-dates-parsed-as-ddmmyyyy/inputs/hearing.json",
+        "subscriptions": "pinning/d11-duration-dates-parsed-as-ddmmyyyy/inputs/subscriptions.json",
+        "params": "pinning/d11-duration-dates-parsed-as-ddmmyyyy/inputs/params.json",
+        "expected": "pinning/d11-duration-dates-parsed-as-ddmmyyyy/expected.json",
+        "meta": "pinning/d11-duration-dates-parsed-as-ddmmyyyy/meta.json"
+      },
+      "observed": {
+        "outcome": "documents",
+        "documentCount": 2,
+        "swallowedErrorCount": 0,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case.",
+      "assertion": "The hearing's offence results are replaced with the real judicialResult-with-durationElement.json fixture — whose own dates are \"26/02/2019\" and \"26/07/2021\", i.e. the producer really does send DD/MM/YYYY — and the two dates are then changed to expose the parse: durationStartDate \"03/04/2019\" (DD/MM/YYYY) and durationEndDate \"2021-07-26\" (ISO). Assert EXACTLY, on the TFL document's single offence result, resultData: (1) durationStartDate is the STRING \"2019-04-03T00:00:00Z\" — the DD/MM/YYYY input read as 3 April, correctly for this producer; (2) durationEndDate is the STRING \"Invalid dateZ\" — the ISO input is NOT understood, moment returns the literal \"Invalid date\", and DateService.js:42 appends \"Z\" and POSTs it into a field the frozen contract types as a date-time; (3) durationValue is the STRING \"5\" and secondaryDurationValue the STRING \"2\", not numbers (ResultDataMapper.js:21,23 call .toString()); (4) durationUnit \"M\", secondaryDurationUnit \"Y\". Assertion (2) is the one that matters. It shows the hardcoded parse is not a harmless mislabel — a date arriving in any format other than DD/MM/YYYY is silently converted into a garbage string and shipped. A java.time port using ISO_LOCAL_DATE, or a lenient multi-format parser that gets both dates right, disagrees with this recording on both fields and MUST fail. D11 is priority-3 but the same rule applies: correcting the parse changes values prosecuting authorities read, so it ships with a DEVIATIONS.md entry or it does not ship. See also s05-invalid-date-z-shipped-as-a-timestamp — the same \"Invalid dateZ\" leak, reached from a different direction on an unmodified fixture."
+    },
+    {
+      "id": "d12-groupid-only-from-group-master-case",
+      "defect": "D12 (KEEP) / sanctioned oddity \"groupId comes only from group-master prosecution cases\"",
+      "description": "groupId is emitted only when the prosecution case is a group master; applications never carry one",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "SetInformantRegister/index.js:141-145 — `getProsecutionCaseGroupId(prosecutionCase) { if (prosecutionCase.isGroupMaster) { return prosecutionCase.groupId; } }` — no else, so a non-master case yields undefined even when it HAS a groupId.",
+        "SetInformantRegister/index.js:49 — the only place groupId enters the identifier, and only for prosecution cases.",
+        "SetInformantRegister/index.js:59-65 — the court-application identifier literal has NO groupId key at all — an application-only authority can never have one.",
+        "SetInformantRegister/index.js:42, 51 — first-occurrence-wins de-duplication by prosecutionAuthorityId: if a group-master case and a non-master case share an authority, whichever comes FIRST in the array decides whether groupId is present.",
+        "OutboundInformantRegister/index.js:31 — undefined groupId means the key is absent from the POSTed body (JSON.stringify drops undefined), not null."
+      ],
+      "fixture": {
+        "caseDir": "pinning/d12-groupid-only-from-group-master-case",
+        "hearing": "pinning/d12-groupid-only-from-group-master-case/inputs/hearing.json",
+        "subscriptions": "pinning/d12-groupid-only-from-group-master-case/inputs/subscriptions.json",
+        "params": "pinning/d12-groupid-only-from-group-master-case/inputs/params.json",
+        "expected": "pinning/d12-groupid-only-from-group-master-case/expected.json",
+        "meta": "pinning/d12-groupid-only-from-group-master-case/meta.json"
+      },
+      "observed": {
+        "outcome": "documents",
+        "documentCount": 1,
+        "swallowedErrorCount": 0,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case, with the positive control named below.",
+      "assertion": "The input is the group-master-case fixture with isGroupMaster deleted and the groupId field LEFT IN PLACE on the prosecution case. Assert EXACTLY: the single document has NO `groupId` key — assert key-absent, not null and not empty string. THE POSITIVE CONTROL: recorded/base__group-master-case is the identical fixture WITH isGroupMaster, and its document has groupId \"47a08b62-e790-474b-94da-0fd406d2bcc8\" (the same value asserted by the function app's own Jest test, SetInformantRegister/test/index.test.js:218). The pair pins the rule precisely: the groupId is present in the input in BOTH cases; only the isGroupMaster flag decides whether it reaches the wire. This is a KEEP (D12), not a bug: design_rules.md names it as intended behaviour — only masters carry the group. The trap it guards against is a Java port that reads groupId wherever it finds one, which would start populating group ids on ordinary cases and on applications. That would look like a tidy-up and would silently change what Results receives."
+    },
+    {
+      "id": "d13-redis-retry-strategy-is-dead-code",
+      "defect": "D13",
+      "description": "The Redis retry configuration is a v3 option on a v4 client and does nothing",
+      "status": "BLOCKED",
+      "blockedReason": "Outside the oracle. The oracle starts AFTER HearingResultedCacheQuery (oracle/README.md §1): the hearing payload is supplied from a file, so no Redis client is ever constructed and no input can exercise this code.",
+      "nodeEvidence": [
+        "HearingResultedCacheQuery/index.js:113-125 — `retry_strategy: function (options) {...}` passed to createClient. node-redis v4 has no retry_strategy option; reconnection is configured under socket.reconnectStrategy. The whole block is inert.",
+        "HearingResultedCacheQuery/index.js:114 — the first line of that inert function references `hearingId`, which is not in scope there — so if it ever DID run it would throw ReferenceError.",
+        "HearingResultedCacheQuery/index.js:98 — `const redisMaxRetries = parseInt(process.env.REDIS_MAX_RETRIES, 10) || 3;` — assigned and never read anywhere in the file. REDIS_MAX_RETRIES is a dead environment variable."
+      ],
+      "fixture": null,
+      "observed": null,
+      "demonstrationNote": null,
+      "testLevel": "Java: none. This is a porting instruction, not a behaviour.",
+      "assertion": "There is nothing to assert and nothing to port. Record it here so that nobody, finding REDIS_MAX_RETRIES in the legacy configuration, carries it into the Spring configuration to \"preserve behaviour\" — it had no behaviour. The Java Lettuce client's retry/reconnect settings are a NEW decision to be made on their merits and documented; they are not a port of these lines. If a reviewer sees a Java property named after REDIS_MAX_RETRIES justified as legacy parity, that justification is false."
+    },
+    {
+      "id": "d14-redis-tls-verification-disabled",
+      "defect": "D14 (already a registered deviation — DEVIATIONS.md #1)",
+      "description": "The Redis connection disables certificate verification",
+      "status": "BLOCKED",
+      "blockedReason": "Outside the oracle (same reason as D13) and, in any case, not observable in the register output: the design register itself notes the defect is \"not observable in register output\".",
+      "nodeEvidence": [
+        "HearingResultedCacheQuery/index.js:107 — `rejectUnauthorized: false` inside the createClient socket options, alongside `tls: true` (:103) and `minVersion: TLSv1.2` (:104) — encryption on, identity checking off."
+      ],
+      "fixture": null,
+      "observed": null,
+      "demonstrationNote": null,
+      "testLevel": "Java: payload-source adapter configuration test, later story.",
+      "assertion": "Already a REGISTERED deviation — doc/DEVIATIONS.md row 1, approved at the design sign-off of 19 Aug 2026. The pinning obligation is inverted for this one: the test must assert that the Java Redis/Lettuce client verifies certificates against the platform CA bundle, and it must fail if anyone reintroduces a \"trust all\" or \"insecure\" mode. A golden-parity test must never be written for this defect; parity is explicitly waived here and the waiver is recorded. If the payload-source adapter ships without such a test, the deviation row is unbacked."
+    },
+    {
+      "id": "d15-committed-secrets-not-ported",
+      "defect": "D15",
+      "description": "Storage-account and Redis keys are committed to the function app repo",
+      "status": "BLOCKED",
+      "blockedReason": "Not a behaviour. No input to the transform can exhibit it; there is nothing for the oracle to record.",
+      "nodeEvidence": [
+        "local.settings.json:27 — \"REDIS_KEY\" holds a literal key value in a committed file.",
+        "local.settings.json:35 — \"APPINSIGHTS_INSTRUMENTATIONKEY\" likewise."
+      ],
+      "fixture": null,
+      "observed": null,
+      "demonstrationNote": null,
+      "testLevel": "Java: none — a CI/secret-scanning and platform obligation.",
+      "assertion": "Nothing to pin. Two obligations are recorded here so they are not lost: (1) the exposed keys need rotating regardless of this migration — that is a Platform/Security action, not a code change, and it does not become unnecessary because the function app is being retired; (2) the Java service must carry no committed connection string or key, per its own constraints (Key Vault CSI + workload identity). Enforce (2) with secret scanning in CI, not with a parity test."
+    },
+    {
+      "id": "d16-duplicate-delivery-starts-duplicate-work",
+      "defect": "D16",
+      "description": "A duplicate trigger delivery starts a second orchestration and POSTs the register twice",
+      "status": "BLOCKED",
+      "blockedReason": "Outside the oracle. The trigger and the Durable client are not run; the oracle is handed one hearing payload per invocation. The nearest thing the corpus holds is the re-share-duplicate operator (recorded/mut__*__re-share-duplicate__*), which records what a SECOND delivery of the same payload transforms into — it proves the transform is idempotent on this corpus, but it says nothing about duplicate submission, which is a delivery-leg property.",
+      "nodeEvidence": [
+        "InformantRegisterEventGridTrigger/index.js:20 — `const instanceId = await client.startNew(\"InformantRegisterOrchestrator\", {input: body});` — no instanceId is supplied, so Durable Functions mints a fresh one per call. Two deliveries of the same Event Grid event start two independent orchestrations.",
+        "InformantRegisterEventGridTrigger/index.js:18 — the only guard is `if (eventGridEvent.data.hearingId)` — presence, not novelty.",
+        "ProcessOutboundInformantRegister/index.js:19-24 — the POST is not idempotent downstream, so the second orchestration creates a second register row."
+      ],
+      "fixture": null,
+      "observed": null,
+      "demonstrationNote": null,
+      "testLevel": "Java: IdempotencyGuard + ProcessedRequestRepository integration test (Testcontainers Postgres), and a listener redelivery test.",
+      "assertion": "Assert the guarantee the design states, and no more than it. Redelivery of the same (source, requestId) must not produce a second submission: drive the listener twice with the same message and assert exactly one submission attempt reached the RegisterSubmissionClient, that the second delivery was complete()d without reprocessing, and that processed_request was not mutated by the second pass. Then assert the honest limit: the guard is a processed-log claim, so a crash between a successful POST and recording it yields at-least-once, and an AMBIGUOUS POST (timeout, dropped connection) must be RETRIED rather than assumed delivered. Write a test for that retry-on-ambiguity choice, because it is a deliberate decision that looks like a bug from the outside and someone will \"fix\" it into a silent drop. Do not write a test, or a comment, asserting exactly-once — the contract does not support it."
+    },
+    {
+      "id": "d17-letter-delivery-ignored-and-email-rules",
+      "defect": "D17 (KEEP) / sanctioned oddity \"letter-delivery recipients are ignored\"",
+      "description": "Letter-delivery subscriptions are logged and dropped; a recipient without emailAddress1 is dropped; the template defaults",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/RecipientMapper.js:15 — `if (subscription.forDistribution && subscription.emailDelivery && subscription.recipient)` — all three required. A letter-only subscription fails the emailDelivery test and produces no recipient.",
+        "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/RecipientMapper.js:27-33 — firstClassLetterDelivery / secondClassLetterDelivery are handled by logging \"Informant Register does not support ... letter delivery distribution\" and nothing else. Note these run OUTSIDE the email branch, so a subscription can be both matched for email and logged for letter.",
+        "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/RecipientMapper.js:22-24 — `if (recipient.emailAddress1 !== undefined) { recipients.push(recipient); }` — a matched, distributing, email-delivery subscription whose recipient has no emailAddress1 is dropped SILENTLY.",
+        "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/RecipientMapper.js:20 — emailTemplateName defaults to the literal 'ir_standard' when the subscription does not name one.",
+        "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/RecipientMapper.js:18-19, 41-43 — both addresses are trimmed; emailAddress2 becomes undefined (key absent) when falsy rather than null.",
+        "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/RecipientMapper.js:36-38 — when no recipient survived, the mapper returns undefined, so the outbound body has no `recipients` key at all."
+      ],
+      "fixture": {
+        "caseDir": "pinning/d17-letter-delivery-ignored-and-email-rules",
+        "hearing": "pinning/d17-letter-delivery-ignored-and-email-rules/inputs/hearing.json",
+        "subscriptions": "pinning/d17-letter-delivery-ignored-and-email-rules/inputs/subscriptions.json",
+        "params": "pinning/d17-letter-delivery-ignored-and-email-rules/inputs/params.json",
+        "expected": "pinning/d17-letter-delivery-ignored-and-email-rules/expected.json",
+        "meta": "pinning/d17-letter-delivery-ignored-and-email-rules/meta.json"
+      },
+      "observed": {
+        "outcome": "documents",
+        "documentCount": 2,
+        "swallowedErrorCount": 0,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case.",
+      "assertion": "Five subscriptions are supplied, all matching TFL on informantCode \"CDE04\", covering one rule each. Assert EXACTLY, on the TFL document's `recipients` array — length 3, in this order: [0] recipientName \"email-plus-first-class-letter\", emailTemplateName \"tpl_named\", NO emailAddress2 key; [1] recipientName \"no-template-name\", emailTemplateName exactly \"ir_standard\"; [2] recipientName \"trimmed-and-second-address\", emailAddress1 \"trimmed-and-second-address@pinning.invalid\" with NO leading or trailing whitespace, emailAddress2 \"second@pinning.invalid\". And assert ABSENT: \"letter-only-no-email-delivery\" (emailDelivery false) and \"email-delivery-without-address\" (recipient present, emailAddress1 missing). Five things are pinned at once and each must be its own assertion so a failure names itself. Two of them are traps. First: entry [0] carries firstClassLetterDelivery true AND email delivery, and is included — a Java port that treats letter delivery as \"not our channel, skip the subscription\" drops a recipient who should receive email. Second: \"email-delivery-without-address\" disappearing is the KEEP — D17 records email-only as the product behaviour — and a Java port that raises an error, or substitutes emailAddress2, or emits a recipient with a null address, changes who gets the register. Both are sanctioned oddities in design_rules.md and neither may change without a DEVIATIONS.md entry."
+    },
+    {
+      "id": "o01-group-proceedings-not-skipped",
+      "defect": "sanctioned oddity: \"group proceedings are not skipped by this flow (unlike other register flows)\"",
+      "description": "isGroupProceedings gates the court-register / court-order / prison-court-register flows but not this one",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "CourtRegisterOrchestrator/index.js:21-23 — `const isGroupProceedings = hearingResultedObj.hearing.isGroupProceedings; if (isGroupProceedings == null || isGroupProceedings == false) {` — the court-register flow SKIPS group proceedings.",
+        "CourtOrderOrchestrator/index.js:20-22 — the same guard, same shape.",
+        "PrisonCourtRegisterOrchestrator/index.js:20-22 — the same guard again.",
+        "InformantRegisterOrchestrator/index.js:19-27 — NO such guard. The only condition between the cache query and SetInformantRegister is `if (hearingResultedObj)`. A whole-repo grep for isGroupProceedings outside node_modules and test files returns exactly the three orchestrators above and nothing in the informant-register reach."
+      ],
+      "fixture": {
+        "caseDir": "pinning/o01-group-proceedings-not-skipped",
+        "hearing": "pinning/o01-group-proceedings-not-skipped/inputs/hearing.json",
+        "subscriptions": "pinning/o01-group-proceedings-not-skipped/inputs/subscriptions.json",
+        "params": "pinning/o01-group-proceedings-not-skipped/inputs/params.json",
+        "expected": "pinning/o01-group-proceedings-not-skipped/expected.json",
+        "meta": "pinning/o01-group-proceedings-not-skipped/meta.json"
+      },
+      "observed": {
+        "outcome": "documents",
+        "documentCount": 2,
+        "swallowedErrorCount": 0,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case.",
+      "assertion": "The input is the prosecution-case fixture with one field added — isGroupProceedings: true at the top level of the hearing. Assert EXACTLY: the document array is byte-for-byte equal, under the pack's comparator rules, to recorded/base__prosecution-case/expected.json — two documents, TFL then TVL, every field identical. isGroupProceedings makes no difference to this flow because nothing in the flow reads it. The trap is a developer who has ported, or read, one of the other register services and carries the guard across \"for consistency\". That would silently stop producing informant registers for every group hearing, and because the request would end COMPLETED with no authorities it would look like a normal quiet day. This oddity is named in design_rules.md as intended behaviour here; skipping group proceedings needs a DEVIATIONS.md entry and business sign-off."
+    },
+    {
+      "id": "o02-major-creditor-vocabulary-always-empty",
+      "defect": "sanctioned oddity: \"the vocabulary call is the 2-arg form (major-creditor lists always empty)\"",
+      "description": "A subscription rule that requires a prosecutor major creditor can never match in this flow",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "SetInformantRegister/index.js:149 — `new VocabularyService(this.hearingObj, defendantContextBase).getVocabularyInfo()` — TWO arguments.",
+        "NowsHelper/service/VocabularyService.js:137-142 — the constructor takes FOUR: (hearingObj, defendantContextBase, majorCreditorMap, complianceEnforcementList). The last two are undefined here. Compare SetNowVariants/index.js:184, which passes all four.",
+        "NowsHelper/service/VocabularyService.js:332-334 — `if (!this.complianceEnforcementList) { return [] }` at the top of buildApplicableMajorCreditorList — so both lists are unconditionally empty for this flow.",
+        "NowsHelper/service/VocabularyService.js:169-170, 189-190 — those empty arrays become vocabulary.prosecutorMajorCreditor and vocabulary.nonProsecutorMajorCreditor.",
+        "NowsHelper/service/SubscriptionsService.js:280-285 — `isMajorCreditorProsecutor` returns false immediately when the list is empty (`vocabulary.prosecutorMajorCreditor.length > 0` fails), so checkIfMajorCreditorTypeMatch (:258) falls through to its final `return subscriptionVocabulary.anyMajorCreditor && ...` and, with anyMajorCreditor unset, rejects the subscription."
+      ],
+      "fixture": {
+        "caseDir": "pinning/o02-major-creditor-vocabulary-always-empty",
+        "hearing": "pinning/o02-major-creditor-vocabulary-always-empty/inputs/hearing.json",
+        "subscriptions": "pinning/o02-major-creditor-vocabulary-always-empty/inputs/subscriptions.json",
+        "params": "pinning/o02-major-creditor-vocabulary-always-empty/inputs/params.json",
+        "expected": "pinning/o02-major-creditor-vocabulary-always-empty/expected.json",
+        "meta": "pinning/o02-major-creditor-vocabulary-always-empty/meta.json"
+      },
+      "observed": {
+        "outcome": "documents",
+        "documentCount": 2,
+        "swallowedErrorCount": 0,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case.",
+      "assertion": "Four subscriptions are supplied, all matching TFL on informantCode \"CDE04\", all with applySubscriptionRules TRUE, and all sharing an otherwise permissive subscriptionVocabulary (anyAppearance, anyCourtHearing, adultOrYouthDefendant, ignoreCustody, ignoreResults) so that only the major-creditor gate can decide the outcome. They differ in exactly one flag each. Assert EXACTLY, on the TFL document: `recipients` has length 2 and contains, in this order, \"permissive-control\" and \"requires-any-major-creditor\"; and does NOT contain \"requires-prosecutor-major-creditor\" or \"requires-nonprosecutor-major-creditor\". Two separate things are pinned and both must be asserted. (1) A subscription that asks for a prosecutor or non-prosecutor major creditor can NEVER match in this flow, whatever the hearing contains — SetInformantRegister/index.js:149 passes two arguments, so VocabularyService.js:333 returns [] before it looks at any data. (2) A subscription that asks for ANY major creditor DOES match, on the very same empty lists, because SubscriptionsService.js:275-276 tests them with `!= null` and an empty array is not null. Same emptiness, opposite answers. That inconsistency is the behaviour, and a Java port that makes the three flags behave consistently — in either direction — changes the recipient list. THE TRAP: a Java VocabularyService will naturally be written with all four of its inputs available, and the moment it populates prosecutorMajorCreditor from the hearing, \"requires-prosecutor-major-creditor\" starts matching and someone who receives nothing today starts receiving the register. Nothing in the hearing payload looks different; only the recipient list changes, which is exactly the kind of change nobody notices. design_rules.md names the 2-arg call as intended behaviour here; needing the major-creditor lists is a DEVIATIONS.md entry with a named reviewer, and this test changes in that same commit. CONSTRUCTED, NOT CAPTURED: applySubscriptionRules is false on all 40 real informant-register subscriptions (oracle/README.md §6 gap 3), so this whole vocabulary gate is dead code as captured. Treat the four subscriptions as probes of reachable code, not as evidence about production data."
+    },
+    {
+      "id": "o03-authority-name-field-asymmetry",
+      "defect": "D12 (second half, KEEP)",
+      "description": "prosecutionAuthorityName is read from .prosecutionAuthorityName on cases and .name on applications",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "SetInformantRegister/index.js:48 — prosecution case: `prosecutionAuthorityName: prosecutionCase.prosecutionCaseIdentifier.prosecutionAuthorityName`.",
+        "SetInformantRegister/index.js:64 — court application: `prosecutionAuthorityName: courtApplication.applicant.prosecutingAuthority.name` — a different field name on the same conceptual object.",
+        "OutboundInformantRegister/index.js:27 — whichever was found is copied to the outbound body; undefined means the key is absent."
+      ],
+      "fixture": {
+        "caseDir": "pinning/o03-authority-name-field-asymmetry",
+        "hearing": "pinning/o03-authority-name-field-asymmetry/inputs/hearing.json",
+        "subscriptions": "pinning/o03-authority-name-field-asymmetry/inputs/subscriptions.json",
+        "params": "pinning/o03-authority-name-field-asymmetry/inputs/params.json",
+        "expected": "pinning/o03-authority-name-field-asymmetry/expected.json",
+        "meta": "pinning/o03-authority-name-field-asymmetry/meta.json"
+      },
+      "observed": {
+        "outcome": "documents",
+        "documentCount": 3,
+        "swallowedErrorCount": 0,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case.",
+      "assertion": "The input is the case-and-application fixture with the two authority-name fields deliberately crossed: the prosecution case identifier is given ONLY a `name` field (its `prosecutionAuthorityName` deleted), and the court application's prosecuting authority is given ONLY a `prosecutionAuthorityName` field (its `name` deleted). Each object now carries a perfectly good authority name — in the field the OTHER branch reads. Assert EXACTLY: every document in the array has NO `prosecutionAuthorityName` key. Assert key-absent. The names are present in the input and reach the wire in neither direction, which is what makes this asymmetry load-bearing rather than cosmetic. D12 records it as a KEEP: the two field names mirror two genuinely different payload shapes. A Java port that reads `name` as a fallback — or that models both shapes with one record and one field — will emit names here and MUST fail this test. If unifying them is desired, that is a DEVIATIONS.md entry, because it changes what appears on the register."
+    },
+    {
+      "id": "s01-court-extract-filter-result-and-prompt-level",
+      "defect": "design doc §2.2 step 2 (behaviour-lock)",
+      "description": "Results need isAvailableForCourtExtract AND !publishedForNows; prompts fall back to courtExtract === \"Y\"",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "NowsHelper/service/RegisterFragmentService.js:6 — `filter(r => (r.judicialResult.isAvailableForCourtExtract && !r.judicialResult.publishedForNows))` — BOTH conditions, at result level. A result marked available but already published for NOWs is dropped.",
+        "NowsHelper/service/RegisterFragmentService.js:12-17 — prompt level: `if (prompt.isAvailableForCourtExtract === undefined) return prompt.courtExtract ? prompt.courtExtract.toUpperCase() === \"Y\" : false; return prompt.isAvailableForCourtExtract;` — the legacy courtExtract string is consulted ONLY when the boolean is absent, is upper-cased before comparison, and an absent courtExtract means false, not true.",
+        "NowsHelper/service/RegisterFragmentService.js:11, 21 — the filtered arrays REPLACE the originals on the hearing object — this is the payload mutation described in oracle/README.md §1.",
+        "SetInformantRegister/index.js:76 — filterResultsAvailableForCourtExtract is applied once, to the whole defendant-context list, before any fragment is built."
+      ],
+      "fixture": {
+        "caseDir": "pinning/s01-court-extract-filter-result-and-prompt-level",
+        "hearing": "pinning/s01-court-extract-filter-result-and-prompt-level/inputs/hearing.json",
+        "subscriptions": "pinning/s01-court-extract-filter-result-and-prompt-level/inputs/subscriptions.json",
+        "params": "pinning/s01-court-extract-filter-result-and-prompt-level/inputs/params.json",
+        "expected": "pinning/s01-court-extract-filter-result-and-prompt-level/expected.json",
+        "meta": "pinning/s01-court-extract-filter-result-and-prompt-level/meta.json"
+      },
+      "observed": {
+        "outcome": "documents",
+        "documentCount": 2,
+        "swallowedErrorCount": 0,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case.",
+      "assertion": "The TFL defendant's single offence is given seven judicial results. Four exercise the RESULT-level filter and carry self-describing resultText; three exercise the PROMPT-level filter and make it observable through resultData.amount, which is the only route by which a prompt reaches the outbound body (ResultDataMapper.js:27-31 takes the FIRST surviving prompt with isFinancialImposition). Assert EXACTLY, on the TFL document, defendant[0], offences[0].offenceResults — length 4, in this order, with these resultText values and these resultData: [0] \"KEPT available-and-not-published\" with NO resultData key (it carries no prompts, no nextHearing and no durationElement) ; [1] \"PROMPT first-surviving-financial-prompt-wins\" with resultData.amount \"£11.00\" — NOT \"£99.00\", which is the earlier prompt in the array and was dropped by the prompt-level filter ; [2] \"PROMPT legacy-courtExtract-fallback\" with resultData.amount \"£22.00\" — the prompt was kept on the strength of courtExtract \"y\", supplied in LOWER CASE and upper-cased at RegisterFragmentService.js:14 before comparison ; [3] \"PROMPT all-prompts-dropped\" with NO resultData key at all — every prompt was filtered out, so judicialResultPrompts became empty and canCreateResultData (ResultDataMapper.js:37-40) went false. And assert ABSENT from offenceResults: \"DROPPED available-but-published-for-nows\", \"DROPPED not-available\", \"DROPPED flag-absent\". Seven rules, seven assertions, each naming itself on failure. The two that catch a well-meaning port: (a) publishedForNows true DROPS a result even though isAvailableForCourtExtract is true — \"available for court extract\" is necessary, not sufficient; (b) at RESULT level an ABSENT isAvailableForCourtExtract means DROPPED and the legacy courtExtract string is NOT consulted — the fallback exists only at PROMPT level. A Java port that treats an absent flag as permissive, or that applies the courtExtract fallback at both levels, changes what appears on every register in the estate, and nothing downstream would notice."
+    },
+    {
+      "id": "s02-authority-dedupe-first-occurrence-wins",
+      "defect": "design doc §2.2 step 2 (behaviour-lock)",
+      "description": "One fragment per prosecutionAuthorityId; the FIRST case seen supplies every identifier field",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "SetInformantRegister/index.js:42, 51 — `if (!prosecutionCaseIdentifiersSet.has(...prosecutionAuthorityId))` then `.add(...)` — a second case for the same authority is skipped entirely, so its code, OU code, major-creditor code, name and groupId are all discarded.",
+        "SetInformantRegister/index.js:56-58 — court applications are considered AFTER all prosecution cases and are subject to the same set, so a case always wins over an application for the same authority.",
+        "SetInformantRegister/index.js:121-139 — getDefendantsFromContext, by contrast, gathers defendants from ALL cases and applications of that authority — so the single fragment carries defendants from cases whose identifier fields were thrown away."
+      ],
+      "fixture": {
+        "caseDir": "pinning/s02-authority-dedupe-first-occurrence-wins",
+        "hearing": "pinning/s02-authority-dedupe-first-occurrence-wins/inputs/hearing.json",
+        "subscriptions": "pinning/s02-authority-dedupe-first-occurrence-wins/inputs/subscriptions.json",
+        "params": "pinning/s02-authority-dedupe-first-occurrence-wins/inputs/params.json",
+        "expected": "pinning/s02-authority-dedupe-first-occurrence-wins/expected.json",
+        "meta": "pinning/s02-authority-dedupe-first-occurrence-wins/meta.json"
+      },
+      "observed": {
+        "outcome": "documents",
+        "documentCount": 2,
+        "swallowedErrorCount": 0,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case.",
+      "assertion": "The hearing gives TFL two prosecution cases with the SAME prosecutionAuthorityId and DELIBERATELY DIFFERENT identifier fields: case [0] has prosecutionAuthorityCode \"TFL\" and majorCreditorCode \"FIRST-WINS\"; case [1] has \"TFL-SECOND\" and \"SECOND-LOSES\". The one defendant on the losing case is renamed \"Loser Onlyonsecondcase\" so it can be identified in the output. Assert EXACTLY: (1) the array has exactly 2 documents — one for TFL, one for TVL — NOT three; (2) the TFL document has prosecutionAuthorityCode \"TFL\" and majorCreditorCode \"FIRST-WINS\"; (3) the TFL document's fileName is \"InformantRegister_TFL_2020-06-01.csv\", built from the winning code; (4) the string \"SECOND-LOSES\" appears NOWHERE in the serialised document array — the losing case's major-creditor code is discarded outright. Then assert the asymmetry that makes this worth pinning: (5) the TFL document's hearingVenue.courtSessions[0].defendants has length 2 and contains a defendant with lastName \"Onlyonsecondcase\", who belongs ONLY to the losing case, whose prosecutionCasesOrApplications[0].caseOrApplicationReference is \"TFL-SECOND-CASE\" and whose offence carries originatingCaseUrn \"TFL-SECOND-CASE\". Note the two halves are DIFFERENT fields of the same discarded case: its prosecutionAuthorityCode and majorCreditorCode are thrown away (first-wins, header level), while its prosecutionAuthorityReference survives inside the body (union, per-case level). Do NOT collapse assertions (4) and (5) into one substring search over the whole document — \"TFL-SECOND-CASE\" IS present and \"TFL-SECOND\" IS NOT, and a naive contains() check would confuse the two. Identifier fields are FIRST-WINS; defendants and offences are UNION. So the document names one case in its header and carries another case's people and offences in its body, with no field anywhere saying so. A Java port that groups by authority and merges identifier fields, or that emits one document per case, breaks a different half of this, which is why (2)-(4) and (5) are separate assertions."
+    },
+    {
+      "id": "s04-case-reference-urn-then-authority-reference",
+      "defect": "design doc §2.2 step 4 (behaviour-lock)",
+      "description": "caseOrApplicationReference and originatingCaseUrn are caseURN ?? prosecutionAuthorityReference",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/ProsecutionCaseOrApplicationMapper.js:20-23 — `prosecutionCase.prosecutionCaseIdentifier.caseURN ? ...caseURN : ...prosecutionAuthorityReference` — a TRUTHY test, so an empty-string caseURN falls back too.",
+        "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/OffenceMapper.js:79-82 — deriveCaseUrn applies the identical rule for the offence's originatingCaseUrn.",
+        "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/ProsecutionCaseOrApplicationMapper.js:39 — applications use a different field again: `courtApplication.applicationReference`, with no fallback."
+      ],
+      "fixture": {
+        "caseDir": "pinning/s04-case-reference-urn-then-authority-reference",
+        "hearing": "pinning/s04-case-reference-urn-then-authority-reference/inputs/hearing.json",
+        "subscriptions": "pinning/s04-case-reference-urn-then-authority-reference/inputs/subscriptions.json",
+        "params": "pinning/s04-case-reference-urn-then-authority-reference/inputs/params.json",
+        "expected": "pinning/s04-case-reference-urn-then-authority-reference/expected.json",
+        "meta": "pinning/s04-case-reference-urn-then-authority-reference/meta.json"
+      },
+      "observed": {
+        "outcome": "documents",
+        "documentCount": 2,
+        "swallowedErrorCount": 0,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case.",
+      "assertion": "The hearing gives TFL a caseURN \"TFL-URN-WINS\" (the fixture has none) and leaves TVL with only its prosecutionAuthorityReference. Assert EXACTLY: (1) in the TFL document, both defendants' prosecutionCasesOrApplications[0].caseOrApplicationReference equal \"TFL-URN-WINS\", AND the nested offences[0].originatingCaseUrn also equals \"TFL-URN-WINS\" — the same rule is applied twice, in two different mappers, and both must be pinned; (2) in the TVL document, caseOrApplicationReference and originatingCaseUrn both equal \"TVL298320922\", the prosecutionAuthorityReference, because that case has no caseURN. The recorded control for the fallback half is recorded/base__prosecution-case, where neither case has a caseURN. Note the rule is `truthy`, not `!= null`: an empty-string caseURN falls back to the authority reference. Do NOT write the Java as Objects.requireNonNullElse(caseUrn, authorityReference) — that returns \"\" for an empty URN and diverges on a case this corpus does not contain. Prefer StringUtils.isNotEmpty or an explicit blank check, and say why in a comment pointing at this entry."
+    },
+    {
+      "id": "s05-invalid-date-z-shipped-as-a-timestamp",
+      "defect": "consequence of D9 + D10 (not separately numbered in the register)",
+      "description": "When a date cannot be parsed the literal string \"Invalid dateZ\" is POSTed where a timestamp belongs",
+      "status": "DEMONSTRATED",
+      "blockedReason": null,
+      "nodeEvidence": [
+        "NowsHelper/service/DateService.js:36-38 — getLocalDateTime never fails: an unparseable input makes moment's format() return the string \"Invalid date\", to which the code appends 'Z'.",
+        "NowsHelper/service/RegisterFragmentService.js:46-55 — getHearingDate returns getLocalDateTime(orderedDate) when no hearingDay matches — and orderedDate is whatever getLatestOrderedDate produced, which may be undefined or unparseable.",
+        "SetInformantRegister/index.js:82 — the result becomes fragment.hearingDate...",
+        "OutboundInformantRegister/index.js:21 — ...and is copied to the outbound body unvalidated.",
+        "ProcessOutboundInformantRegister/index.js:19-27 — the body is POSTed and the response is swallowed, so a schema rejection at the Results end is invisible here."
+      ],
+      "fixture": {
+        "caseDir": "pinning/s05-invalid-date-z-shipped-as-a-timestamp",
+        "hearing": "pinning/s05-invalid-date-z-shipped-as-a-timestamp/inputs/hearing.json",
+        "subscriptions": "pinning/s05-invalid-date-z-shipped-as-a-timestamp/inputs/subscriptions.json",
+        "params": "pinning/s05-invalid-date-z-shipped-as-a-timestamp/inputs/params.json",
+        "expected": "pinning/s05-invalid-date-z-shipped-as-a-timestamp/expected.json",
+        "meta": "pinning/s05-invalid-date-z-shipped-as-a-timestamp/meta.json"
+      },
+      "observed": {
+        "outcome": "documents",
+        "documentCount": 1,
+        "swallowedErrorCount": 0,
+        "clockDependent": false,
+        "deterministic": true
+      },
+      "demonstrationNote": null,
+      "testLevel": "Java: golden-parity test over this case + a contract-validation decision.",
+      "assertion": "The input is the outbound-hearing-with-application fixture exactly as the corpus already records it. Assert EXACTLY: hearingDate is the STRING \"Invalid dateZ\". Assert the literal. This is not a synthesised edge case — recorded/base__outbound-hearing-with-application and recorded/base__outbound-hearing are UNMODIFIED real Jest fixtures from the function app and both produce it. `hearingDate` is declared a date-time string in the frozen add-informant-register contract, so Node is POSTing a contract-violating body on ordinary data and never learns that it did. This entry pins the OBSERVATION, not the desired behaviour. The Java port cannot simply reproduce it: emitting \"Invalid dateZ\" would be knowingly POSTing an invalid body, and dropping it silently would be the swallowed failure this service exists to remove. The required action is a DECISION, recorded in doc/DEVIATIONS.md and agreed with the Results team alongside the null-propagation finding (parity-pack/README.md §5 finding 6): reproduce, or dead-letter as a contract violation. Until that decision exists, this test's job is to make sure nobody quietly picks one. Whichever way it goes, keep an assertion that the string \"Invalid date\" never appears in a Java-produced document unless a deviation row says it may."
+    },
+    {
+      "id": "v03-alert-wiring-waiver",
+      "defect": "DEVIATIONS.md #3 (waiver, CRA-220 only)",
+      "description": "Alert wiring deferred to the later operability story",
+      "status": "BLOCKED",
+      "blockedReason": "Not a transform behaviour. The oracle records documents; it cannot observe logs, metrics or alert rules in the Java service.",
+      "nodeEvidence": [
+        "ProcessOutboundInformantRegister/index.js:25-27 — the legacy baseline the waiver is measured against: an error is logged to context.error and nothing else happens.",
+        "InformantRegisterOrchestrator/index.js:59-65 — and the orchestration still reports a result, so no platform-level failure signal exists either."
+      ],
+      "fixture": null,
+      "observed": null,
+      "demonstrationNote": null,
+      "testLevel": "Java: failure-signal tests on the pipeline and listener (log + metric), not a parity test.",
+      "assertion": "The waiver is time-boxed and expires when the operability story lands, so the test's job is to keep the part that DID ship honest. Assert that every failure path emits both a sanitised ERROR log and an increment of the failure metric, and that dead-lettered messages increment informantregister_deadlettered_total with a reason label — because those metrics are the prerequisite the deferred alert rules will be built from, and a waiver whose prerequisites quietly rot is just a silent failure with paperwork. Assert also the no-PII rule on those log lines: identifiers only, no defendant name, address, date of birth, ASN or URN at info or above. Do not write a parity test for this; there is no legacy behaviour to match, only legacy silence to beat."
+    }
+  ]
+}

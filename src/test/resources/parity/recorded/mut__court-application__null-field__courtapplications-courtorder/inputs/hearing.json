@@ -1,0 +1,315 @@
+{
+  "courtApplications": [
+    {
+      "allegationOrComplaintEndDate": "2021-03-10",
+      "allegationOrComplaintStartDate": "2021-02-02",
+      "applicant": {
+        "id": "cdb4268d-2075-4efc-b9b0-1123f401a4a0",
+        "notificationRequired": true,
+        "prosecutingAuthority": {
+          "address": {
+            "address1": "Criminal Justice Department",
+            "address2": "Derbyshire Constabulary",
+            "address3": "Butterley Hall",
+            "postcode": "DE5 3RS"
+          },
+          "contact": {
+            "primaryEmail": "CCSU@derbyshire.pnn.police.uk"
+          },
+          "name": "Derbyshire Police",
+          "prosecutionAuthorityCode": "DERPF",
+          "prosecutionAuthorityOUCode": "0300000",
+          "prosecutionAuthorityId": "bdc190e7-c939-37ca-be4b-9f615d6ef40e",
+          "welshName": "Heddlu Derbyshire"
+        },
+        "summonsRequired": false
+      },
+      "applicationReceivedDate": "2021-01-01",
+      "applicationReference": "30V77690609",
+      "applicationStatus": "IN_PROGRESS",
+      "commissionerOfOath": false,
+      "courtOrder": null,
+      "futureSummonsHearing": {
+        "courtCentre": {
+          "id": "c133d0de-c989-48b9-bd20-0431943e347e",
+          "name": "City of London Magistrates' Court",
+          "roomId": "4294a92c-8827-3296-be53-c74b7e9e31d8",
+          "roomName": "Courtroom 01"
+        },
+        "earliestStartDateTime": "2021-03-16T10:00:00.000Z",
+        "estimatedMinutes": 20,
+        "jurisdictionType": "MAGISTRATES"
+      },
+      "hasSummonsSupplied": false,
+      "id": "14e41d27-c073-434b-9b98-766c52c7a187",
+      "judicialResults": [
+        {
+          "alwaysPublished": false,
+          "canBeSubjectOfBreach": false,
+          "canBeSubjectOfVariation": false,
+          "category": "INTERMEDIARY",
+          "courtClerk": {
+            "firstName": "Erica",
+            "lastName": "Wilson",
+            "userId": "a085e359-6069-4694-8820-7810e7dfe762"
+          },
+          "d20": false,
+          "excludedFromResults": false,
+          "isAdjournmentResult": false,
+          "isAvailableForCourtExtract": true,
+          "isConvictedResult": false,
+          "isDeleted": false,
+          "isFinancialResult": false,
+          "isUnscheduled": false,
+          "judicialResultId": "27e96363-14b4-4ddf-b02c-0fee6011fde8",
+          "judicialResultPrompts": [
+            {
+              "isAvailableForCourtExtract": true,
+              "publishedForNows": false,
+              "courtExtract": "N",
+              "isFinancialImposition": false,
+              "judicialResultPromptTypeId": "428e2b37-88f9-4f9c-beda-450b96bac466",
+              "label": "Prosecution costs",
+              "promptReference": "prosecutionCosts",
+              "promptSequence": 100,
+              "type": "CURR",
+              "usergroups": [
+                "CPS",
+                "Defence",
+                "Judiciary",
+                "NCES",
+                "Probation",
+                "YOTs",
+                "Prosecuting Authorities"
+              ],
+              "value": "£100.00",
+              "welshValue": "£100.00"
+            },
+            {
+              "isAvailableForCourtExtract": true,
+              "publishedForNows": false,
+              "courtExtract": "N",
+              "isFinancialImposition": false,
+              "judicialResultPromptTypeId": "04d5d843-f530-43e4-927f-57942b310d5c",
+              "label": "THIS SUMMONS IS FOR PERSONAL SERVICE",
+              "promptReference": "tHISSUMMONSISFORPERSONALSERVICE",
+              "promptSequence": 200,
+              "type": "BOOLEAN",
+              "usergroups": [
+                "CPS",
+                "Defence",
+                "Judiciary",
+                "Probation",
+                "NCES",
+                "Prosecuting Authorities",
+                "YOTs"
+              ],
+              "value": "true",
+              "welshValue": "true"
+            },
+            {
+              "isAvailableForCourtExtract": true,
+              "publishedForNows": false,
+              "courtExtract": "N",
+              "isFinancialImposition": false,
+              "judicialResultPromptTypeId": "1d068bf5-5149-4bb2-b333-7c8b288ca119",
+              "label": "This summons will be served by a Prosecutor",
+              "promptReference": "thisSummonsWillBeServedByAProsecutor",
+              "promptSequence": 300,
+              "type": "BOOLEAN",
+              "usergroups": [
+                "CPS",
+                "Defence",
+                "Judiciary",
+                "NCES",
+                "Probation",
+                "Prosecuting Authorities",
+                "YOTs"
+              ],
+              "value": "true",
+              "welshValue": "true"
+            },
+            {
+              "isAvailableForCourtExtract": true,
+              "publishedForNows": false,
+              "courtExtract": "N",
+              "isFinancialImposition": false,
+              "judicialResultPromptTypeId": "7d881e55-50ee-4098-9d3a-9b9c8f9eb834",
+              "label": "Prosecutor's email address (used summons notification)",
+              "promptReference": "prosecutorsEmailAddressUsedSummonsNotification",
+              "promptSequence": 400,
+              "type": "TXT",
+              "usergroups": [],
+              "value": "s@w.com",
+              "welshValue": "s@w.com"
+            }
+          ],
+          "judicialResultTypeId": "0f44eeb9-2c81-430d-9a60-bbdaf8c4a093",
+          "label": "Summons approved",
+          "lastSharedDateTime": "2021-03-11",
+          "level": "C",
+          "lifeDuration": false,
+          "orderedDate": "2021-03-11",
+          "orderedHearingId": "053cb01f-def9-4182-8fef-d4970afeb1da",
+          "postHearingCustodyStatus": "A",
+          "publishedAsAPrompt": false,
+          "publishedForNows": false,
+          "rank": 16300,
+          "resultText": "Summons approved\nProsecution costs £100.00\nTHIS SUMMONS IS FOR PERSONAL SERVICE true\nThis summons will be served by a Prosecutor true\nProsecutor's email address (used summons notification) s@w.com",
+          "rollUpPrompts": false,
+          "rootJudicialResultId": "27e96363-14b4-4ddf-b02c-0fee6011fde8",
+          "rootJudicialResultTypeId": "0f44eeb9-2c81-430d-9a60-bbdaf8c4a093",
+          "terminatesOffenceProceedings": false,
+          "urgent": false,
+          "usergroups": []
+        }
+      ],
+      "respondents": [
+        {
+          "id": "4780c981-49d7-4b17-b542-efd6cc562e23",
+          "masterDefendant": {
+            "associatedPersons": [
+              {
+                "person": {
+                  "address": {
+                    "address1": "line1",
+                    "postcode": "SL2 5FZ"
+                  },
+                  "firstName": "gfghff",
+                  "gender": "NOT_SPECIFIED",
+                  "lastName": "ghfhgfhg"
+                },
+                "role": "PARENT"
+              }
+            ],
+            "isYouth": true,
+            "masterDefendantId": "4780c981-49d7-4b17-b542-efd6cc562e23",
+            "personDefendant": {
+              "arrestSummonsNumber": "TFL",
+              "bailStatus": {
+                "code": "A",
+                "description": "Not applicable",
+                "id": "86009c70-759d-3308-8de4-194886ff9a77"
+              },
+              "personDetails": {
+                "address": {
+                  "address1": "34",
+                  "address2": "Unknown Street",
+                  "address3": "Locality"
+                },
+                "dateOfBirth": "2005-05-04",
+                "documentationLanguageNeeds": "ENGLISH",
+                "firstName": "test7",
+                "gender": "MALE",
+                "lastName": "NOWSPROS",
+                "nationalityDescription": "Unknown",
+                "nationalityId": "22ef7a73-df50-4349-8c72-ca3b9ace6363"
+              }
+            }
+          },
+          "notificationRequired": true,
+          "summonsRequired": true
+        }
+      ],
+      "subject": {
+        "id": "4780c981-49d7-4b17-b542-efd6cc562e23",
+        "masterDefendant": {
+          "associatedPersons": [
+            {
+              "person": {
+                "address": {
+                  "address1": "line1",
+                  "postcode": "SL2 5FZ"
+                },
+                "firstName": "gfghff",
+                "gender": "NOT_SPECIFIED",
+                "lastName": "ghfhgfhg"
+              },
+              "role": "PARENT"
+            }
+          ],
+          "isYouth": true,
+          "masterDefendantId": "4780c981-49d7-4b17-b542-efd6cc562e23",
+          "personDefendant": {
+            "arrestSummonsNumber": "TFL",
+            "bailConditions": "",
+            "bailStatus": {
+              "code": "A",
+              "description": "Not applicable",
+              "id": "86009c70-759d-3308-8de4-194886ff9a77"
+            },
+            "personDetails": {
+              "address": {
+                "address1": "34",
+                "address2": "Unknown Street",
+                "address3": "Locality"
+              },
+              "dateOfBirth": "2005-05-04",
+              "documentationLanguageNeeds": "ENGLISH",
+              "firstName": "test7",
+              "gender": "MALE",
+              "lastName": "NOWSPROS",
+              "nationalityDescription": "Unknown",
+              "nationalityId": "22ef7a73-df50-4349-8c72-ca3b9ace6363"
+            }
+          }
+        },
+        "notificationRequired": true,
+        "summonsRequired": true
+      },
+      "type": {
+        "appealFlag": false,
+        "applicantAppellantFlag": false,
+        "boxworkNotifTemplate": "NOT_APPLICABLE",
+        "breachType": "GENERIC_BREACH",
+        "categoryCode": "CB",
+        "code": "PC00504",
+        "commrOfOathFlag": false,
+        "courtExtractAvlFlag": true,
+        "courtOfAppealFlag": false,
+        "hearingCode": "APN",
+        "id": "66ad04e1-79bd-3ab6-9d33-41c1ddd25c7c",
+        "jurisdiction": "MAGISTRATES",
+        "legislation": "In accordance with section 26(5)(b) of the Powers of Criminal Courts (Sentencing) Act 2000.",
+        "linkType": "LINKED",
+        "listingNotifTemplate": "NOT_APPLICABLE",
+        "offenceActiveOrder": "COURT_ORDER",
+        "pleaApplicableFlag": false,
+        "prefix": "Resentenced",
+        "prosecutorThirdPartyFlag": false,
+        "resentencingActivationCode": "CJO3522",
+        "spiOutApplicableFlag": true,
+        "summonsTemplateType": "BREACH",
+        "type": "Reference by Youth Offender Panel - Breach of contract"
+      }
+    }
+  ],
+  "courtCentre": {
+    "address": {
+      "address1": "1 Queen Victoria Street",
+      "address2": "London",
+      "postcode": "EC4N 4XY"
+    },
+    "code": "B01DU00",
+    "id": "c133d0de-c989-48b9-bd20-0431943e347e",
+    "lja": {
+      "ljaCode": "2570",
+      "ljaName": "Central London Magistrates' Court"
+    },
+    "name": "City of London Magistrates' Court"
+  },
+  "hasSharedResults": true,
+  "hearingDays": [
+    {
+      "listedDurationMinutes": 10,
+      "sittingDay": "2021-03-11T00:00:00.000Z"
+    }
+  ],
+  "id": "053cb01f-def9-4182-8fef-d4970afeb1da",
+  "isBoxHearing": true,
+  "jurisdictionType": "MAGISTRATES",
+  "type": {
+    "description": "Application",
+    "id": "3449743b-95d6-4836-8941-57f588b52068"
+  }
+}

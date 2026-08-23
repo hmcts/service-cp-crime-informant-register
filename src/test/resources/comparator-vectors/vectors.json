@@ -1,0 +1,470 @@
+[
+  {
+    "name": "control/identical-trees",
+    "left": {"a": 1, "b": ["x", "y"], "c": {"d": true}},
+    "right": {"a": 1, "b": ["x", "y"], "c": {"d": true}},
+    "verdict": "EQUAL",
+    "dimension": "control",
+    "rationale": "Positive control. If this fails the comparator is broken outright and no other verdict in this file means anything."
+  },
+
+  {
+    "name": "field-order/depth-1",
+    "left": {"alpha": 1, "beta": 2, "gamma": 3},
+    "right": {"gamma": 3, "beta": 2, "alpha": 1},
+    "verdict": "EQUAL",
+    "dimension": "field-order",
+    "rationale": "Object key order carries no meaning in JSON and none to any consumer. Contract: design_rules.md:192 'field-order-insensitive'; JsonParity.java:16-18."
+  },
+  {
+    "name": "field-order/depth-3",
+    "left": {"root": {"level2": {"level3": {"a": 1, "b": 2}}}},
+    "right": {"root": {"level2": {"level3": {"b": 2, "a": 1}}}},
+    "verdict": "EQUAL",
+    "dimension": "field-order",
+    "rationale": "Insensitivity must hold at every depth, not only at the root. A comparator that recurses with equals() below some depth fails here."
+  },
+  {
+    "name": "field-order/depth-5-only",
+    "left": {"l1": {"l2": {"l3": {"l4": {"l5": {"first": "a", "second": "b"}}}}}},
+    "right": {"l1": {"l2": {"l3": {"l4": {"l5": {"second": "b", "first": "a"}}}}}},
+    "verdict": "EQUAL",
+    "dimension": "field-order",
+    "rationale": "The only difference in the whole tree is a key swap five levels down. Catches a comparator that short-circuits on a node-level equals() once the shallow keys match."
+  },
+  {
+    "name": "field-order/inside-array-elements",
+    "left": {"defendants": [{"id": "d1", "name": "A"}, {"id": "d2", "name": "B"}]},
+    "right": {"defendants": [{"name": "A", "id": "d1"}, {"name": "B", "id": "d2"}]},
+    "verdict": "EQUAL",
+    "dimension": "field-order",
+    "rationale": "Array order is preserved; only the keys within each element are reordered. A comparator that compares array elements by serialised text (rather than structurally) reports a false difference here."
+  },
+  {
+    "name": "field-order/all-levels-simultaneously",
+    "left": {"a": 1, "nested": {"x": {"p": 1, "q": 2}, "y": [{"m": 1, "n": 2}]}, "z": 3},
+    "right": {"z": 3, "nested": {"y": [{"n": 2, "m": 1}], "x": {"q": 2, "p": 1}}, "a": 1},
+    "verdict": "EQUAL",
+    "dimension": "field-order",
+    "rationale": "Every object in the tree has its keys reordered and nothing else changes."
+  },
+
+  {
+    "name": "array-order/scalar-swap",
+    "left": [1, 2, 3],
+    "right": [3, 2, 1],
+    "verdict": "DIFFERENT",
+    "dimension": "array-order",
+    "rationale": "Array order IS meaning in this tree. Contract: design_rules.md:192 'array-order-sensitive'; JsonParity.java:19-22. The legacy ordering quirks are part of what parity preserves."
+  },
+  {
+    "name": "array-order/two-element-swap",
+    "left": ["ALPHA", "BRAVO"],
+    "right": ["BRAVO", "ALPHA"],
+    "verdict": "DIFFERENT",
+    "dimension": "array-order",
+    "rationale": "The minimal array-order case. A comparator that sorts before comparing passes this and is wrong."
+  },
+  {
+    "name": "array-order/object-elements-swapped",
+    "left": {"fragments": [{"authorityCode": "CPS"}, {"authorityCode": "DVLA"}]},
+    "right": {"fragments": [{"authorityCode": "DVLA"}, {"authorityCode": "CPS"}]},
+    "verdict": "DIFFERENT",
+    "dimension": "array-order",
+    "rationale": "Which authority is the first fragment is observable legacy behaviour. Same multiset, same length, different order."
+  },
+  {
+    "name": "array-order/rotation",
+    "left": ["a", "b", "c"],
+    "right": ["b", "c", "a"],
+    "verdict": "DIFFERENT",
+    "dimension": "array-order",
+    "rationale": "A rotation preserves both the multiset and every adjacency except one. Catches comparators that check membership or sorted equality."
+  },
+  {
+    "name": "array-order/nested-depth-3",
+    "left": {"l1": {"l2": {"results": ["R1", "R2", "R3"]}}},
+    "right": {"l1": {"l2": {"results": ["R1", "R3", "R2"]}}},
+    "verdict": "DIFFERENT",
+    "dimension": "array-order",
+    "rationale": "Order sensitivity must survive to the leaves. The swap is of the last two elements only, three levels down."
+  },
+  {
+    "name": "array-order/siblings-differ-in-one-field",
+    "left": {"defendants": [{"id": "d1", "verdict": "GUILTY"}, {"id": "d2", "verdict": "NOT_GUILTY"}]},
+    "right": {"defendants": [{"id": "d2", "verdict": "NOT_GUILTY"}, {"id": "d1", "verdict": "GUILTY"}]},
+    "verdict": "DIFFERENT",
+    "dimension": "array-order",
+    "rationale": "Elements are structurally similar and pair up perfectly under any set comparison. Only positional comparison catches the swap."
+  },
+  {
+    "name": "array-order/swap-plus-key-reorder-TRAP",
+    "left": {"cases": [{"caseId": "c1", "urn": "U1"}, {"caseId": "c2", "urn": "U2"}]},
+    "right": {"cases": [{"urn": "U2", "caseId": "c2"}, {"urn": "U1", "caseId": "c1"}]},
+    "verdict": "DIFFERENT",
+    "dimension": "array-order",
+    "rationale": "TRAP. The elements are swapped AND their keys reordered, so a comparator that canonicalises by sorting serialised element text passes this incorrectly. The correct verdict is DIFFERENT because position 0 changed from c1 to c2."
+  },
+
+  {
+    "name": "array-length/extra-trailing-element",
+    "left": [1, 2],
+    "right": [1, 2, 3],
+    "verdict": "DIFFERENT",
+    "dimension": "array-length",
+    "rationale": "TRAP for the classic zip-to-min-length bug: a loop over min(size) with no size check compares only [0] and [1] and reports EQUAL. JsonParity.java:156 is the guard this vector exists to pin."
+  },
+  {
+    "name": "array-length/missing-trailing-element",
+    "left": [1, 2, 3],
+    "right": [1, 2],
+    "verdict": "DIFFERENT",
+    "dimension": "array-length",
+    "rationale": "The same bug in the other direction — a dropped element is a lost register row, the most damaging silent regression available."
+  },
+  {
+    "name": "array-length/empty-vs-single",
+    "left": {"results": []},
+    "right": {"results": ["R1"]},
+    "verdict": "DIFFERENT",
+    "dimension": "array-length",
+    "rationale": "Both keys are present; only the content differs. This is distinct from the empty-vs-absent question below, where one key is absent - that is a NON_EXTENSIBLE field-set mismatch, this is a value difference."
+  },
+  {
+    "name": "array-length/duplicate-element-added",
+    "left": ["R1"],
+    "right": ["R1", "R1"],
+    "verdict": "DIFFERENT",
+    "dimension": "array-length",
+    "rationale": "TRAP for set-based comparison: as sets these are identical. A duplicated result is exactly the kind of fan-out defect this port must not introduce."
+  },
+  {
+    "name": "array-length/deep-prefix-identical",
+    "left": {"l1": {"l2": {"offences": [{"code": "O1"}, {"code": "O2"}]}}},
+    "right": {"l1": {"l2": {"offences": [{"code": "O1"}]}}},
+    "verdict": "DIFFERENT",
+    "dimension": "array-length",
+    "rationale": "Truncation three levels down where the surviving prefix matches element for element."
+  },
+
+  {
+    "name": "numeric-scale/integer-vs-one-decimal",
+    "left": {"amount": 1},
+    "right": {"amount": 1.0},
+    "verdict": "EQUAL",
+    "dimension": "numeric-scale",
+    "rationale": "BigDecimal-tolerant: compared by value, not by representation or node class. JsonParity.java:23-26 names 1, 1.0 and 1.00 explicitly. Node emits one numeric type; Java reads BigDecimal (JacksonConfig.java:35, USE_BIG_DECIMAL_FOR_FLOATS)."
+  },
+  {
+    "name": "numeric-scale/trailing-zeros",
+    "left": {"amount": 1.0},
+    "right": {"amount": 1.00},
+    "verdict": "EQUAL",
+    "dimension": "numeric-scale",
+    "rationale": "Scale differs, value does not. BigDecimal.equals() would say unequal here — the comparator must use compareTo()."
+  },
+  {
+    "name": "numeric-scale/money-trailing-zero",
+    "left": {"fine": {"amountImposed": 12.50}},
+    "right": {"fine": {"amountImposed": 12.5}},
+    "verdict": "EQUAL",
+    "dimension": "numeric-scale",
+    "rationale": "The realistic money case: a golden file written by a JS runtime renders 12.5 where a BigDecimal pipeline renders 12.50."
+  },
+  {
+    "name": "numeric-scale/exponent-vs-plain",
+    "left": {"amount": 1e2},
+    "right": {"amount": 100},
+    "verdict": "EQUAL",
+    "dimension": "numeric-scale",
+    "rationale": "Exponent notation is a representation, not a value. Also crosses node classes (decimal-backed vs integer-backed), which value comparison must ignore."
+  },
+  {
+    "name": "numeric-scale/negative-zero",
+    "left": {"balance": -0.0},
+    "right": {"balance": 0},
+    "verdict": "EQUAL",
+    "dimension": "numeric-scale",
+    "rationale": "Derived from 'compared by value': BigDecimal treats -0.0 and 0 as the same value under compareTo. Included because a comparator using Double.equals or BigDecimal.equals disagrees."
+  },
+  {
+    "name": "numeric-scale/zero-scales",
+    "left": {"count": 0.000},
+    "right": {"count": 0},
+    "verdict": "EQUAL",
+    "dimension": "numeric-scale",
+    "rationale": "Zero at three different scales is one value."
+  },
+  {
+    "name": "numeric-scale/big-integer-exponent-form",
+    "left": {"reference": 1.2345678901234567890123456789e29},
+    "right": {"reference": 123456789012345678901234567890},
+    "verdict": "EQUAL",
+    "dimension": "numeric-scale",
+    "rationale": "Value equality beyond long range, one side decimal-backed and one BigInteger-backed. A comparator that routes either side through double or long is wrong here."
+  },
+
+  {
+    "name": "numeric-value/near-miss-one-penny",
+    "left": {"amountImposed": 12.50},
+    "right": {"amountImposed": 12.51},
+    "verdict": "DIFFERENT",
+    "dimension": "numeric-value",
+    "rationale": "'BigDecimal-tolerant' means scale-insensitive, NOT approximate. There is no epsilon in the documented contract. One penny on a register row is a real defect."
+  },
+  {
+    "name": "numeric-value/near-miss-last-digit",
+    "left": {"amount": 1.000},
+    "right": {"amount": 1.001},
+    "verdict": "DIFFERENT",
+    "dimension": "numeric-value",
+    "rationale": "Sits immediately beside the numeric-scale/trailing-zeros EQUAL vector. Together they pin the tolerance boundary: same value at any scale is EQUAL, any change of value is DIFFERENT."
+  },
+  {
+    "name": "numeric-value/double-indistinguishable-integers",
+    "left": {"id": 9007199254740993},
+    "right": {"id": 9007199254740992},
+    "verdict": "DIFFERENT",
+    "dimension": "numeric-value",
+    "rationale": "TRAP. These two integers are the same IEEE-754 double (both 2^53). A comparator that converts to double before comparing passes this incorrectly. Both fit in a long, so exact comparison is available and required."
+  },
+  {
+    "name": "numeric-value/huge-integer-off-by-one",
+    "left": {"reference": 123456789012345678901234567890},
+    "right": {"reference": 123456789012345678901234567891},
+    "verdict": "DIFFERENT",
+    "dimension": "numeric-value",
+    "rationale": "Beyond long range: a comparator using longValue() or intValue() truncates and may match."
+  },
+  {
+    "name": "numeric-value/sign",
+    "left": {"amount": 5},
+    "right": {"amount": -5},
+    "verdict": "DIFFERENT",
+    "dimension": "numeric-value",
+    "rationale": "TRAP for any comparator comparing magnitudes or abs() values."
+  },
+
+  {
+    "name": "type/number-vs-numeric-string",
+    "left": {"amount": 1},
+    "right": {"amount": "1"},
+    "verdict": "DIFFERENT",
+    "dimension": "type-coercion",
+    "rationale": "DERIVED, not literal: the contract enumerates exactly three relaxations (field order, numeric value, NON_EXTENSIBLE strictness). None licenses cross-type coercion, so the exact-equality baseline stands. TRAP for a comparator built on toString() or on a JS-style loose equality."
+  },
+  {
+    "name": "type/decimal-vs-numeric-string",
+    "left": {"amountImposed": 12.50},
+    "right": {"amountImposed": "12.50"},
+    "verdict": "DIFFERENT",
+    "dimension": "type-coercion",
+    "rationale": "The realistic version: a port that renders money as a formatted string instead of a number is a contract break, and the comparator must catch it rather than absorb it as 'the same amount'."
+  },
+  {
+    "name": "type/boolean-vs-string",
+    "left": {"isAvailableForCourtExtract": true},
+    "right": {"isAvailableForCourtExtract": "true"},
+    "verdict": "DIFFERENT",
+    "dimension": "type-coercion",
+    "rationale": "Court-extract filtering keys off this flag; a string here would be truthy in JS and change filtering behaviour."
+  },
+  {
+    "name": "type/number-vs-boolean",
+    "left": {"flag": 1},
+    "right": {"flag": true},
+    "verdict": "DIFFERENT",
+    "dimension": "type-coercion",
+    "rationale": "Classic loose-equality trap."
+  },
+  {
+    "name": "type/null-vs-string-null",
+    "left": {"groupId": null},
+    "right": {"groupId": "null"},
+    "verdict": "DIFFERENT",
+    "dimension": "type-coercion",
+    "rationale": "The string 'null' is a stringification defect, not a null. Both keys are present, so no presence ambiguity arises."
+  },
+  {
+    "name": "type/empty-string-vs-null",
+    "left": {"courtRoom": ""},
+    "right": {"courtRoom": null},
+    "verdict": "DIFFERENT",
+    "dimension": "type-coercion",
+    "rationale": "DERIVED. Both keys are PRESENT, so this is a value-type difference and no relaxation applies. If the legacy emits '' where the port emits null, that is a DEVIATIONS.md entry with its own assertion — never comparator leniency. Contrast with presence/empty-string-vs-absent below, which IS unspecified."
+  },
+  {
+    "name": "type/object-vs-array",
+    "left": {"results": {}},
+    "right": {"results": []},
+    "verdict": "DIFFERENT",
+    "dimension": "type-coercion",
+    "rationale": "Both are 'empty containers' and both serialise to two characters. A comparator that treats emptiness as a single concept passes this incorrectly."
+  },
+  {
+    "name": "type/leading-zero-string-vs-number",
+    "left": {"code": "01"},
+    "right": {"code": 1},
+    "verdict": "DIFFERENT",
+    "dimension": "type-coercion",
+    "rationale": "Authority and offence codes are strings with significant leading zeros. Numeric coercion silently destroys them."
+  },
+
+  {
+    "name": "extensibility/extra-field-on-right",
+    "left": {"authorityCode": "CPS"},
+    "right": {"authorityCode": "CPS", "extraField": "x"},
+    "verdict": "DIFFERENT",
+    "dimension": "extensibility",
+    "rationale": "Comparison is NON_EXTENSIBLE — spec-validator.md:76, qa.md:53. This also mirrors the outbound command's additionalProperties:false, so an unexpected field is a contract break as well as a parity break."
+  },
+  {
+    "name": "extensibility/missing-field-on-right",
+    "left": {"authorityCode": "CPS", "registerDate": "2026-08-21"},
+    "right": {"authorityCode": "CPS"},
+    "verdict": "DIFFERENT",
+    "dimension": "extensibility",
+    "rationale": "A dropped field. Both directions must be reported; a comparator that only iterates the expected side's keys misses the extra-field case, and one that only iterates the actual side misses this one."
+  },
+  {
+    "name": "extensibility/extra-field-deep-inside-array-element",
+    "left": {"defendants": [{"id": "d1"}, {"id": "d2"}]},
+    "right": {"defendants": [{"id": "d1"}, {"id": "d2", "surplus": true}]},
+    "verdict": "DIFFERENT",
+    "dimension": "extensibility",
+    "rationale": "Strictness must survive into array elements at depth, not only at the root object."
+  },
+
+  {
+    "name": "unicode/escaped-vs-literal-same-codepoint",
+    "left": {"name": "\u00e9"},
+    "right": {"name": "é"},
+    "verdict": "EQUAL",
+    "dimension": "unicode",
+    "rationale": "The left side writes U+00E9 as a JSON escape and the right side writes it literally. These are the SAME string — the escape is JSON source syntax that the parser removes before the comparator ever sees it. Included to mark where the encoding question stops being real: escaping is not a difference, normalisation form (below) may be."
+  },
+  {
+    "name": "unicode/case-difference",
+    "left": {"authorityCode": "CPS"},
+    "right": {"authorityCode": "cps"},
+    "verdict": "DIFFERENT",
+    "dimension": "unicode",
+    "rationale": "No case leniency is documented. Authority codes are case-significant on the wire."
+  },
+  {
+    "name": "unicode/trailing-whitespace",
+    "left": {"authorityCode": "CPS"},
+    "right": {"authorityCode": "CPS "},
+    "verdict": "DIFFERENT",
+    "dimension": "unicode",
+    "rationale": "No trimming is documented. A comparator that trims hides a real formatting regression in a value that reaches a CSV filename."
+  },
+
+  {
+    "name": "combination/everything-legal-at-once",
+    "left": {"a": 1, "list": [{"x": 1.0, "y": "é"}, {"x": 2, "y": "b"}], "z": {"p": 1, "q": 2}},
+    "right": {"z": {"q": 2, "p": 1}, "list": [{"y": "é", "x": 1.00}, {"y": "b", "x": 2.0}], "a": 1.0},
+    "verdict": "EQUAL",
+    "dimension": "combination",
+    "rationale": "Positive control for the combination cases: every difference is inside a relaxed dimension (key order at two depths, numeric scale in three places, an escape sequence). A comparator that is strict in the WRONG dimension fails here and the whole golden suite goes red for no reason."
+  },
+  {
+    "name": "combination/legal-noise-plus-one-array-swap-TRAP",
+    "left": {"a": 1, "list": [{"x": 1.0, "y": "p"}, {"x": 2, "y": "q"}], "z": {"p": 1, "q": 2}},
+    "right": {"z": {"q": 2, "p": 1}, "list": [{"y": "q", "x": 2.0}, {"y": "p", "x": 1.00}], "a": 1.0},
+    "verdict": "DIFFERENT",
+    "dimension": "combination",
+    "rationale": "TRAP, and the single most important vector in this file. It is combination/everything-legal-at-once with the two array elements swapped. Every other difference is legal noise, so a comparator that canonicalises the tree (sorting keys AND sorting arrays) reports EQUAL. The only defensible verdict is DIFFERENT."
+  },
+  {
+    "name": "combination/scale-noise-hiding-array-swap",
+    "left": {"payments": [{"amount": 10.00}, {"amount": 20.00}]},
+    "right": {"payments": [{"amount": 20.0}, {"amount": 10.0}]},
+    "verdict": "DIFFERENT",
+    "dimension": "combination",
+    "rationale": "The elements are value-equal as a multiset under BigDecimal tolerance, so a comparator that is array-lenient passes. Order changed, so the verdict is DIFFERENT."
+  },
+  {
+    "name": "combination/deep-length-difference-under-reordered-keys",
+    "left": {"h": {"b": 1, "fragments": [{"c": [{"r": 1}, {"r": 2}], "code": "CPS"}]}},
+    "right": {"h": {"fragments": [{"code": "CPS", "c": [{"r": 1}]}], "b": 1}},
+    "verdict": "DIFFERENT",
+    "dimension": "combination",
+    "rationale": "A truncated array four levels down, with legal key reordering at two levels above it. Catches a comparator that stops descending once it has matched the reordered keys."
+  },
+  {
+    "name": "combination/key-reorder-around-a-near-miss-number",
+    "left": {"z": 1, "fine": {"amountImposed": 100.00, "code": "F1"}},
+    "right": {"fine": {"code": "F1", "amountImposed": 100.001}, "z": 1.0},
+    "verdict": "DIFFERENT",
+    "dimension": "combination",
+    "rationale": "Legal key reordering and a legal scale difference on 'z' surround one illegal value change. The comparator must not let the legal noise mask it."
+  },
+
+  {
+    "name": "presence/null-vs-absent",
+    "left": {"authorityCode": "CPS", "groupId": null},
+    "right": {"authorityCode": "CPS"},
+    "verdict": "DIFFERENT",
+    "dimension": "presence",
+    "rationale": "DERIVED, not an implementation default. Two independent rules give the same answer. (1) NON_EXTENSIBLE (spec-validator.md:76, qa.md:53): the left tree carries a field the right tree does not, which is exactly the field-set mismatch that rule forbids - and it forbids it in BOTH argument orders, which is why this vector is asserted swapped as well. (2) parity-pack/README.md 'Comparator rules' states 'absent != null != empty ... the Java port must reproduce the null, not normalise it to absent', and 18 recorded null-field cases depend on that distinction staying visible. Nothing in the contract licenses a presence relaxation, and outside the enumerated relaxations the baseline is exact structural equality - the same derivation that makes every type/ vector DIFFERENT. CONSEQUENCE, a separate question that stays open: the Java port emits @JsonInclude(NON_NULL) records and CANNOT render a null, so every golden containing one is a real divergence needing a doc/DEVIATIONS.md entry. The comparator's job is to show that divergence, not to hide it."
+  },
+  {
+    "name": "presence/empty-array-vs-absent",
+    "left": {"authorityCode": "CPS", "recipients": []},
+    "right": {"authorityCode": "CPS"},
+    "verdict": "DIFFERENT",
+    "dimension": "presence",
+    "rationale": "DERIVED. NON_EXTENSIBLE: 'recipients' is present on one side and absent on the other, a field-set mismatch. That ContractLists.java:12-17 records minItems:1 on every outbound array - so [] is not legally writable and absence is the only correct rendering of 'none' - argues that a golden containing [] is itself out of contract; it does not argue that the comparator should equate the two. Leniency here would suppress the evidence that the golden is wrong. CONSEQUENCE: a legacy [] against a port that omits the key is a registered deviation, not a comparator setting."
+  },
+  {
+    "name": "presence/empty-array-vs-null",
+    "left": {"recipients": []},
+    "right": {"recipients": null},
+    "verdict": "DIFFERENT",
+    "dimension": "presence",
+    "rationale": "DERIVED. Both keys are present, so this is not a presence question at all - it is a type question, an array against a null, and the contract licenses no type coercion (the same derivation that makes type/number-vs-numeric-string and type/empty-string-vs-null DIFFERENT). The transitivity worry that made this vector UNSPECIFIED arises only if the other two corners are equated; they are not, so the relation stays consistent: all three corners differ."
+  },
+  {
+    "name": "presence/empty-string-vs-absent",
+    "left": {"courtRoom": ""},
+    "right": {},
+    "verdict": "DIFFERENT",
+    "dimension": "presence",
+    "rationale": "DERIVED. NON_EXTENSIBLE: 'courtRoom' is present on one side and absent on the other. Distinct from type/empty-string-vs-null, where both keys are present. Note the asymmetry this exposes and does not resolve: @JsonInclude(NON_NULL) does NOT drop an empty string, so the Java port emits \"\" where a legacy path that never set the field omits the key - a real divergence the comparator must surface as one."
+  },
+  {
+    "name": "presence/empty-object-vs-absent",
+    "left": {"hearing": {}},
+    "right": {},
+    "verdict": "DIFFERENT",
+    "dimension": "presence",
+    "rationale": "DERIVED. NON_EXTENSIBLE, as with the sibling presence vectors: 'hearing' is present on one side and absent on the other. Kept as its own vector because a leniency rule written only for arrays and nulls would leave this path to fall through to whatever the implementation happens to do."
+  },
+
+  {
+    "name": "unicode/nfc-vs-nfd-in-value",
+    "left": {"lastName": "José"},
+    "right": {"lastName": "José"},
+    "verdict": "DIFFERENT",
+    "dimension": "unicode",
+    "rationale": "DERIVED. The contract enumerates exactly three relaxations - key order, array order (not relaxed), numeric scale. Unicode normalisation is not among them, and outside the enumerated relaxations the baseline is exact value equality, so NFD 'e + U+0301' and NFC U+00E9 are two different strings. This is also the safe direction: the transform copies names through byte-for-byte (DefendantMapper.js:167-173 only joins and trims), so a port that preserves its input agrees with the oracle automatically, while a port that normalises is CHANGING a defendant's name on a court register - which this vector catches. STILL OPEN, and it is a port question rather than a comparator one: which normal form the service emits when its input source supplies the other. Record the answer in doc/DEVIATIONS.md if it is ever anything but 'whatever arrived'."
+  },
+  {
+    "name": "unicode/nfc-vs-nfd-in-key",
+    "left": {"nomé": 1},
+    "right": {"nomé": 1},
+    "verdict": "DIFFERENT",
+    "dimension": "unicode",
+    "rationale": "DERIVED, by the same argument as the value case: no normalisation relaxation is licensed, and field-order-insensitivity is insensitivity to the ORDER of keys, never to their spelling. Kept separate because key matching goes through a hash map, so a comparator that normalised values only would still answer DIFFERENT here - for the right reason by accident. Outbound key names are Java field names and are pure ASCII, so no recorded case reaches this; the vector guards the path rather than exercising it."
+  },
+
+  {
+    "name": "numeric-value/ieee754-artefact",
+    "left": {"amount": 0.30000000000000004},
+    "right": {"amount": 0.3},
+    "verdict": "DIFFERENT",
+    "dimension": "numeric-value",
+    "rationale": "DERIVED from the pack's own stated reading, applied consistently. 'BigDecimal-tolerant' is read throughout as scale-insensitive and NOT approximate; there is no epsilon anywhere in the documented contract; and numeric-value/near-miss-one-penny and numeric-value/near-miss-last-digit are DIFFERENT on exactly that basis. 0.30000000000000004 and 0.3 are different VALUES at any scale, so leaving this one UNSPECIFIED was special pleading for the single case whose difference happens to be small - which is the boundary the near-miss vectors exist to protect. The concern that motivated the doubt does not arise in this corpus: the only decimal reaching the outbound document is resultData.amount, a STRING copied verbatim (ResultDataMapper.js:30), so no recorded golden contains a computed float. If one ever does it is a registered deviation with a stated magnitude - not a widened comparator."
+  }
+]

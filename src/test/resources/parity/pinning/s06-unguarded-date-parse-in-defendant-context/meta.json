@@ -1,0 +1,66 @@
+{
+  "caseId": "s06-unguarded-date-parse-in-defendant-context",
+  "defect": "D10 (adjacent — this call site is not named in the register)",
+  "title": "DefendantContextBaseService sorts orderedDates with the same broken parser and no error handling at all",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "swallowed-exception",
+    "stage": "SetInformantRegister",
+    "documentCount": null,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [
+      "[Hearing ID: 1828f356-f746-4f2d-932b-79ef2df95c80] - Exception in SetInformantRegister Error: Invalid date format"
+    ],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "hearing: prosecutionCases[0].defendants[1].offences[0].judicialResults[0].orderedDate set to \"not/a/date\". One edit. Every judicial result the fixture carries is left in place, so each defendant context holds two results and DefendantContextBaseService.js:296 calls its comparator."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "73486b8edcba518101f33f373801663342c0d5c9615919fde0bb68a2b750b23b",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+  },
+  "nodeEvidence": [
+    {
+      "file": "NowsHelper/service/DefendantContextBaseService.js",
+      "lines": "294-297",
+      "what": "`getLatestOrderedDate(defendantContextBase) { return defendantContextBase.results.filter(...).map(...orderedDate).sort((a, b) => dateService.parse(b).getTime() - dateService.parse(a).getTime())[0]; }` — the same dateService.parse, and here there is no try/catch of any kind."
+    },
+    {
+      "file": "NowsHelper/service/DefendantContextBaseService.js",
+      "lines": "51",
+      "what": "called once per defendant while the contexts are being built, i.e. at SetInformantRegister/index.js:71 — BEFORE getLatestOrderedDate at :74. It therefore throws first whenever a single defendant has two or more results."
+    },
+    {
+      "file": "SetInformantRegister/index.js",
+      "lines": "159-161",
+      "what": "the Error(\"Invalid date format\") reaches the activity catch unchanged and the hearing is lost."
+    }
+  ],
+  "assertion": "This is the byte-identical prosecution-case fixture with ONE orderedDate changed to \"not/a/date\", and nothing else — in particular the judicial results are NOT truncated, so each defendant keeps the fixture's two results. Assert EXACTLY: (1) expected.json is JSON null; (2) observed.outcome is \"swallowed-exception\"; (3) observed.swallowedErrors names Error \"Invalid date format\" raised in SetInformantRegister — NOT a TypeError. Compare with d10-latest-ordered-date-catch-block-throws, which is the SAME bad date in the same fixture and reports a TypeError instead. The pair is the pin: which of the two unrelated failures you get depends on how many judicial results a defendant happens to have, and neither one names the field that was actually malformed. Assert both cases; asserting only one lets a Java port that guards a single call site pass while the other stays broken. Parity requirement for both: zero documents, plus — unlike Node — a classified, persisted, dead-lettered failure that DOES name the offending field."
+}

@@ -1,0 +1,72 @@
+{
+  "caseId": "d08-offences-duplicated-onto-every-case",
+  "defect": "D8",
+  "title": "Every case entry carries the defendant's full offence list, not its own offences",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 2,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "hearing: a second prosecution case inserted at index 1, cloned from prosecutionCases[0] so every field shape is real fixture data.",
+      "the clone keeps prosecutionCases[0].prosecutionCaseIdentifier verbatim EXCEPT prosecutionAuthorityReference, which becomes \"TFL-SECOND-CASE\" — the authority ids stay identical so both cases belong to TFL.",
+      "the clone keeps only defendants[0] (masterDefendantId 6647df67-a065-4d07-90ba-a8daa064ecc4, the same master defendant as case 1), with fresh id.",
+      "that defendant's single offence gets offenceCode \"XX99999\", orderIndex 7, offenceTitle \"Second case offence\" and a fresh id, so the two cases' offences are distinguishable. Its judicialResults are the fixture's, untouched."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "64a7e79eef5569026877e17fcb93af144d2198c35ea98af2baa2a369401dce8e",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "1cb6a190567d592444a192d697ca23ac6d8147c7d8528f14169eb257a5addc54"
+  },
+  "nodeEvidence": [
+    {
+      "file": "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/ProsecutionCaseOrApplicationMapper.js",
+      "lines": "85-87",
+      "what": "`getOffenceMapper() { return new OffenceMapper(this.hearingJson, this.informantRegister, this.registerDefendant).build(); }` — no case or application argument is passed in."
+    },
+    {
+      "file": "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/ProsecutionCaseOrApplicationMapper.js",
+      "lines": "26, 41",
+      "what": "the SAME zero-argument call is made once per case (:26) and once per application (:41), inside loops over the defendant's cases and applications."
+    },
+    {
+      "file": "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/OffenceMapper.js",
+      "lines": "16-28",
+      "what": "build() loops over EVERY prosecutionCase belonging to the authority (`for (let prosecutionCase of this.hearing.prosecutionCases || [])`, filtered only by prosecutionAuthorityId at :17) and accumulates into one derivedOffences array."
+    },
+    {
+      "file": "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/OffenceMapper.js",
+      "lines": "24",
+      "what": "`derivedOffence.originatingCaseUrn = this.deriveCaseUrn(prosecutionCase.prosecutionCaseIdentifier);` — the offence DOES carry the reference of the case it really came from. So the duplicated entries are self-contradictory: caseOrApplicationReference says one case, the nested offence's originatingCaseUrn says another."
+    }
+  ],
+  "assertion": "The hearing gives TFL two prosecution cases (references TFL4359536 and TFL-SECOND-CASE) that share one master defendant, each case carrying one distinct offence (PS90010 orderIndex 1 in the first, XX99999 orderIndex 7 in the second). Assert EXACTLY, on the TFL document, for the defendant that appears on both cases: (1) prosecutionCasesOrApplications has exactly 2 entries, with caseOrApplicationReference \"TFL4359536\" then \"TFL-SECOND-CASE\" in that order; (2) BOTH entries have an `offences` array of length 2; (3) in BOTH entries the offences are [offenceCode PS90010 with originatingCaseUrn \"TFL4359536\", offenceCode XX99999 with originatingCaseUrn \"TFL-SECOND-CASE\"] — i.e. the entry whose caseOrApplicationReference is \"TFL4359536\" still contains the OTHER case's offence, and that offence still points back at the other case. Assert the contradiction explicitly and by name; a test that only checks \"offences.size() == 2\" would pass a correct implementation too and would pin nothing. D8 is priority-2 in the design register: scoping offences to their own case changes what prosecuting authorities receive and needs a business decision plus a DEVIATIONS.md entry. A Java OffenceMapper that takes a caseId — the obvious, tidy design — produces one offence per entry and MUST fail this test until that decision is recorded."
+}

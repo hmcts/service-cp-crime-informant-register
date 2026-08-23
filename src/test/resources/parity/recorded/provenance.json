@@ -1,0 +1,30 @@
+{
+  "purpose": "What produced this corpus. Every meta.json carries nodeAppCommit + oracleDigest; the full block lives here. A rebuild that changes an expected.json without changing any field below is a genuine non-determinism and must be investigated, not re-recorded.",
+  "sourcePinning": {
+    "nodeAppDir": "/home/sachin/moj/cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "nodeAppDirSource": "oracle/lib/paths.js DEFAULT_NODE_APP",
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "nodeAppDirtyPaths": null,
+    "packageLockSha256": "d7d9a9323992384615871d4732b848d2590e80919000ec800a83022f26c7d859",
+    "packageJsonSha256": "3d930ba3ae030352cf55264931e14c19d0d638518522312a5bd8efb70939d45f",
+    "nodeVersion": "v24.18.1",
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "note": "nodeAppCommit + packageLockSha256 identify the transform under test; oracleDigest identifies the harness. A regeneration that changes any expected.json without changing one of these three is a genuine non-determinism and must be investigated, not re-recorded."
+  },
+  "clock": {
+    "canonical": "2026-08-21T09:15:00.000Z",
+    "alternate": "2026-12-04T23:40:00.000Z"
+  },
+  "contractClassification": {
+    "note": "Each case declares contract.status. IN_CONTRACT means the input satisfies the published schema and the recorded output is a PARITY OBLIGATION. SCHEMA_INVALID and PRODUCER_IMPLAUSIBLE mean the producer cannot emit the input: the recording is real evidence of what the Node app does, but the Java port's behaviour there is a design decision, most likely dead-lettering as a contract violation. Partition the corpus on this field before asserting.",
+    "counts": {
+      "IN_CONTRACT": 259,
+      "SCHEMA_INVALID": 96,
+      "PRODUCER_IMPLAUSIBLE": 29
+    },
+    "report": "node oracle/mutate.js --contract-report"
+  },
+  "baseFixtureCaveat": "Base fixtures are the function app's own Jest fixtures, copied byte-identical. They are TRIMMED test data: six of the thirteen carry a courtCentre without the required `name` (courtCentre.json required is [\"id\",\"name\"]), and none was validated against the published schema when it was written. A variant's contract.status classifies THE MUTATION, not the base it is applied to.",
+  "subscriptionSchemaCaveat": "cpp-context-reference-data/referencedata-query/referencedata-query-api/src/raml/json/schema/referencedata.query.get-now-subscriptions.json is internally inconsistent (additionalProperties:false alongside required entries that are not declared as properties); classifications use only its unambiguous parts."
+}

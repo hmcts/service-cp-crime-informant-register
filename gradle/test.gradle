@@ -2,7 +2,7 @@ tasks.named('test') {
   useJUnitPlatform {
   }
   systemProperty 'API_SPEC_VERSION', project.version
-  failFast = true
+  failFast = !Boolean.getBoolean("test.noFailFast")
   // Mockito must be added as an agent, see:
   // https://javadoc.io/doc/org.mockito/mockito-core/latest/org.mockito/org/mockito/Mockito.html#0.3
   jvmArgs += [
