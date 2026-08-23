@@ -1,6 +1,7 @@
 package uk.gov.hmcts.cp.informantregister.pipeline;
 
 import java.time.Clock;
+import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -42,6 +43,17 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * cases pass no shared time and so depend on it. The clock is injected rather than read from the
  * system so the transformation stays pure and testable with golden files alone (constitution
  * Principle V).
+ *
+ * <p><strong>An unreadable value is rendered, not refused.</strong> {@code moment} does not throw
+ * when it cannot read a value: the moment is flagged invalid and {@code format} answers the literal
+ * string {@code "Invalid date"}, whatever pattern it was given. So
+ * {@code getLocalDateTime('not a date')} is {@code "Invalid dateZ"} and the hearing carries on.
+ * Verified against the {@code moment-timezone} vendored with the function app. {@link #localDate}
+ * and {@link #localDateTime} reproduce that, because their call sites — a sitting day
+ * ({@code CourtSessionMapper.js:26-28}) and a next hearing's start ({@code ResultDataMapper.js:15})
+ * — read the payload directly and see whatever the producer sent. {@link #orderingKey} is the one
+ * exception and stays a refusal: it ports {@code DateService.parse}, which really does
+ * {@code throw new Error('Invalid date format')}.
  */
 public final class HearingDates {
 
@@ -66,6 +78,18 @@ public final class HearingDates {
     private static final Pattern LEADING_DATE =
             Pattern.compile("^(\\d{4})\\D(\\d{1,2})\\D(\\d{1,2})");
 
+    /**
+     * The day, month and year of a {@code DD/MM/YYYY} value, whatever separates them.
+     *
+     * <p>The counterpart of {@link #LEADING_DATE} for {@code DateService.formatDate}'s hard-coded
+     * format. Same non-strict rule, different token order — which is the whole of defect D11.
+     */
+    private static final Pattern DAY_MONTH_YEAR =
+            Pattern.compile("^\\D*(\\d{1,2})\\D*(\\d{1,2})\\D*(\\d{1,4})");
+
+    /** What moment renders instead of throwing when it cannot read a value. */
+    private static final String INVALID_DATE = "Invalid date";
+
     private final Clock clock;
 
     /**
@@ -83,10 +107,11 @@ public final class HearingDates {
      * <p>Ports {@code DateService.getLocalDate}.
      *
      * @param value an instant, a local date-time, or a bare day; may be {@code null}
-     * @return the London day
+     * @return the London day, or the literal {@code "Invalid date"}
      */
     public String localDate(final String value) {
-        return toLondon(value).format(LOCAL_DATE);
+        final ZonedDateTime resolved = toLondon(value);
+        return resolved == null ? INVALID_DATE : resolved.format(LOCAL_DATE);
     }
 
     /**
@@ -96,10 +121,64 @@ public final class HearingDates {
      * documentation.
      *
      * @param value an instant, a local date-time, or a bare day; may be {@code null}
-     * @return the London wall-clock time, labelled {@code Z}
+     * @return the London wall-clock time labelled {@code Z}, or the literal {@code "Invalid dateZ"}
      */
     public String localDateTime(final String value) {
-        return toLondon(value).format(LOCAL_DATE_TIME) + "Z";
+        final ZonedDateTime resolved = toLondon(value);
+        return (resolved == null ? INVALID_DATE : resolved.format(LOCAL_DATE_TIME)) + "Z";
+    }
+
+    /**
+     * The London wall-clock time of a value first re-read as a {@code DD/MM/YYYY} day.
+     *
+     * <p>Ports {@code DateService.formatDateAndGetLocalDateTime}, which is two steps and one defect.
+     * The first step is {@code DateService.formatDate}, whose {@code sourceFormat} and
+     * {@code targetFormat} parameters exist only to make the call sites look configurable — the body
+     * ignores both and hard-codes {@code moment(value, 'DD/MM/YYYY').format('YYYY-MM-DD')}. The
+     * second step formats the result the same way {@link #localDateTime} does.
+     *
+     * <p><strong>A date in any other order is not read, and not refused either.</strong> moment
+     * answers an unparseable value with the literal string {@code "Invalid date"} rather than by
+     * throwing, and step two appends {@code Z} to it, so the value {@code "Invalid dateZ"} is what
+     * reaches the outbound body — inside a field the frozen contract types as a date-time. Verified
+     * against the {@code moment} vendored with the function app: {@code 26/02/2019} reads as 26
+     * February, while the ISO {@code 2021-07-26} does not read at all. This is defect D11 and the
+     * parity pack pins it; a {@code java.time} port that reads both correctly is a behaviour change
+     * to values prosecuting authorities ingest, and needs a deviations-register entry first.
+     *
+     * <p>The parse itself is moment's non-strict one: it takes the numeric tokens in the order the
+     * format names them — one or two digits of day, one or two of month, up to four of year — and
+     * ignores whatever separates them, which is why a value with a time on the end still reads. Only
+     * that leading run is reproduced; a value moment would resolve through some other route is not
+     * reachable from this call site, whose inputs are duration dates.
+     *
+     * @param value the duration date to read; may be {@code null}
+     * @return the London wall-clock time, labelled {@code Z}, or {@code "Invalid dateZ"}
+     */
+    public String formattedLocalDateTime(final String value) {
+        final LocalDate day = asDayMonthYear(value);
+        return day == null ? INVALID_DATE + "Z" : localDateTime(day.format(LOCAL_DATE));
+    }
+
+    /**
+     * Reads a value as moment's non-strict {@code DD/MM/YYYY} does.
+     *
+     * @param value the value to read; may be {@code null}
+     * @return the day, or {@code null} when moment would call the value invalid
+     */
+    private static LocalDate asDayMonthYear(final String value) {
+        final Matcher matcher = value == null ? null : DAY_MONTH_YEAR.matcher(value);
+        if (matcher == null || !matcher.find()) {
+            return null;
+        }
+        try {
+            return LocalDate.of(
+                    Integer.parseInt(matcher.group(3)),
+                    Integer.parseInt(matcher.group(2)),
+                    Integer.parseInt(matcher.group(1)));
+        } catch (DateTimeException notACalendarDay) {
+            return null;
+        }
     }
 
     /**
@@ -116,22 +195,28 @@ public final class HearingDates {
      */
     public LocalDate orderingKey(final String value) {
         final Matcher matcher = value == null ? null : LEADING_DATE.matcher(value);
-        if (matcher == null || !matcher.find()) {
-            // The legacy message, kept verbatim, but classified: a date this cannot read reads the
-            // same way on every redelivery, so the delivery is parked rather than retried.
-            throw new TransformationFailedException("Invalid date format");
+        if (matcher != null && matcher.find()) {
+            try {
+                return LocalDate.of(
+                        Integer.parseInt(matcher.group(1)),
+                        Integer.parseInt(matcher.group(2)),
+                        Integer.parseInt(matcher.group(3)));
+            } catch (DateTimeException notACalendarDay) {
+                // moment reads the tokens and then rejects the combination — `2020-13-45` and
+                // `2020-02-30` are both `isValid() === false` — so this falls into the same throw.
+                throw new TransformationFailedException("Invalid date format");
+            }
         }
-        return LocalDate.of(
-                Integer.parseInt(matcher.group(1)),
-                Integer.parseInt(matcher.group(2)),
-                Integer.parseInt(matcher.group(3)));
+        // The legacy message, kept verbatim, but classified: a date this cannot read reads the
+        // same way on every redelivery, so the delivery is parked rather than retried.
+        throw new TransformationFailedException("Invalid date format");
     }
 
     /**
      * Resolves a value the way {@code moment.tz(value, 'Europe/London')} does.
      *
      * @param value the value to resolve; may be {@code null}
-     * @return the value as a London date-time
+     * @return the value as a London date-time, or {@code null} when moment would call it invalid
      */
     private ZonedDateTime toLondon(final String value) {
         if (value == null) {
@@ -148,7 +233,7 @@ public final class HearingDates {
      * Resolves a value that carries no offset, and is therefore already London-local.
      *
      * @param value the value to resolve
-     * @return the value as a London date-time
+     * @return the value as a London date-time, or {@code null} when moment would call it invalid
      */
     private ZonedDateTime withoutOffset(final String value) {
         try {
@@ -169,19 +254,17 @@ public final class HearingDates {
      * {@code moment-timezone} vendored with the function app, and the answer does not depend on the
      * host's time zone.
      *
-     * <p>Only the leading-date form is reproduced. {@code moment} accepts more than that through the
-     * same fallback ({@code 2020-06}, {@code 2020/06/19 10:30}), and it answers an unreadable value
-     * with the literal string {@code "Invalid date"} rather than by throwing. Neither is reachable
-     * on this path: every value formatted here has already been through {@link #orderingKey}, which
-     * requires a leading calendar date and refuses anything without one, exactly as the legacy
-     * {@code DateService.parse} does before {@code getHearingDate} is ever called. So the rest is
-     * refused rather than guessed — and refused as a classified transformation failure, because an
-     * unclassified parse error would be read as transient and retried until the delivery budget ran
-     * out on a payload no redelivery can change.
+     * <p>An unreadable value answers {@code null}, and the two format methods turn that into the
+     * literal {@code "Invalid date"} moment renders — see the class documentation. Only the
+     * leading-date form is reproduced, and that narrowness is itself a divergence:
+     * {@code moment.tz} resolves more through the same {@code new Date(...)} fallback
+     * ({@code 2020-06}, {@code 2020/06/19 10:30}) than is read back here, so those forms render as
+     * invalid where the legacy renders a date. Reproducing V8's date parser is not something a port
+     * can do faithfully by guessing at it, so the gap is recorded as deviations-register entry 13
+     * rather than approximated.
      *
      * @param value the value to resolve
-     * @return the value as a London date-time
-     * @throws TransformationFailedException if no calendar day can be read from it
+     * @return the value as a London date-time, or {@code null} when moment would call it invalid
      */
     private static ZonedDateTime dayWithoutOffset(final String value) {
         try {
@@ -189,16 +272,20 @@ public final class HearingDates {
         } catch (DateTimeParseException notAnIsoDay) {
             final Matcher matcher = LEADING_DATE.matcher(value);
             if (!matcher.matches()) {
-                // The legacy message, kept verbatim, and classified for the same reason
-                // `orderingKey` classifies its own.
-                throw new TransformationFailedException("Invalid date format");
+                return null;
             }
-            return LocalDate.of(
-                            Integer.parseInt(matcher.group(1)),
-                            Integer.parseInt(matcher.group(2)),
-                            Integer.parseInt(matcher.group(3)))
-                    .atStartOfDay(ZoneOffset.UTC)
-                    .withZoneSameInstant(LONDON);
+            try {
+                return LocalDate.of(
+                                Integer.parseInt(matcher.group(1)),
+                                Integer.parseInt(matcher.group(2)),
+                                Integer.parseInt(matcher.group(3)))
+                        .atStartOfDay(ZoneOffset.UTC)
+                        .withZoneSameInstant(LONDON);
+            } catch (DateTimeException notACalendarDay) {
+                // `2020-13-45` reads as three numbers and is still not a day; moment answers the
+                // same way it answers `not a date`, so this does too.
+                return null;
+            }
         }
     }
 }

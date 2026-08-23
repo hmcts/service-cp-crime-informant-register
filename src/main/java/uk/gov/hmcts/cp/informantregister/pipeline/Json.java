@@ -166,39 +166,71 @@ final class Json {
     }
 
     /**
-     * One element of an array the legacy then reads a property off, refused when it is JSON
-     * {@code null}.
+     * A field the legacy reads <strong>through</strong> without a guard, as {@code parent.field.x}
+     * would reach it.
      *
-     * <p>{@link #dereferencedArray} is about the array; this is about what is <em>in</em> it.
-     * {@code list.filter(item => item.someFlag)} and {@code for (const item of list) item.someFlag}
-     * are both a {@code TypeError} the moment an element is {@code null} — and only then. A number,
-     * a string, an array or an empty object all answer {@code undefined} to a property read and are
-     * simply falsy, so those are passed through untouched and behave exactly as they do in the
-     * legacy.
+     * <p>The scalar counterpart of {@link #dereferencedArray}, and it refuses the same two values for
+     * the same reason. In JavaScript only {@code undefined} and {@code null} throw when a property is
+     * read off them; anything else answers {@code undefined} and the expression carries on. So an
+     * absent field and an explicit JSON null are refused here — the legacy dies there and the hearing
+     * produces no register for anybody — while a value of the wrong shape is returned, because
+     * reading a property off it is legal and yields nothing.
      *
-     * <p>Reading a null element as "a candidate that matches nothing" would be the more forgiving
-     * answer and the wrong one: the legacy produces <em>no register at all</em> for that payload,
-     * and carrying on would emit recipients it never emitted. That is the direction a bug-for-bug
-     * port must never drift in (`.claude/rules/design_rules.md`, "Parity and the Deviations
-     * Register"), so the element is refused and the delivery is parked where support can see it —
-     * deviations register entry 7, the same treatment every other legacy {@code TypeError} gets.
+     * <p>Reading a missing parent as "no value" instead would carry on and emit a register the legacy
+     * never sent, to a real prosecuting authority. That is the one direction a bug-for-bug port must
+     * not drift in; the refusal is deviations-register entry 7.
+     *
+     * @param node  the object being dereferenced; may be {@code null}, which is itself a refusal
+     * @param field the field name
+     * @return the field's value, never {@code null}
+     * @throws TransformationFailedException if the field is absent or JSON null
+     */
+    static JsonNode dereferenced(final JsonNode node, final String field) {
+        final JsonNode value = at(node, field);
+        if (value == null || value.isNull()) {
+            // The field name is this service's own vocabulary, so it is safe to name. The value is
+            // the producer's, and may be defendant detail, so it is never quoted.
+            throw new TransformationFailedException(
+                    "hearing field '" + field + "' cannot be read through");
+        }
+        return value;
+    }
+
+    /**
+     * An array element the legacy reads <strong>through</strong>, as {@code element.x} would reach
+     * it.
+     *
+     * <p>The element counterpart of {@link #dereferenced}. JSON arrays can hold nulls and the
+     * fragment tree deliberately preserves them (`FragmentLists`), so an iteration that reads a
+     * property off every member meets one eventually — {@code subscription.forDistribution}
+     * (`RecipientMapper.js:15`), {@code prompt.isFinancialImposition} (`ResultDataMapper.js:28`),
+     * {@code offence.offenceCode} (`OffenceMapper.js:62`), {@code s.isInformantRegisterSubscription}
+     * (`InformantRegisterSubscriptions/index.js:28`). Every one of those is a {@code TypeError} in
+     * the legacy, which kills the hearing, so reading the member as "nothing set" and emitting a
+     * register the legacy never sent is the one direction this port must not drift in
+     * (`.claude/rules/design_rules.md`, "Parity and the Deviations Register").
+     *
+     * <p>Only {@code null} and {@code undefined} throw on a property read. A number, a string, an
+     * array or an empty object all answer {@code undefined} and are simply falsy, so those are
+     * passed through untouched and behave exactly as they do in the legacy.
      *
      * <p>Callers must apply this <strong>where the legacy dereferences</strong> and nowhere else.
      * JavaScript's iteration methods are lazy: {@code some} and {@code find} stop at the first hit,
-     * so a null after the deciding element is never reached, while {@code filter} and {@code forEach}
-     * always complete the pass. Each call site names the legacy line whose reach it reproduces.
+     * so a null after the deciding element is never reached, while {@code filter} and
+     * {@code forEach} always complete the pass. Each call site names the legacy line whose reach it
+     * reproduces.
      *
-     * @param element the element the legacy is about to read a property off; may be {@code null}
-     * @param field   the name of the field the array came from, for the refusal message
-     * @return the element, when it can be read
-     * @throws TransformationFailedException if the element cannot be read
+     * @param element    the member being dereferenced; may be {@code null}, which is itself a refusal
+     * @param collection the collection it came from, for the failure message
+     * @return the element, never {@code null}
+     * @throws TransformationFailedException if the element cannot be read through
      */
-    static JsonNode dereferenced(final JsonNode element, final String field) {
+    static JsonNode dereferencedElement(final JsonNode element, final String collection) {
         if (element == null || element.isNull() || element.isMissingNode()) {
-            // The field name is this service's own vocabulary, so it is safe to name. The element is
-            // the producer's, and may be defendant detail, so it is never quoted.
+            // The collection name is this service's own vocabulary, so it is safe to name. The
+            // element is the producer's, and may be defendant detail, so it is never quoted.
             throw new TransformationFailedException(
-                    "element of '" + field + "' is null and cannot be read");
+                    "a member of '" + collection + "' cannot be read through");
         }
         return element;
     }

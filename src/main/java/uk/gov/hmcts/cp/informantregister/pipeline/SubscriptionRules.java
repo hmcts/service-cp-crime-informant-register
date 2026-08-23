@@ -50,7 +50,7 @@ import uk.gov.hmcts.cp.informantregister.domain.UserGroupType;
  * <p><strong>A {@code null} element is refused, not treated as a non-match.</strong> Wherever the
  * legacy reads a property off an array element — a candidate subscription, a child subscription, a
  * judicial result, a judicial result prompt — a {@code null} there is a {@code TypeError} and the
- * whole hearing produces nothing. {@link Json#dereferenced} reproduces that reach exactly, including
+ * whole hearing produces nothing. {@link Json#dereferencedElement} reproduces that reach exactly, including
  * where JavaScript's laziness means an element is never read: {@code some} and {@code find} stop at
  * the first answer, {@code filter} completes the pass, and an empty reference-data list never runs
  * its callback at all. Answering "no match" instead would emit recipients the legacy never emitted
@@ -90,7 +90,7 @@ public final class SubscriptionRules {
             // `matchCourtHouse` reads `subscription.selectedCourtHouses` before anything else
             // (SubscriptionsService.js:19, :53), so a null candidate is a TypeError there whatever
             // the criteria say, and a refusal here.
-            final JsonNode subscription = Json.dereferenced(candidate, "subscriptions");
+            final JsonNode subscription = Json.dereferencedElement(candidate, "subscriptions");
 
             if (courtHouseMatches(subscription, criteria.ouCode())
                     && vocabularyRulesMatch(subscription, criteria)) {
@@ -114,7 +114,7 @@ public final class SubscriptionRules {
                     // `excludedNOWS` when a NOW id is set (:64), `userGroupVariants` when a user
                     // group is (:99), `applySubscriptionRules` otherwise (:116) — so a null child is
                     // a TypeError on all of them.
-                    final JsonNode child = Json.dereferenced(candidateChild, "childSubscriptions");
+                    final JsonNode child = Json.dereferencedElement(candidateChild, "childSubscriptions");
                     if (subscriptionRulesMatch(criteria, child)) {
                         matched.add(child);
                     }
@@ -449,12 +449,12 @@ public final class SubscriptionRules {
             // `for (var result of …) result.judicialResultTypeId` (:286) reads every result up to
             // the one that answers, so a null before it is a TypeError and one after it is never
             // reached.
-            final JsonNode result = Json.dereferenced(candidate, "judicialResults");
+            final JsonNode result = Json.dereferencedElement(candidate, "judicialResults");
             if (!FINANCIAL_COMPENSATION.equals(Json.text(result, "judicialResultTypeId"))) {
                 continue;
             }
             for (final JsonNode element : Json.dereferencedArray(result, PROMPTS)) {
-                final JsonNode prompt = Json.dereferenced(element, PROMPTS);
+                final JsonNode prompt = Json.dereferencedElement(element, PROMPTS);
                 if (CREDITOR_NAME.equals(Json.text(prompt, "promptReference"))
                         && NAME_ADDRESS.equals(Json.text(prompt, "type"))) {
                     return creditors.contains(Json.text(prompt, "value"));
@@ -591,7 +591,7 @@ public final class SubscriptionRules {
 
         final List<JsonNode> withPrompts = new ArrayList<>();
         for (final JsonNode candidate : judicialResults) {
-            final JsonNode judicialResult = Json.dereferenced(candidate, "judicialResults");
+            final JsonNode judicialResult = Json.dereferencedElement(candidate, "judicialResults");
             if (Json.truthy(judicialResult, PROMPTS)) {
                 withPrompts.add(judicialResult);
             }
@@ -601,7 +601,7 @@ public final class SubscriptionRules {
             for (final JsonNode element : Json.array(judicialResult, PROMPTS)) {
                 // `getMatchingPrompt` reads `judicialPrompt.type` first (:224). The enclosing
                 // `some` stops at the first match, so only the prompts actually reached are read.
-                final JsonNode prompt = Json.dereferenced(element, PROMPTS);
+                final JsonNode prompt = Json.dereferencedElement(element, PROMPTS);
                 final String reference = Json.text(prompt, "promptReference");
                 if (reference == null || reference.isEmpty()) {
                     continue;
@@ -662,7 +662,7 @@ public final class SubscriptionRules {
             return false;
         }
         for (final JsonNode candidate : judicialResults) {
-            final JsonNode judicialResult = Json.dereferenced(candidate, "judicialResults");
+            final JsonNode judicialResult = Json.dereferencedElement(candidate, "judicialResults");
             final String typeId = Json.text(judicialResult, "judicialResultTypeId");
             if (typeId != null && contains(wanted, typeId)) {
                 return true;

@@ -130,7 +130,7 @@ public final class SubscriptionMatcher {
         final List<JsonNode> informantRegisterSubscriptions =
                 Json.array(subscriptionsMetadata, "nowSubscriptions").stream()
                         .filter(subscription -> Json.truthy(
-                                Json.dereferenced(subscription, "nowSubscriptions"),
+                                Json.dereferencedElement(subscription, "nowSubscriptions"),
                                 "isInformantRegisterSubscription"))
                         .toList();
 
