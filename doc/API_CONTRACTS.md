@@ -203,7 +203,7 @@ blockers recorded against the submission story.
 |------|---------|
 | Redis `GET INT_{hearingId}_{hearingDay}_result_` (and the legacy key without `hearingDay`) | Hearing payload (claim check) |
 | `GET {results}/results-query-api/query/api/rest/results/hearingDetails/internal/{hearingId}`, `Accept: application/vnd.results.hearing-details-internal+json`, `CJSCPPUID` | Payload fallback on cache miss |
-| `GET {referencedata}/…/now-subscriptions?on={registerDate}` | Informant-register subscription matching |
+| `GET {referencedata}/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on={YYYY-MM-DD}`, `Accept: application/vnd.referencedata.query.get-now-subscriptions+json`, `CJSCPPUID` | Informant-register subscription matching. `on` is the register date's own day, read with its misleading literal `Z` at face value exactly as the legacy reads it (defect D9). A failure to obtain the body — connect, 5xx, 429, 404, or an answer that is not JSON — is transient and reported, never answered as "nobody is subscribed" (deviation 14) |
 
 ---
 

@@ -7,6 +7,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- 2026-08-23 — **The register is addressed from real reference data.** `NowSubscriptionsSource` is
+  served by `adapter/refdata/ReferenceDataNowSubscriptionsClient` in the deployed wiring; the
+  refusing stub stays behind `informantregister.referencedata.mode=STUB` for local runs and for the
+  container suites whose subject is settlement rather than who a register reaches.
+  - The call is `ReferenceDataService.getSubscriptionsMetadata` ported: the path, the `on` query
+    parameter, `Accept: application/vnd.referencedata.query.get-now-subscriptions+json` and
+    `CJSCPPUID` (`ReferenceDataService.js:40-47`), all four confirmed against the reference-data
+    query API's own RAML and against the parity pack's recorded calls.
+  - **The `on` day is bug-for-bug.** It is the register date's own day, read with the misleading
+    literal `Z` at face value (defect D9), so a hearing shared at 23:00 UTC in British Summer Time
+    is addressed with the *next* day's reference data. Pinned by
+    `RegisterTransformationChainTest.QueryDateAcrossBritishSummerTime` against the recorded case.
+  - **The retry rule is the legacy's**, because this call goes through the same
+    `AxiosRetryWrapper.getWrapperWithDefault` the payload fallback does: three attempts a second
+    apart, and no retry at all once a response has arrived carrying a status at or below 429 — so a
+    429 is tried once and a 500 three times. Ported deliberately and pinned.
+  - **A failure is reported, not answered.** Connect, 5xx, 429, 404 and a body that is not JSON all
+    raise the transient `ReferenceDataUnavailableException`; the legacy's `return null` is what makes
+    an outage indistinguishable from "nobody is subscribed" (deviation 14, already on the register).
+    An answer that *is* readable is passed through whatever its shape — an empty body, no
+    `nowSubscriptions` member, or no informant-register subscription among them are business
+    outcomes the legacy carries on from, and the matching step reads them.
+  - **Startup refuses a live source that cannot ask**: no base URL, no `CJSCPPUID`, no attempts, a
+    negative wait or a timeout that never expires each fail at startup rather than parking every
+    hearing that produced a register from a pod reporting itself healthy. This closes, for this
+    port, the LIVE-mode hole the payload story left open on its own; the payload one is untouched.
+    The reference-data identity falls back to the Results one, because the function app threads a
+    single `cjscppuid` through both calls.
+
 - 2026-08-23 — **The transformation runs, and the parity pack is armed against it.** The three
   ported steps are chained as `InformantRegisterOrchestrator` chains them, behind a new
   `RegisterTransformer` port, and `DistributionPipeline` calls it between the payload fetch and the

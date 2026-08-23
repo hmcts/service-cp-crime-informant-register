@@ -58,8 +58,8 @@ ASB queue informantregister.requests
 │  └─ RegisterSubmissionClient «port» POST add-informant-register per authority │
 ├──────────────────────────────────────────────────────────────────────────┤
 │ ADAPTERS — the only place infrastructure types appear                     │
-│  stub/ (CRA-220 logging no-ops) · payload/ (Lettuce + RestClient)         │
-│  results/ (RestClient + retry policy)                                     │
+│  stub/ (logging no-ops / refusals) · payload/ (Lettuce + RestClient)      │
+│  refdata/ (RestClient) · results/ (RestClient + retry policy)             │
 ├──────────────────────────────────────────────────────────────────────────┤
 │ PERSISTENCE — ProcessingStateService, repositories, Flyway migrations     │
 ├──────────────────────────────────────────────────────────────────────────┤
@@ -79,10 +79,11 @@ uk.gov.hmcts.cp.informantregister
 ├── application/   DistributionPipeline, IdempotencyGuard, ProcessingStateService, port interfaces
 ├── domain/        records + enums (DistributionCommand, RequestStatus, OutputStatus)
 ├── adapter/
-│   ├── stub/      CRA-220 logging no-op implementations of every port
-│   ├── payload/   Redis + results-query-api payload source            (later story)
+│   ├── stub/      logging no-op / refusing implementations, for local runs and suites
+│   ├── payload/   Redis + results-query-api payload source
+│   ├── refdata/   referencedata-query-api now-subscriptions source
 │   └── results/   add-informant-register submission client + retry policy
-├── pipeline/      RegisterBuilder, SubscriptionMatcher, AggregationMapper (later story)
+├── pipeline/      RegisterBuilder, SubscriptionMatcher, AggregationMapper
 ├── persistence/   entities + repositories; migrations in resources/db/migration
 └── config/        typed properties, ObjectMapper, health indicators
 ```
@@ -248,7 +249,7 @@ All Node sources under `cpp-context-azure-legalaidagency/azure-functions/durable
 |---|-----------------------|-------------------|-------|
 | 1 | `HearingResultedCacheQuery` | `adapter/payload` | Same `INT_{hearingId}_{hearingDay}_result_` key (both key forms), same `hearingDetails/internal` REST fallback; **verified TLS** (fixes `rejectUnauthorized:false`) |
 | 2 | `SetInformantRegister` | `pipeline/RegisterBuilder` | One fragment per prosecuting authority; court-extract filtering; first-occurrence-wins identifier dedupe; **group proceedings are NOT skipped** — do not "fix" this |
-| 3 | `InformantRegisterSubscriptions` | `pipeline/SubscriptionMatcher` | `now-subscriptions?on={registerDate}`; port the 2-arg vocabulary call exactly (major-creditor lists always empty today — parity, not a bug fix) |
+| 3 | `InformantRegisterSubscriptions` | `pipeline/SubscriptionMatcher` + `adapter/refdata` | The matching is pure and the fetch is a port. `now-subscriptions?on={registerDate}` with the vendor `Accept` type and `CJSCPPUID`; the `on` day honours the register date's misleading `Z` (D9), the retry rule is the legacy `AxiosRetryWrapper`'s, and a failure to obtain the body is reported rather than answered as `null` (deviation 14). Port the 2-arg vocabulary call exactly (major-creditor lists always empty today — parity, not a bug fix) |
 | 4 | `OutboundInformantRegister` mappers | `pipeline/AggregationMapper` | Per-authority document incl. recipients, filename, verdict mapping |
 | 5 | `ProcessOutboundInformantRegister` | `adapter/results` | POST per authority — **now with retry on connect/IO/5xx/429 and DLQ on exhaustion** (today errors are swallowed) |
 
@@ -304,6 +305,12 @@ Everything `${ENV_VAR:default}` in `application.yaml`, bound to typed `@Configur
 | `informantregister.results.headers.*` | — | Any further header the mesh requires; configuration because the authorisation scheme is undocumented |
 | `informantregister.results.max-attempts` / `initial-backoff` / `max-backoff` | 4 / 500ms / 20s | POST retry policy; `max-backoff` also caps a server-supplied `Retry-After` |
 | `informantregister.results.connect-timeout` / `read-timeout` | 5s / 30s | Worst case must stay inside `claim.processing-deadline` |
+| `informantregister.referencedata.mode` | `LIVE` | `LIVE` is the reference-data query-API adapter; `STUB` is the refusing stub, for local runs and the suites that address no register. Startup refuses `STUB` on the deployed credential source |
+| `informantregister.referencedata.base-url` | — | Reference-data query API base; no default, the local value in `application.yaml` is the query API's own declared `baseUri`. **Required in `LIVE`** |
+| `informantregister.referencedata.system-user-id` | — | `CJSCPPUID` identity; a secret, from Key Vault. **Required in `LIVE`** — reference data authorises the query on it. Falls back to `RESULTS_SYSTEM_USER_ID`, because the function app threads one `cjscppuid` through both calls |
+| `informantregister.referencedata.headers.*` | — | Any further header the mesh requires; same reason as the Results one |
+| `informantregister.referencedata.max-attempts` / `retry-interval` | 3 / 1s | The legacy `AxiosRetryWrapper` defaults, ported — including its inverted rule that a status at or below 429 is never retried while a 5xx is |
+| `informantregister.referencedata.connect-timeout` / `read-timeout` | 5s / 30s | Worst case must stay inside `claim.processing-deadline` |
 | `spring.flyway.enabled` | `true` | Processed-log migrations |
 
 Secrets and identity: Key Vault CSI → env vars; workload identity (`DefaultAzureCredential`) for
