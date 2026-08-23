@@ -2,6 +2,7 @@ package uk.gov.hmcts.cp.informantregister.pipeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import java.io.InputStream;
 import java.time.Clock;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterCaseOrApplication;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterDefendant;
@@ -111,14 +113,18 @@ class CaseOrApplicationMapperTest {
 
         /**
          * Parity-pack pinning case {@code d08-offences-duplicated-onto-every-case}, at this mapper's
-         * own level and asserted by name rather than by count alone. The two entries produced from
-         * {@code hearing_with_multiple_cases.json} both carry both offences, and each of those
-         * offences still points at the case it really came from — so the entry contradicts itself.
-         * A Java offence mapper scoped to its own case, which is the obvious tidy design, produces
-         * one offence per entry and must fail here.
+         * own level. The two entries produced from {@code hearing_with_multiple_cases.json} both
+         * carry both offences. A Java offence mapper scoped to its own case, which is the obvious
+         * tidy design, produces one offence per entry and must fail here.
+         *
+         * <p>The legacy fixture gives both of its cases the same authority reference, so it cannot
+         * show <em>which</em> case a duplicated offence claims to have come from — the second half
+         * of the defect, and the half that makes the entry self-contradictory. It is byte-identical
+         * to the Jest one and stays that way; {@link #each_duplicated_offence_still_names_its_own_case}
+         * pins that half on a hearing built here with two references that can be told apart.
          */
         @Test
-        @DisplayName("d08 — each case entry carries the other case's offence too, and says so")
+        @DisplayName("d08 — each case entry carries the other case's offence too")
         void every_case_entry_carries_the_defendants_whole_offence_list() {
             final List<InformantRegisterCaseOrApplication> entries =
                     build("hearing_with_multiple_cases.json");
@@ -128,9 +134,72 @@ class CaseOrApplicationMapperTest {
                 assertThat(entry.caseOrApplicationReference()).isEqualTo("TFL4359536");
                 assertThat(entry.offences()).hasSize(2);
                 assertThat(entry.offences())
-                        .extracting(offence -> offence.offenceCode())
-                        .containsExactly("PS90010", "PS90010");
+                        .extracting(
+                                offence -> offence.offenceCode(),
+                                offence -> offence.originatingCaseUrn())
+                        .containsExactly(
+                                tuple("PS90010", "TFL4359536"), tuple("PS90010", "TFL4359536"));
             }
+        }
+
+        /**
+         * The other half of D8, which the legacy fixture cannot show: an offence duplicated onto a
+         * case it did not come from still carries the <em>originating</em> case's reference. So the
+         * first entry, whose own reference is {@code URN-ONE}, lists an offence stamped
+         * {@code URN-TWO} — the register says in one field that the offence belongs to this case and
+         * in the next that it does not.
+         *
+         * <p>Two cases, one defendant, one offence each, and two references that can be told apart.
+         * A mapper that scoped the list to its own case would produce one offence per entry; one
+         * that scoped the <em>stamp</em> instead — writing each entry's own reference onto every
+         * offence hanging off it — would keep both offences and still fail here, which is the
+         * regression the count-only assertion could not see.
+         */
+        @Test
+        @DisplayName("d08 — a duplicated offence names the case it came from, not the one it is on")
+        void each_duplicated_offence_still_names_its_own_case() {
+            final var hearing = ModelObjects.hearing();
+            hearing.set("prosecutionCases", ModelObjects.array(
+                    caseCarrying("case-one", "URN-ONE", "AA00001"),
+                    caseCarrying("case-two", "URN-TWO", "BB00002")));
+
+            final RegisterDefendant defendant = ModelObjects.registerDefendant(
+                    "MASTER_10001", List.of("case-one", "case-two"), null, List.of());
+
+            final List<InformantRegisterCaseOrApplication> entries = buildFor(hearing, defendant);
+
+            assertThat(entries).hasSize(2);
+            assertThat(entries.get(0).caseOrApplicationReference()).isEqualTo("URN-ONE");
+            assertThat(entries.get(1).caseOrApplicationReference()).isEqualTo("URN-TWO");
+            for (final InformantRegisterCaseOrApplication entry : entries) {
+                assertThat(entry.offences())
+                        .extracting(
+                                offence -> offence.offenceCode(),
+                                offence -> offence.originatingCaseUrn())
+                        .containsExactly(
+                                tuple("AA00001", "URN-ONE"), tuple("BB00002", "URN-TWO"));
+            }
+        }
+
+        /**
+         * One prosecution case of this suite's authority, carrying this suite's defendant and a
+         * single offence.
+         *
+         * @param caseId      the case's id, which the defendant's case list names
+         * @param caseUrn     the case URN, which becomes both its reference and its offence's stamp
+         * @param offenceCode the offence code, so the two cases' offences can be told apart
+         * @return the prosecution-case tree
+         */
+        private ObjectNode caseCarrying(
+                final String caseId, final String caseUrn, final String offenceCode) {
+            final ObjectNode prosecutionCase = ModelObjects.prosecutionCase(
+                    "31af405e-7b60-4dd8-a244-c24c2d3fa595", caseUrn, null);
+            prosecutionCase.put("id", caseId);
+            final ObjectNode defendant = ModelObjects.defendant(
+                    ModelObjects.array(ModelObjects.offence(offenceCode, 1, "A title")));
+            defendant.put("masterDefendantId", "MASTER_10001");
+            prosecutionCase.set("defendants", ModelObjects.array(defendant));
+            return prosecutionCase;
         }
     }
 
@@ -198,6 +267,48 @@ class CaseOrApplicationMapperTest {
             prosecutionCase.put("id", "caseId1");
             final var hearing = ModelObjects.hearing();
             hearing.set("prosecutionCases", ModelObjects.array(prosecutionCase));
+
+            final RegisterDefendant defendant = ModelObjects.registerDefendant(
+                    "MASTER_10001", List.of("caseId1"), null, List.of());
+
+            assertThatThrownBy(() -> buildFor(hearing, defendant))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
+
+        /**
+         * {@code prosecutionCase.prosecutionCaseIdentifier.caseURN}
+         * (`ProsecutionCaseOrApplicationMapper.js:20-21`) is dereferenced with no guard, so a matched
+         * case with no identifier kills the hearing. Emitting an entry with no reference instead
+         * would put an unattributable case on a real register.
+         */
+        @Test
+        @DisplayName("a matched case with no identifier is refused, not given no reference")
+        void a_case_without_an_identifier_should_refuse() {
+            final var prosecutionCase = ModelObjects.hearing().objectNode();
+            prosecutionCase.put("id", "caseId1");
+            prosecutionCase.set("defendants", ModelObjects.array());
+            final var hearing = ModelObjects.hearing();
+            hearing.set("prosecutionCases", ModelObjects.array(prosecutionCase));
+
+            final RegisterDefendant defendant = ModelObjects.registerDefendant(
+                    "MASTER_10001", List.of("caseId1"), null, List.of());
+
+            assertThatThrownBy(() -> buildFor(hearing, defendant))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
+
+        /**
+         * {@code find(pcase => pcase.id === caseId)} (`:55`) reads {@code .id} off each member it
+         * reaches, so a null one before the match is a {@code TypeError} too — and reading it as
+         * "no id" would let it answer a defendant whose own case id is absent.
+         */
+        @Test
+        @DisplayName("a null prosecution case is refused, not read as one with no id")
+        void a_null_prosecution_case_should_refuse() {
+            final var hearing = ModelObjects.hearing();
+            final var cases = ModelObjects.array();
+            cases.addNull();
+            hearing.set("prosecutionCases", cases);
 
             final RegisterDefendant defendant = ModelObjects.registerDefendant(
                     "MASTER_10001", List.of("caseId1"), null, List.of());

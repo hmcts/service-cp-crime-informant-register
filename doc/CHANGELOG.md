@@ -6,6 +6,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- 2026-08-23 — **Post-review parity corrections to the aggregation mapper.** Every one is a place
+  where the port answered differently from the Node source, found by reading the two side by side;
+  each is traced to the legacy line it reproduces.
+  - **An unreadable date is rendered, not refused.** `moment` does not throw — it flags the moment
+    invalid and `format` answers the literal `"Invalid date"` — so `HearingDates.localDate` and
+    `.localDateTime` now render `"Invalid date"` / `"Invalid dateZ"` where they previously raised a
+    transformation failure. Both call sites read the payload directly: a sitting day
+    (`CourtSessionMapper.js:26-28`) and a next hearing's start (`ResultDataMapper.js:15`). Refusing
+    there parked hearings the legacy renders. `DateService.parse` really does throw and
+    `HearingDates.orderingKey` still does, now including the case where three numbers read but are
+    not a calendar day. Deviations #13 records the forms V8's date parser resolves and this does not.
+  - **A null array member is a `TypeError`, and is refused rather than skipped.** The legacy
+    dereferences each member as it iterates — `subscription.forDistribution`
+    (`RecipientMapper.js:15`), `prompt.isFinancialImposition` (`ResultDataMapper.js:28`, inside
+    `find`, so only up to the match), `offence.offenceCode` (`OffenceMapper.js:62`), `pcase.id`
+    (`ProsecutionCaseOrApplicationMapper.js:55`). Reading a null as "nothing set" emitted a register
+    the legacy never sent, to a real prosecuting authority. New `Json.dereferencedElement`.
+  - **Three unguarded identifier dereferences** were being read null-safely and are now refusals:
+    `prosecutionCase.prosecutionCaseIdentifier` at `OffenceMapper.js:17` (read for *every* case in
+    the hearing, before any filtering) and `ProsecutionCaseOrApplicationMapper.js:20`, and the
+    `deriveCaseUrn` argument at `OffenceMapper.js:41,51`.
+  - **The legal-entity branch is reached lazily.** Every legacy site that dereferences
+    `legalEntityDefendant.organisation` is an `else if`, so a defendant carrying a populated
+    `personDefendant` beside an empty `legalEntityDefendant` maps cleanly there; resolving it up
+    front refused the whole hearing.
+  - **`orderIndex` is no longer truncated.** A fractional or oversized value is absent rather than
+    silently narrowed to an `int` — truncating `1.5` to `1` produced a body that *passes* the
+    consumer's schema carrying an index the payload never sent. Deviations #11.
+  - **Identifier strictness at the typed boundary.** `UUID.fromString` accepts shorthand
+    (`1-1-1-1-1` → `00000001-0001-…`), so the canonical 8-4-4-4-12 shape is checked before parsing.
+    The case normalisation that remains — an upper-case identifier can only render back in lower —
+    is now recorded on deviations #10, whose "byte for byte" claim was not true of it.
+  - **`trim` is ECMAScript's.** New `JsStrings.trim` strips what `String.prototype.trim` strips,
+    including `U+00A0`, which neither `String.trim()` nor `String.strip()` removes; used for email
+    addresses (`RecipientMapper.js:41`) and the joined full name (`DefendantMapper.js:167`).
+  - **Three assertions that did not check what they claimed**: the D8 pinning case now asserts each
+    duplicated offence's `originatingCaseUrn` (on a hearing built here, because the byte-identical
+    legacy fixture gives both cases the same reference and cannot show it); the `ResultMapper` twin
+    asserts the whole multiline `resultText` its Jest original asserts, not a prefix; and the null
+    email address is now asserted on the **serialised** body, where the omitted-key divergence is
+    actually visible.
+  - Deviations #11, #12 and #13 added, all sign-off pending; #10 amended. #12 records a collapse the
+    fragment model cannot currently express — an id list cannot tell an absent id from an explicit
+    null — and flags that closing it is a model decision for the parity review, not a mapper change.
+
 ### Added
 - 2026-08-23 — **The aggregation mapper: a fragment becomes the command body that is sent for it.**
   The last of the three transformation steps, ported from `OutboundInformantRegister/index.js` and

@@ -3,6 +3,7 @@ package uk.gov.hmcts.cp.informantregister.pipeline;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Supplier;
 import tools.jackson.databind.JsonNode;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDefendant;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterDefendant;
@@ -127,7 +128,12 @@ final class DefendantMapper {
 
         final ResultMapper resultMapper = new ResultMapper(registerDefendant, resultDataMapper);
         final JsonNode person = Json.at(record, "personDefendant");
-        final JsonNode organisation = organisationOf(record);
+        // Not resolved here. Every legacy branch that reaches the organisation is an `else if` or
+        // the second half of an `||`, so `legalEntityDefendant.organisation` is only dereferenced
+        // when the person record did not answer — and a defendant carrying both a populated
+        // `personDefendant` and an empty `legalEntityDefendant` is mapped by the legacy without
+        // complaint. Resolving eagerly would refuse that hearing outright.
+        final Supplier<JsonNode> organisation = () -> organisationOf(record);
 
         return new InformantRegisterDefendant(
                 name(person, organisation),
@@ -153,14 +159,15 @@ final class DefendantMapper {
      * The defendant's name: the person's full name, or the organisation's.
      *
      * @param person       the person record, if any
-     * @param organisation the organisation record, if any
+     * @param organisation the organisation record, resolved only if the person record is absent
      * @return the name, or {@code null}
      */
-    private static String name(final JsonNode person, final JsonNode organisation) {
+    private static String name(final JsonNode person, final Supplier<JsonNode> organisation) {
         if (Json.truthy(person)) {
             return fullName(person);
         }
-        return Json.truthy(organisation) ? Json.text(organisation, "name") : null;
+        final JsonNode resolved = organisation.get();
+        return Json.truthy(resolved) ? Json.text(resolved, "name") : null;
     }
 
     /**
@@ -187,21 +194,24 @@ final class DefendantMapper {
                 name.append(Json.text(details, part));
             }
         }
-        return name.toString().trim();
+        // `JsStrings.trim`, not `String.trim`: the legacy trims what ECMAScript calls whitespace,
+        // which includes the non-breaking space a pasted name can carry.
+        return JsStrings.trim(name.toString());
     }
 
     /**
      * The defendant's last name: the person's, or the organisation's own name.
      *
      * @param person       the person record, if any
-     * @param organisation the organisation record, if any
+     * @param organisation the organisation record, resolved only if the person record is absent
      * @return the last name, or {@code null}
      */
-    private static String lastName(final JsonNode person, final JsonNode organisation) {
+    private static String lastName(final JsonNode person, final Supplier<JsonNode> organisation) {
         if (Json.truthy(person)) {
             return Json.text(details(person), "lastName");
         }
-        return Json.truthy(organisation) ? Json.text(organisation, "name") : null;
+        final JsonNode resolved = organisation.get();
+        return Json.truthy(resolved) ? Json.text(resolved, "name") : null;
     }
 
     /**
@@ -228,15 +238,20 @@ final class DefendantMapper {
      * {@code address1} absent — and does <em>not</em> fall through to the organisation's second line,
      * because the person's address answered first.
      *
+     * <p>The organisation is resolved only once the person's address has failed to answer, because
+     * that is where the legacy's {@code else if} evaluates
+     * {@code isLegalEntityDefendantAddressAvailable} and so where it dereferences
+     * {@code legalEntityDefendant.organisation}.
+     *
      * @param person          the person record, if any
-     * @param organisation    the organisation record, if any
+     * @param organisation    the organisation record, resolved only if the person's does not answer
      * @param field           the address field to read
      * @param mustBeNonEmpty  whether the value must be truthy for its source to be used
      * @return the value, or {@code null}
      */
     private static String addressLine(
             final JsonNode person,
-            final JsonNode organisation,
+            final Supplier<JsonNode> organisation,
             final String field,
             final boolean mustBeNonEmpty) {
 
@@ -245,8 +260,9 @@ final class DefendantMapper {
         if (Json.truthy(personAddress) && (!mustBeNonEmpty || Json.truthy(personAddress, field))) {
             return Json.text(personAddress, field);
         }
+        final JsonNode resolved = organisation.get();
         final JsonNode organisationAddress =
-                Json.truthy(organisation) ? Json.at(organisation, "address") : null;
+                Json.truthy(resolved) ? Json.at(resolved, "address") : null;
         if (Json.truthy(organisationAddress)
                 && (!mustBeNonEmpty || Json.truthy(organisationAddress, field))) {
             return Json.text(organisationAddress, field);
@@ -269,6 +285,7 @@ final class DefendantMapper {
      *
      * <p>{@code legalEntityDefendant.organisation.address} is dereferenced with no guard on
      * {@code organisation} (`DefendantMapper.js:133`), so a legal entity without one is a refusal.
+     * Called lazily, never up front — see {@link #map} for why that difference is observable.
      *
      * @param record the defendant record
      * @return the organisation, or {@code null} when the record is not a legal entity

@@ -362,6 +362,63 @@ class DefendantMapperTest {
             assertThat(defendants.getFirst().address1()).isEqualTo("A-1");
             assertThat(defendants.getFirst().lastName()).isEqualTo("Last");
         }
+
+        /**
+         * The legal-entity branch is reached lazily, and that is observable. Every legacy site that
+         * dereferences {@code legalEntityDefendant.organisation} is an {@code else if} — the name at
+         * {@code DefendantMapper.js:162}, the last name at {@code :154}, and
+         * {@code isLegalEntityDefendantAddressAvailable} at {@code :133}, which the address methods
+         * only evaluate once the person's address has failed to answer. So a defendant carrying a
+         * fully populated {@code personDefendant} beside an empty {@code legalEntityDefendant} is
+         * mapped by the legacy without complaint, and resolving the organisation up front would
+         * refuse the whole hearing instead.
+         */
+        @Test
+        @DisplayName("an empty legal entity beside a populated person is not dereferenced at all")
+        void an_empty_legal_entity_beside_a_person_is_never_reached() {
+            final ObjectNode defendant = ModelObjects.defendant(ModelObjects.array());
+            defendant.put("masterDefendantId", "MASTER_10001");
+            defendant.set("personDefendant", personDetails());
+            defendant.set("legalEntityDefendant", defendant.objectNode());
+
+            final List<InformantRegisterDefendant> defendants =
+                    build(hearingWith(caseWith(AUTHORITY, defendant)),
+                            ModelObjects.registerDefendant(
+                                    "MASTER_10001", null, null, List.of()));
+
+            // Every address line answers from the person, so no method reaches the else-if that
+            // would dereference the organisation — which is the whole of the case. The helper
+            // populates all six deliberately: leave one out and the legacy throws here too.
+            assertThat(defendants).hasSize(1);
+            assertThat(defendants.getFirst().name()).isEqualTo("First Middle Last");
+            assertThat(defendants.getFirst().lastName()).isEqualTo("Last");
+            assertThat(defendants.getFirst().address1()).isEqualTo("A-1");
+            assertThat(defendants.getFirst().address2()).isEqualTo("A-2");
+            assertThat(defendants.getFirst().address3()).isEqualTo("A-3");
+            assertThat(defendants.getFirst().address4()).isEqualTo("A-4");
+            assertThat(defendants.getFirst().address5()).isEqualTo("A-5");
+            assertThat(defendants.getFirst().postCode()).isEqualTo("PostCode");
+        }
+
+        /**
+         * The other side of the same laziness: once the person record does <em>not</em> answer, the
+         * legacy does dereference {@code legalEntityDefendant.organisation}, and a legal entity
+         * without one is the {@code TypeError} deviations-register entry 7 turns into a refusal.
+         */
+        @Test
+        @DisplayName("a legal entity with no organisation is refused once the person cannot answer")
+        void a_legal_entity_without_an_organisation_is_refused() {
+            final ObjectNode defendant = ModelObjects.defendant(ModelObjects.array());
+            defendant.put("masterDefendantId", "MASTER_10001");
+            defendant.remove("personDefendant");
+            defendant.set("legalEntityDefendant", defendant.objectNode());
+
+            assertThatThrownBy(() ->
+                    build(hearingWith(caseWith(AUTHORITY, defendant)),
+                            ModelObjects.registerDefendant(
+                                    "MASTER_10001", null, null, List.of())))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
     }
 
     @Nested

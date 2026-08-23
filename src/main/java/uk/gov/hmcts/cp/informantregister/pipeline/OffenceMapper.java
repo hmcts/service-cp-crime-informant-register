@@ -77,7 +77,11 @@ final class OffenceMapper {
      */
     private void addProsecutionCaseOffences(final List<InformantRegisterOffence> offences) {
         for (final JsonNode prosecutionCase : Json.array(hearing, "prosecutionCases")) {
-            final JsonNode identifier = Json.at(prosecutionCase, "prosecutionCaseIdentifier");
+            // `prosecutionCase.prosecutionCaseIdentifier.prosecutionAuthorityId` — dereferenced with
+            // no guard (OffenceMapper.js:17), and for every case in the hearing, not only a matched
+            // one, so a case with no identifier kills the hearing before any filtering happens.
+            final JsonNode identifier =
+                    Json.dereferenced(prosecutionCase, "prosecutionCaseIdentifier");
             if (!Objects.equals(
                     Json.text(identifier, "prosecutionAuthorityId"),
                     fragment.prosecutionAuthorityId())) {
@@ -97,7 +101,7 @@ final class OffenceMapper {
                 // reads a property off it, so the legacy throws here too.
                 for (final JsonNode offence
                         : Json.dereferencedArray(caseDefendant, "offences")) {
-                    offences.add(derive(offence, caseUrn(identifier)));
+                    offences.add(derive(offence, "offences", caseUrn(identifier)));
                 }
             }
         }
@@ -120,20 +124,27 @@ final class OffenceMapper {
                     if (!Json.nonEmptyArray(applicationCase, "offences")) {
                         continue;
                     }
-                    final String caseUrn =
-                            caseUrn(Json.at(applicationCase, "prosecutionCaseIdentifier"));
+                    // `deriveCaseUrn(courtApplicationCase.prosecutionCaseIdentifier)` reads
+                    // `.caseURN` off its argument with no guard (OffenceMapper.js:41, 80).
+                    final String caseUrn = caseUrn(
+                            Json.dereferenced(applicationCase, "prosecutionCaseIdentifier"));
                     for (final JsonNode offence : Json.array(applicationCase, "offences")) {
-                        offences.add(derive(offence, caseUrn));
+                        offences.add(derive(offence, "offences", caseUrn));
                     }
                 }
             }
             if (Json.truthy(application, "courtOrder")) {
                 final JsonNode courtOrder = Json.at(application, "courtOrder");
-                for (final JsonNode courtOrderOffence
+                for (final JsonNode member
                         : Json.array(courtOrder, "courtOrderOffences")) {
+                    // `courtOrderOffence.offence` and `.prosecutionCaseIdentifier` are both read
+                    // straight off the member (OffenceMapper.js:50-51).
+                    final JsonNode courtOrderOffence =
+                            Json.dereferencedElement(member, "courtOrderOffences");
                     offences.add(derive(
                             Json.at(courtOrderOffence, "offence"),
-                            caseUrn(Json.at(
+                            "courtOrderOffences",
+                            caseUrn(Json.dereferenced(
                                     courtOrderOffence, "prosecutionCaseIdentifier"))));
                 }
             }
@@ -166,30 +177,45 @@ final class OffenceMapper {
     /**
      * Maps one offence and stamps it with the case it came from.
      *
-     * @param offence the offence tree
-     * @param caseUrn the reference of the case the offence came from
+     * @param offence    the offence tree; a null one is a refusal
+     * @param collection the collection it was iterated out of, for the failure message
+     * @param caseUrn    the reference of the case the offence came from
      * @return the outbound offence
      */
-    private InformantRegisterOffence derive(final JsonNode offence, final String caseUrn) {
+    private InformantRegisterOffence derive(
+            final JsonNode offence, final String collection, final String caseUrn) {
+        // `derivedOffence.offenceCode = offence.offenceCode` (OffenceMapper.js:62) — the offence is
+        // dereferenced with no guard, so a null member, or a court-order entry naming no offence,
+        // kills the hearing rather than producing an offence with nothing in it.
+        final JsonNode present = Json.dereferencedElement(offence, collection);
         return new InformantRegisterOffence(
                 caseUrn,
-                Json.text(offence, "offenceCode"),
-                orderIndex(offence),
-                Json.text(offence, "offenceTitle"),
-                Json.text(Json.at(offence, "plea"), "pleaValue"),
-                verdict(offence),
-                resultMapper.offenceLevel(offence));
+                Json.text(present, "offenceCode"),
+                orderIndex(present),
+                Json.text(present, "offenceTitle"),
+                Json.text(Json.at(present, "plea"), "pleaValue"),
+                verdict(present),
+                resultMapper.offenceLevel(present));
     }
 
     /**
      * The offence's order index.
      *
+     * <p>The legacy copies {@code offence.orderIndex} across untouched (`OffenceMapper.js:63`) and
+     * the contract types the component {@code integer}, so a value that is not one is a body the
+     * consumer rejects — no register either way. What must not happen is the third answer: reading
+     * {@code 1.5} as {@code 1}, or a value past {@link Integer#MAX_VALUE} as whatever the low bits
+     * hold, produces a body that <em>passes</em> validation carrying an index the payload never
+     * sent. So only an integral value that fits is carried, and anything else is absent —
+     * deviations-register entry 11.
+     *
      * @param offence the offence tree
-     * @return the order index, or {@code null} when the payload omits it
+     * @return the order index, or {@code null} when the payload omits it or it is not an index
      */
     private static Integer orderIndex(final JsonNode offence) {
         final JsonNode value = Json.at(offence, "orderIndex");
-        return value == null || !value.isNumber() ? null : value.intValue();
+        return value != null && value.isIntegralNumber() && value.canConvertToInt()
+                ? value.intValue() : null;
     }
 
     /**

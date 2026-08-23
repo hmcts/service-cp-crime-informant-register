@@ -55,7 +55,10 @@ final class RecipientMapper {
      */
     List<InformantRegisterRecipient> build() {
         final List<InformantRegisterRecipient> recipients = new ArrayList<>();
-        for (final JsonNode subscription : matchedSubscriptions) {
+        for (final JsonNode member : matchedSubscriptions) {
+            // `subscription.forDistribution` (RecipientMapper.js:15) — the member is dereferenced
+            // with no guard, so a null in the matched-subscription array kills the hearing there.
+            final JsonNode subscription = Json.dereferencedElement(member, "matchedSubscriptions");
             if (!Json.truthy(subscription, "forDistribution")
                     || !Json.truthy(subscription, "emailDelivery")
                     || !Json.truthy(subscription, "recipient")) {
@@ -83,11 +86,13 @@ final class RecipientMapper {
      *
      * <p>Ports {@code trimEmailAddress}, whose guard is truthiness: a null or empty address is
      * returned as it arrived rather than trimmed, which for those two values is the same answer.
+     * The trim itself is {@link JsStrings#trim}, not {@link String#trim()} — the two disagree about
+     * the non-breaking space, and an address is not a value to be approximate about.
      *
      * @param emailAddress the address; may be {@code null}
      * @return the trimmed address, or the value unchanged when there is nothing to trim
      */
     private static String trimmed(final String emailAddress) {
-        return emailAddress == null ? null : emailAddress.trim();
+        return JsStrings.trim(emailAddress);
     }
 }

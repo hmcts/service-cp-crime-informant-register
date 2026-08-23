@@ -3,6 +3,7 @@ package uk.gov.hmcts.cp.informantregister.pipeline;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -331,6 +332,87 @@ class OffenceMapperTest {
 
             assertThatThrownBy(() -> build(hearing))
                     .isInstanceOf(TransformationFailedException.class);
+        }
+
+        /**
+         * {@code prosecutionCase.prosecutionCaseIdentifier.prosecutionAuthorityId}
+         * (`OffenceMapper.js:17`) is read off every case in the hearing before any filtering, so a
+         * case with no identifier ends the hearing there — even one belonging to another authority
+         * entirely. Reading it as "does not match" would emit a register the legacy never sent.
+         */
+        @Test
+        @DisplayName("a case with no identifier is refused, not read as another authority's")
+        void a_case_without_an_identifier_should_refuse() {
+            final ObjectNode hearing = hearingWithOneCase("caseURN", null);
+            hearing.withArray("prosecutionCases").add(hearing.objectNode());
+
+            assertThatThrownBy(() -> build(hearing))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
+
+        /**
+         * {@code derivedOffence.offenceCode = offence.offenceCode} (`OffenceMapper.js:62`) is read
+         * straight off the array member, so a null offence is a {@code TypeError}. Emitting an
+         * offence with every field absent instead would put a row on a real register that the
+         * legacy never produced — the opposite direction from entry 7's usual shape, and the one
+         * that reaches an authority.
+         */
+        @Test
+        @DisplayName("a null offence is refused, not mapped to an offence with nothing in it")
+        void a_null_offence_should_refuse() {
+            final ObjectNode hearing = ModelObjects.hearing();
+            final ObjectNode prosecutionCase =
+                    ModelObjects.prosecutionCase(AUTHORITY, "caseURN", null);
+            final ObjectNode defendant = ModelObjects.defendant(ModelObjects.array());
+            defendant.put("masterDefendantId", MASTER_DEFENDANT);
+            defendant.withArray("offences").addNull();
+            prosecutionCase.set("defendants", ModelObjects.array(defendant));
+            hearing.set("prosecutionCases", ModelObjects.array(prosecutionCase));
+
+            assertThatThrownBy(() -> build(hearing))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("orderIndex — carried only when it is one")
+    class OrderIndex {
+
+        /**
+         * Deviation 11. The legacy copies {@code offence.orderIndex} across untouched
+         * (`OffenceMapper.js:63`) and the contract types the component {@code integer}, so
+         * {@code 1.5} is a body the consumer rejects — no register either way. Truncating it to
+         * {@code 1} would be the third answer: a body that passes validation carrying an index the
+         * payload never sent.
+         */
+        @Test
+        @DisplayName("deviation 11 — a fractional index is absent, never truncated")
+        void a_fractional_order_index_is_absent_rather_than_truncated() {
+            final ObjectNode offence = exampleOffence();
+            offence.put("orderIndex", new BigDecimal("1.5"));
+
+            final List<InformantRegisterOffence> offences =
+                    build(hearingWithOneCase("caseURN", null, offence));
+
+            assertThat(offences).hasSize(1);
+            assertThat(offences.getFirst().orderIndex()).isNull();
+        }
+
+        /**
+         * The same rule at the other end: a value past {@link Integer#MAX_VALUE} would come back as
+         * whatever the low thirty-two bits held.
+         */
+        @Test
+        @DisplayName("deviation 11 — an index too large for an int is absent, never wrapped")
+        void an_oversized_order_index_is_absent_rather_than_wrapped() {
+            final ObjectNode offence = exampleOffence();
+            offence.put("orderIndex", 4_294_967_297L);
+
+            final List<InformantRegisterOffence> offences =
+                    build(hearingWithOneCase("caseURN", null, offence));
+
+            assertThat(offences).hasSize(1);
+            assertThat(offences.getFirst().orderIndex()).isNull();
         }
     }
 

@@ -4,6 +4,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import tools.jackson.databind.JsonNode;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDocument;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterFragment;
@@ -33,12 +34,25 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * with a literal {@code Z} — and the consumer's own binding types them as {@code ZonedDateTime} and
  * {@code UUID}. Re-rendering a parsed {@code ZonedDateTime} reproduces the string it was parsed from,
  * so the D9 labelling survives the round trip intact; what does not survive is a value that is not
- * of that shape at all, and that case is deviations-register entry 10.
+ * of that shape at all, and an identifier written in upper case, which a {@code UUID} can only render
+ * back in lower. Both are deviations-register entry 10.
  */
 public final class AggregationMapper {
 
     /** What JavaScript prints when an absent value is concatenated into a string. */
     private static final String UNDEFINED = "undefined";
+
+    /**
+     * The canonical 8-4-4-4-12 form, which is the only one the consumer's {@code format: uuid}
+     * component accepts.
+     *
+     * <p>{@link UUID#fromString} is not that test. It accepts shorthand — {@code 1-1-1-1-1} parses
+     * and re-renders as {@code 00000001-0001-0001-0001-000000000001} — so relying on it alone would
+     * invent an identifier out of a value the legacy would have forwarded for the consumer's schema
+     * to reject. The register would then be filed against a hearing nobody has.
+     */
+    private static final Pattern CANONICAL_IDENTIFIER = Pattern.compile(
+            "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
 
     private final HearingDates dates;
 
@@ -127,6 +141,11 @@ public final class AggregationMapper {
     /**
      * One of the document's three identifiers.
      *
+     * <p>The shape is checked before it is parsed, and the two are not the same test — see
+     * {@link #CANONICAL_IDENTIFIER}. What survives the check still changes in one way the legacy
+     * does not: an upper-case identifier comes back lower-cased, because that is the only rendering
+     * a {@link UUID} has. Both halves are deviations-register entry 10.
+     *
      * @param rendered the value the fragment carries; may be {@code null}
      * @param name     the component's name, for the failure message
      * @return the identifier, or {@code null} when the fragment has none
@@ -136,12 +155,11 @@ public final class AggregationMapper {
         if (rendered == null) {
             return null;
         }
-        try {
-            return UUID.fromString(rendered);
-        } catch (IllegalArgumentException notAnIdentifier) {
+        if (!CANONICAL_IDENTIFIER.matcher(rendered).matches()) {
             // Deviations entry 10, as above.
             throw new TransformationFailedException(
                     "register component '" + name + "' is not an identifier");
         }
+        return UUID.fromString(rendered);
     }
 }

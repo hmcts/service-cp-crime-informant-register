@@ -226,6 +226,37 @@ class ResultDataMapperTest {
         }
 
         /**
+         * {@code .find(prompt => prompt.isFinancialImposition)} (`ResultDataMapper.js:28`) reads a
+         * property off every prompt it reaches, so a null one is a {@code TypeError}. Reading it as
+         * "not the imposition" instead would emit result data with no amount on it — a register the
+         * legacy never sent, reaching a real prosecuting authority.
+         */
+        @Test
+        @DisplayName("a null prompt is refused, not read as a prompt that imposes nothing")
+        void build_with_a_null_prompt_should_refuse() {
+            final JsonNode judicialResult = mapper.readTree(
+                    "{\"isFinancialResult\":true,\"judicialResultPrompts\":[null]}");
+
+            assertThatThrownBy(() -> resultDataMapper.build(judicialResult))
+                    .isInstanceOf(TransformationFailedException.class);
+        }
+
+        /**
+         * The other half of {@code find}'s behaviour: it stops at the first match, so a null prompt
+         * <em>after</em> the imposition is never dereferenced and the amount is still reported.
+         * Refusing on a pre-pass over the array would lose that register.
+         */
+        @Test
+        @DisplayName("a null prompt after the imposition is never reached, and the amount stands")
+        void build_with_a_null_prompt_after_the_match_should_still_report_the_amount() {
+            final JsonNode judicialResult = mapper.readTree(
+                    "{\"isFinancialResult\":true,\"judicialResultPrompts\":"
+                            + "[{\"isFinancialImposition\":true,\"value\":\"£188.00\"},null]}");
+
+            assertThat(resultDataMapper.build(judicialResult).amount()).isEqualTo("£188.00");
+        }
+
+        /**
          * BS-10: a financial result whose prompts contain no financial imposition. The legacy still
          * creates the result data — the prompt list is non-empty, which is all
          * {@code canCreateResultData} asks — and simply leaves the amount unset.

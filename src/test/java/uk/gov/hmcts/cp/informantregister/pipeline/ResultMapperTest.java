@@ -77,7 +77,31 @@ class ResultMapperTest {
 
             assertThat(results).hasSize(1);
             assertThat(results.getFirst().cjsResultCode()).isEqualTo("4028");
-            assertThat(results.getFirst().resultText()).startsWith("Remanded in custody");
+            // The Jest twin asserts the whole multiline text, not a prefix
+            // (ResultMapper.test.js:37): the mapper copies `judicialResult.resultText` straight
+            // across, and a prefix check would pass on anything that corrupted the rest of it.
+            assertThat(results.getFirst().resultText()).isEqualTo(
+                    "Remanded in custody\n"
+                    + "Remand basis Before conviction\n"
+                    + "Bail exception Already in custody, Likely to offend, Likely to offend (physical or mental injury)\n"
+                    + "Bail exception reason Nature and seriousness of offence, Offended on bail, Previous record and character\n"
+                    + "Prison organisation name HMP/YOI Nottingham\n"
+                    + "Prison email address 1 Courts.Nottingham@justice.gov.uk\n"
+                    + "Prison email address 2 Reception.Nottingham@justice.gov.uk\n"
+                    + "Conveyor / custodian name organisation name Derby Justice Centre (aka Derby St Mary Adult): PECS\n"
+                    + "Conveyor / custodian name email address 1 derbymc@geoamey.co.uk\n"
+                    + "For the trial to take place \n"
+                    + "Adjournment reasons \n"
+                    + "Next hearing in magistrates' court Date of hearing:10/12/2020\n"
+                    + "Time of hearing:14:00\n"
+                    + "Courtroom:Courtroom 09\n"
+                    + "Hearing type:Trial\n"
+                    + "Estimated duration:6 HOURS\n"
+                    + "Booking reference:5a567ac0-ebf7-4999-94ae-7fee40ace81a\n"
+                    + "Courthouse organisation name:Westminster Magistrates' Court\n"
+                    + "Courthouse address line 1:181 Marylebone Road\n"
+                    + "Courthouse address line 2:London\n"
+                    + "Courthouse post code:NW1 5BR");
             assertThat(results.getFirst().resultData().nextHearingDate())
                     .isEqualTo("2020-12-10T14:00:00Z");
             assertThat(results.getFirst().resultData().nextCourtLocation())

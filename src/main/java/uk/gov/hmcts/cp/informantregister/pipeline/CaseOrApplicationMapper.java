@@ -83,7 +83,12 @@ final class CaseOrApplicationMapper {
             if (prosecutionCase == null) {
                 continue;
             }
-            final JsonNode identifier = Json.at(prosecutionCase, "prosecutionCaseIdentifier");
+            // `prosecutionCase.prosecutionCaseIdentifier.caseURN`
+            // (ProsecutionCaseOrApplicationMapper.js:20-21) — dereferenced with no guard, so a
+            // matched case with no identifier kills the hearing rather than yielding an entry with
+            // no reference on it.
+            final JsonNode identifier =
+                    Json.dereferenced(prosecutionCase, "prosecutionCaseIdentifier");
             entries.add(new InformantRegisterCaseOrApplication(
                     caseReference(identifier),
                     arrestSummonsNumberOf(prosecutionCase),
@@ -120,12 +125,26 @@ final class CaseOrApplicationMapper {
     /**
      * The member of a hearing collection with the given id.
      *
+     * <p>{@code find(pcase => pcase.id === caseId)} (`ProsecutionCaseOrApplicationMapper.js:55`)
+     * reads {@code .id} off each member until one matches, so a null member before the match is a
+     * {@code TypeError} and is refused here too.
+     *
+     * <p><strong>One thing this comparison cannot reproduce.</strong> The legacy's {@code ===}
+     * separates {@code undefined} from {@code null}, and the fragment's id lists carry both — a case
+     * with no {@code id} pushes {@code undefined}, one whose {@code id} is JSON null pushes
+     * {@code null} (`DefendantContextBaseService.js:67`). The fragment models those as a
+     * {@code List<String>}, where both are the same absent element, so an id list holding one form
+     * can select a hearing member carrying the other. It takes a payload that uses both forms on two
+     * different cases to reach, and it is deviations-register entry 12 rather than a model change
+     * made in passing — the fix is upstream, in what the fragment records, and it moves the goldens.
+     *
      * @param collection the hearing field to search
      * @param id         the id to find
      * @return the member, or {@code null} when the hearing carries none
      */
     private JsonNode find(final String collection, final String id) {
-        for (final JsonNode member : Json.array(hearing, collection)) {
+        for (final JsonNode candidate : Json.array(hearing, collection)) {
+            final JsonNode member = Json.dereferencedElement(candidate, collection);
             if (Objects.equals(Json.text(member, "id"), id)) {
                 return member;
             }

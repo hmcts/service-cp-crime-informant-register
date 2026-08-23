@@ -197,6 +197,34 @@ final class Json {
     }
 
     /**
+     * An array element the legacy reads <strong>through</strong>, as {@code element.x} would reach
+     * it.
+     *
+     * <p>The element counterpart of {@link #dereferenced}. JSON arrays can hold nulls and the
+     * fragment tree deliberately preserves them (`FragmentLists`), so an iteration that reads a
+     * property off every member meets one eventually — {@code subscription.forDistribution}
+     * (`RecipientMapper.js:15`), {@code prompt.isFinancialImposition} (`ResultDataMapper.js:28`),
+     * {@code offence.offenceCode} (`OffenceMapper.js:62`). Every one of those is a {@code TypeError}
+     * in the legacy, which kills the hearing, so reading the member as "nothing set" and emitting a
+     * register the legacy never sent is the one direction this port must not drift in
+     * (`.claude/rules/design_rules.md`, "Parity and the Deviations Register").
+     *
+     * @param element    the member being dereferenced; may be {@code null}, which is itself a refusal
+     * @param collection the collection it came from, for the failure message
+     * @return the element, never {@code null}
+     * @throws TransformationFailedException if the element cannot be read through
+     */
+    static JsonNode dereferencedElement(final JsonNode element, final String collection) {
+        if (element == null || element.isNull()) {
+            // The collection name is this service's own vocabulary, so it is safe to name. The
+            // element is the producer's, and may be defendant detail, so it is never quoted.
+            throw new TransformationFailedException(
+                    "a member of '" + collection + "' cannot be read through");
+        }
+        return element;
+    }
+
+    /**
      * Whether a field would satisfy {@code parent.field && parent.field.length > 0}.
      *
      * <p>The second half is the reason this is not {@code !array(node, field).isEmpty()}. A truthy

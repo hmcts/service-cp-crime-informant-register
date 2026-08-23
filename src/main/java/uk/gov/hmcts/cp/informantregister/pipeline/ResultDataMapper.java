@@ -123,6 +123,13 @@ final class ResultDataMapper {
      * this service reads floating-point values as {@code BigDecimal}, which would otherwise print the
      * scale the payload happened to use.
      *
+     * <p>That is the same answer as {@code Number.prototype.toString} across the whole range a
+     * duration is plausibly written in, and a different one at the edges where JavaScript switches
+     * to exponential notation or float64 loses the digits — {@code 1e21}, {@code 1e-7},
+     * {@code 9007199254740993}. Reproducing ECMAScript's number-to-string algorithm exactly would
+     * mean rounding every value through a {@code double} first, which is a larger behaviour change
+     * than the one it fixes. The gap is deviations-register entry 11 rather than an approximation.
+     *
      * @param durationElement the duration element
      * @param field           the value field to read
      * @return the stringified value, or {@code null} when the field is falsy
@@ -141,7 +148,10 @@ final class ResultDataMapper {
      * The amount imposed by the first financial-imposition prompt, if there is one.
      *
      * <p>{@code Array.prototype.find} stops at the first match, so a result carrying several
-     * impositions reports only the first — not the largest, and not their total.
+     * impositions reports only the first — not the largest, and not their total. It also
+     * dereferences every prompt it reaches on the way, so a null prompt <em>before</em> the match is
+     * a {@code TypeError} (`ResultDataMapper.js:28`) while one after it is never touched. Both
+     * halves of that are reproduced: the refusal is inside the loop, not a pre-pass over the array.
      *
      * @param judicialResult the judicial result
      * @return the amount, or {@code null}
@@ -151,7 +161,8 @@ final class ResultDataMapper {
                 || !Json.nonEmptyArray(judicialResult, "judicialResultPrompts")) {
             return null;
         }
-        for (final JsonNode prompt : Json.array(judicialResult, "judicialResultPrompts")) {
+        for (final JsonNode member : Json.array(judicialResult, "judicialResultPrompts")) {
+            final JsonNode prompt = Json.dereferencedElement(member, "judicialResultPrompts");
             if (Json.truthy(prompt, "isFinancialImposition")) {
                 return Json.text(prompt, "value");
             }
