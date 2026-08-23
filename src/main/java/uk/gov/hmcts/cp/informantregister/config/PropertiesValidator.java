@@ -12,7 +12,8 @@ import org.springframework.stereotype.Component;
  * it is made to fail: a run that can outlive its claim, a broker lock that can expire mid-run, an
  * ambiguous credential source, a payload source that cannot fetch anything, a payload fetch whose
  * own worst case outlasts the run it happens inside, a now-subscriptions source that cannot reach
- * reference data, and a submission policy that cannot make the call it exists to make.
+ * reference data or whose read can outlast that same run, and a submission policy that cannot make
+ * the call it exists to make.
  *
  * <p>The payload rules are the ones a healthy-looking pod hides. A live source with no identity, a
  * fallback with no attempts and a cache with no address all produce a service that consumes
@@ -122,6 +123,46 @@ public class PropertiesValidator implements InitializingBean {
         } else {
             validateTheLiveSourceCanAskReferenceData(referencedata);
             validateTheSubscriptionsReadIsAttempted(referencedata);
+            validateTheSubscriptionsReadFinishesInsideTheRun(properties);
+        }
+    }
+
+    /**
+     * The now-subscriptions read happens inside the run, so its worst case has to fit inside it.
+     *
+     * <p>The same rule {@link #validateTheFetchFinishesInsideTheRun} applies to the payload fetch,
+     * and it is needed here for the same reason: every attempt can spend its connect and its read
+     * timeout, with the retry interval between them, and nothing else bounds the total. Ten attempts
+     * against a minute-long read is a startup that succeeds and a run that is still waiting on a
+     * socket ten minutes later — long after its claim became reclaimable and another delivery began
+     * processing the same request, which is the one outcome the deadline exists to prevent.
+     *
+     * <p>Strictly shorter, not merely no longer, for the reason the payload rule is: the run tests
+     * the deadline after the step returns, so a read that fills it exactly leaves the rest of the
+     * run nothing and can only end at {@code PROCESSING_DEADLINE_EXCEEDED}.
+     *
+     * <p>The bound is per-fetch, exactly as the payload one is: this rule refuses a reference-data
+     * read that cannot finish inside a run, not a run whose three network steps together cannot.
+     * A combined budget across the payload fetch, this read and the submission retries is a wider
+     * decision than the hole being closed here — it would refuse the shipped defaults — and belongs
+     * with the design authority rather than with a validator rule added in passing.
+     */
+    private static void validateTheSubscriptionsReadFinishesInsideTheRun(
+            final InformantRegisterProperties properties) {
+
+        final InformantRegisterProperties.Referencedata referencedata = properties.referencedata();
+        final Duration deadline = properties.claim().processingDeadline();
+        final Duration worstCase = referencedata.connectTimeout()
+                .plus(referencedata.readTimeout())
+                .multipliedBy(referencedata.maxAttempts())
+                .plus(referencedata.retryInterval()
+                        .multipliedBy(referencedata.maxAttempts() - 1L));
+        if (worstCase.compareTo(deadline) >= 0) {
+            throw new IllegalStateException(
+                    "The " + REFDATA + " settings allow a now-subscriptions read of up to "
+                            + worstCase + ", which is not strictly shorter than "
+                            + PROCESSING_DEADLINE + " (" + deadline + "); a run must be able to stop"
+                            + " itself while its claim is still its own");
         }
     }
 

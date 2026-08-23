@@ -437,6 +437,92 @@ class ConfigurationValidationTest {
                                 .hasMessageContaining("informantregister.referencedata.read-timeout");
                     });
         }
+
+        /**
+         * Every timeout here is positive and every attempt count is at least one, and the read can
+         * still outlast the run: ten attempts against a minute-long read is over ten minutes of
+         * waiting that startup would otherwise accept. The claim becomes reclaimable long before
+         * that, so another delivery starts processing the request while this runner is still
+         * blocked on the socket — the outcome the processing deadline exists to prevent, reached by
+         * a configuration each individual rule calls valid.
+         */
+        @Test
+        void a_read_that_can_outlast_the_processing_deadline_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.referencedata.max-attempts=10",
+                    "informantregister.referencedata.read-timeout=1m").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.referencedata")
+                                .hasMessageContaining(
+                                        "informantregister.claim.processing-deadline");
+                    });
+        }
+
+        /**
+         * The waits between attempts count too: they are spent inside the same run as the reads.
+         * The shipped three attempts of 5s + 30s is 105s, comfortably inside the 4m deadline —
+         * until the two waits between them are lengthened, which no other rule looks at.
+         *
+         * <p>The deadline is left at its default here, and in the two cases below, because the
+         * payload rule is checked first and its own worst case has to keep fitting: shortening the
+         * deadline would fail these on the payload's message rather than on reference data's.
+         */
+        @Test
+        void the_waits_between_attempts_should_count_towards_the_deadline() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    // 105s of reads, and two 70s waits between the three attempts, is 245s.
+                    "informantregister.referencedata.retry-interval=70s").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.referencedata")
+                                .hasMessageContaining(
+                                        "informantregister.claim.processing-deadline");
+                    });
+        }
+
+        /**
+         * The same reading of the bound the payload rule takes: a read that fills the deadline
+         * exactly leaves the rest of the run nothing, because the run only tests the deadline once
+         * the read has returned.
+         */
+        @Test
+        void a_read_that_exactly_fills_the_deadline_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.referencedata.max-attempts=2",
+                    "informantregister.referencedata.retry-interval=10s",
+                    // Two attempts of 5s + 110s, with a 10s wait between them, is the 4m deadline
+                    // to the second.
+                    "informantregister.referencedata.read-timeout=110s").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.referencedata")
+                                .hasMessageContaining(
+                                        "informantregister.claim.processing-deadline");
+                    });
+        }
+
+        @Test
+        void a_read_that_finishes_one_second_inside_the_deadline_should_start() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.referencedata.max-attempts=2",
+                    "informantregister.referencedata.retry-interval=10s",
+                    "informantregister.referencedata.read-timeout=PT109.5S")
+                    .run(context -> assertThat(context).hasNotFailed());
+        }
+
+        /**
+         * The timing rule belongs to the live adapter, which STUB does not build — the same reason
+         * the endpoint and the identity are not asked of a stub run.
+         */
+        @Test
+        void stub_mode_should_not_be_held_to_the_live_read_timings() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.referencedata.mode=STUB",
+                    "informantregister.referencedata.max-attempts=10",
+                    "informantregister.referencedata.read-timeout=1m")
+                    .run(context -> assertThat(context).hasNotFailed());
+        }
     }
 
     @Nested
