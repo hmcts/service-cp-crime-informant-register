@@ -26,6 +26,7 @@ import uk.gov.hmcts.cp.informantregister.application.RegisterSubmissionClient;
 import uk.gov.hmcts.cp.informantregister.config.InformantRegisterProperties;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
 import uk.gov.hmcts.cp.informantregister.domain.AuthoritySubmission;
+import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDefendant;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDocument;
@@ -222,7 +223,8 @@ class SubmissionRedeliveryIT {
     private static AuthoritySubmission submission(
             final DistributionCommand command, final String authority) {
         return new AuthoritySubmission(
-                command.source(), command.requestId(), authority, document(command, authority));
+                command.source(), command.requestId(), authority, document(command, authority),
+                CallerIdentity.of(command));
     }
 
     private static InformantRegisterDocument document(

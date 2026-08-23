@@ -12,6 +12,7 @@ import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
 
 /**
@@ -37,7 +38,13 @@ public class ResultsQueryHearingPayloadClient implements HearingPayloadQuery {
     /** The vendor media type the internal hearing-details resource is served as. */
     public static final String ACCEPT = "application/vnd.results.hearing-details-internal+json";
 
-    /** The header carrying the system user identity the query side authorises against. */
+    /**
+     * The header carrying the user identity the query side authorises against.
+     *
+     * <p>Its value is the run's caller: the user who shared the results where the message named one,
+     * and the configured system identity otherwise ({@code doc/API_CONTRACTS.md}, "User
+     * attribution").
+     */
     public static final String USER_ID_HEADER = "CJSCPPUID";
 
     /**
@@ -65,7 +72,8 @@ public class ResultsQueryHearingPayloadClient implements HearingPayloadQuery {
      * Builds the client over an already-configured HTTP client.
      *
      * @param restClient    the client, carrying the results base URL and its timeouts
-     * @param systemUserId  the system user identity; blank means the fallback cannot be used
+     * @param systemUserId  the fallback identity, used for a message that names no user; blank means
+     *                      such a message cannot use the fallback at all
      * @param objectMapper  the shared mapper, so a response is read exactly as any other JSON is
      * @param maxAttempts   total attempts including the first, mirroring the legacy retry count
      * @param retryInterval the wait between attempts, mirroring the legacy retry interval
@@ -81,13 +89,20 @@ public class ResultsQueryHearingPayloadClient implements HearingPayloadQuery {
 
     @Override
     public Optional<JsonNode> fetch(final DistributionCommand command) {
+        // The user who shared the results where the message named one, and the configured system
+        // identity otherwise: the legacy makes this read as `input.cjscppuid`, which the trigger
+        // copied from the envelope's userId (HearingResultedCacheQuery/index.js:40,
+        // InformantRegisterOrchestrator/index.js:13).
+        final String caller = CallerIdentity.of(command).orSystem(systemUserId);
         Optional<JsonNode> payload = Optional.empty();
-        if (systemUserId == null || systemUserId.isBlank()) {
-            LOG.warn("No system user identity is configured, so the payload fallback cannot be "
+        if (caller == null || caller.isBlank()) {
+            // Neither the message nor the configuration named anybody. The query side authorises on
+            // this header, so an anonymous read is a 403 dressed up as a cache miss.
+            LOG.warn("No user identity is available, so the payload fallback cannot be "
                             + "used. requestId={} hearingId={}",
                     command.requestId(), command.hearingId());
         } else {
-            payload = attempt(command);
+            payload = attempt(command, caller);
         }
         return payload;
     }
@@ -96,13 +111,13 @@ public class ResultsQueryHearingPayloadClient implements HearingPayloadQuery {
      * The legacy retry loop: at most {@code maxAttempts} tries, and none of them after a response
      * has arrived carrying a status at or below the cut-off.
      */
-    private Optional<JsonNode> attempt(final DistributionCommand command) {
+    private Optional<JsonNode> attempt(final DistributionCommand command, final String caller) {
         Optional<JsonNode> payload = Optional.empty();
         boolean tryAgain = true;
         for (int attemptsLeft = maxAttempts; tryAgain && attemptsLeft > 0; attemptsLeft--) {
             final boolean lastAttempt = attemptsLeft <= LAST_ATTEMPT;
             try {
-                payload = content(get(command.hearingId()));
+                payload = content(get(command.hearingId(), caller));
                 tryAgain = false;
             } catch (RestClientResponseException answered) {
                 final int status = answered.getStatusCode().value();
@@ -123,11 +138,11 @@ public class ResultsQueryHearingPayloadClient implements HearingPayloadQuery {
     }
 
     /** Issues the read. Kept apart so the retry loop above reads as the rule it ports. */
-    private String get(final UUID hearingId) {
+    private String get(final UUID hearingId, final String caller) {
         return restClient.get()
                 .uri(PATH, hearingId)
                 .header(HttpHeaders.ACCEPT, ACCEPT)
-                .header(USER_ID_HEADER, systemUserId)
+                .header(USER_ID_HEADER, caller)
                 .retrieve()
                 .body(String.class);
     }

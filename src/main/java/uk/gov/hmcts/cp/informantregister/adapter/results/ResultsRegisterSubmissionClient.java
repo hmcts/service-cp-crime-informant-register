@@ -88,7 +88,7 @@ public class ResultsRegisterSubmissionClient implements RegisterSubmissionClient
         }
 
         try {
-            gateway.post(body);
+            gateway.post(body, submission.identity());
         } catch (SubmissionFailedException failure) {
             // Caught to record, never to absorb: the row is moved to FAILED and the same exception
             // continues, carrying the classification the pipeline settles the delivery on.

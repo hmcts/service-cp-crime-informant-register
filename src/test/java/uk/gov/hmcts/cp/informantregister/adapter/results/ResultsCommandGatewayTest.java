@@ -12,6 +12,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.http.Fault;
 import com.github.tomakehurst.wiremock.stubbing.Scenario;
+import com.github.tomakehurst.wiremock.verification.LoggedRequest;
 import com.networknt.schema.Schema;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -19,6 +20,7 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +31,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.config.InformantRegisterProperties;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
+import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.FailureClassification;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDefendant;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDocument;
@@ -67,6 +70,9 @@ class ResultsCommandGatewayTest {
     private static final String MEDIA_TYPE = "application/vnd.results.add-informant-register+json";
     private static final String IDENTITY = "b6c8b0a4-1f2e-4a3b-9c4d-5e6f70819234";
 
+    /** The user a message names, distinct from the configured identity so the two cannot be confused. */
+    private static final String SHARING_USER = "0b7a5c2e-4d19-4a6b-8c30-9e1f5d7b2a48";
+
     private static final Duration INITIAL_BACKOFF = Duration.ofMillis(500);
     private static final Duration MAX_BACKOFF = Duration.ofSeconds(20);
     private static final int MAX_ATTEMPTS = 4;
@@ -87,6 +93,11 @@ class ResultsCommandGatewayTest {
     @AfterEach
     void stopResults() {
         results.stop();
+    }
+
+    /** A run made by the user who shared the results, as a message naming one produces. */
+    private static CallerIdentity sharingUser() {
+        return new CallerIdentity(Optional.of(UUID.fromString(SHARING_USER)));
     }
 
     private ResultsCommandGateway gateway() {
@@ -111,7 +122,7 @@ class ResultsCommandGatewayTest {
         void an_accepted_post_should_carry_the_contract_path_media_type_and_identity() {
             results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(202)));
 
-            gateway().post(body());
+            gateway().post(body(), CallerIdentity.SYSTEM);
 
             results.verify(postRequestedFor(urlEqualTo(PATH))
                     .withHeader("Content-Type", equalTo(MEDIA_TYPE))
@@ -120,10 +131,65 @@ class ResultsCommandGatewayTest {
         }
 
         @Test
+        void a_post_should_be_made_as_the_user_the_run_names() {
+            // `ProcessOutboundInformantRegister/index.js:21` sends `this.input.cjscppuid`: the
+            // register is filed by the user who shared the results, and this is where that shows.
+            results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(202)));
+
+            gateway().post(body(), sharingUser());
+
+            results.verify(postRequestedFor(urlEqualTo(PATH))
+                    .withHeader("CJSCPPUID", equalTo(SHARING_USER)));
+        }
+
+        @Test
+        void a_post_should_be_made_as_the_configured_identity_when_the_run_names_nobody() {
+            results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(202)));
+
+            gateway().post(body(), CallerIdentity.SYSTEM);
+
+            results.verify(postRequestedFor(urlEqualTo(PATH))
+                    .withHeader("CJSCPPUID", equalTo(IDENTITY)));
+        }
+
+        @Test
+        void every_attempt_of_one_post_should_be_made_as_the_same_caller() {
+            // Resolved once per post, not once per attempt. A retry under a different caller would
+            // be a second, differently attributed command for the same register.
+            results.stubFor(post(urlEqualTo(PATH))
+                    .inScenario("retried")
+                    .whenScenarioStateIs(Scenario.STARTED)
+                    .willReturn(aResponse().withStatus(503))
+                    .willSetStateTo("second"));
+            results.stubFor(post(urlEqualTo(PATH))
+                    .inScenario("retried")
+                    .whenScenarioStateIs("second")
+                    .willReturn(aResponse().withStatus(202)));
+
+            gateway().post(body(), sharingUser());
+
+            results.verify(2, postRequestedFor(urlEqualTo(PATH))
+                    .withHeader("CJSCPPUID", equalTo(SHARING_USER)));
+        }
+
+        @Test
+        void a_post_should_never_carry_the_caller_anywhere_but_the_identity_header() {
+            // A user identifier in a path, a query or a register body would reach access logs and a
+            // consumer's own store. The header is the only place it belongs.
+            results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(202)));
+
+            gateway().post(body(), sharingUser());
+
+            final LoggedRequest sent = results.findAll(postRequestedFor(urlEqualTo(PATH))).get(0);
+            assertThat(sent.getUrl()).doesNotContain(SHARING_USER);
+            assertThat(sent.getBodyAsString()).doesNotContain(SHARING_USER);
+        }
+
+        @Test
         void the_posted_body_should_satisfy_the_results_owned_schema() {
             results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(202)));
 
-            gateway().post(body());
+            gateway().post(body(), CallerIdentity.SYSTEM);
 
             final JsonNode sent = MAPPER.readTree(
                     results.getAllServeEvents().getFirst().getRequest().getBodyAsString());
@@ -134,7 +200,7 @@ class ResultsCommandGatewayTest {
         void an_accepted_post_should_be_attempted_exactly_once() {
             results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(202)));
 
-            gateway().post(body());
+            gateway().post(body(), CallerIdentity.SYSTEM);
 
             assertThat(results.getAllServeEvents()).hasSize(1);
             assertThat(pause.waits).isEmpty();
@@ -155,7 +221,7 @@ class ResultsCommandGatewayTest {
                     .whenScenarioStateIs("up")
                     .willReturn(aResponse().withStatus(202)));
 
-            gateway().post(body());
+            gateway().post(body(), CallerIdentity.SYSTEM);
 
             assertThat(results.getAllServeEvents()).hasSize(2);
             assertThat(pause.waits).containsExactly(INITIAL_BACKOFF);
@@ -171,7 +237,7 @@ class ResultsCommandGatewayTest {
                     .whenScenarioStateIs("up")
                     .willReturn(aResponse().withStatus(202)));
 
-            gateway().post(body());
+            gateway().post(body(), CallerIdentity.SYSTEM);
 
             assertThat(pause.waits).containsExactly(INITIAL_BACKOFF);
         }
@@ -186,7 +252,7 @@ class ResultsCommandGatewayTest {
                     .whenScenarioStateIs("up")
                     .willReturn(aResponse().withStatus(202)));
 
-            gateway().post(body());
+            gateway().post(body(), CallerIdentity.SYSTEM);
 
             assertThat(pause.waits).containsExactly(Duration.ofSeconds(2));
         }
@@ -201,7 +267,7 @@ class ResultsCommandGatewayTest {
                     .whenScenarioStateIs("up")
                     .willReturn(aResponse().withStatus(202)));
 
-            gateway().post(body());
+            gateway().post(body(), CallerIdentity.SYSTEM);
 
             assertThat(pause.waits).containsExactly(INITIAL_BACKOFF);
         }
@@ -223,7 +289,7 @@ class ResultsCommandGatewayTest {
                     .whenScenarioStateIs("up")
                     .willReturn(aResponse().withStatus(202)));
 
-            gateway().post(body());
+            gateway().post(body(), CallerIdentity.SYSTEM);
 
             assertThat(pause.waits).containsExactly(INITIAL_BACKOFF);
         }
@@ -239,7 +305,7 @@ class ResultsCommandGatewayTest {
                     .whenScenarioStateIs("up")
                     .willReturn(aResponse().withStatus(202)));
 
-            gateway().post(body());
+            gateway().post(body(), CallerIdentity.SYSTEM);
 
             assertThat(pause.waits).containsExactly(INITIAL_BACKOFF);
         }
@@ -254,7 +320,7 @@ class ResultsCommandGatewayTest {
                     .whenScenarioStateIs("up")
                     .willReturn(aResponse().withStatus(202)));
 
-            gateway().post(body());
+            gateway().post(body(), CallerIdentity.SYSTEM);
 
             assertThat(pause.waits).containsExactly(MAX_BACKOFF);
         }
@@ -263,7 +329,7 @@ class ResultsCommandGatewayTest {
         void the_wait_between_attempts_should_grow_rather_than_hammer_a_struggling_server() {
             results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(503)));
 
-            assertThatThrownBy(() -> gateway().post(body()))
+            assertThatThrownBy(() -> gateway().post(body(), CallerIdentity.SYSTEM))
                     .isInstanceOf(SubmissionFailedException.class);
 
             assertThat(pause.waits).containsExactly(
@@ -274,7 +340,7 @@ class ResultsCommandGatewayTest {
         void repeated_server_errors_should_run_out_of_attempts_and_hand_the_delivery_back() {
             results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(500)));
 
-            assertThatThrownBy(() -> gateway().post(body()))
+            assertThatThrownBy(() -> gateway().post(body(), CallerIdentity.SYSTEM))
                     .isInstanceOf(SubmissionFailedException.class)
                     .extracting(failure -> ((SubmissionFailedException) failure).classification())
                     .isEqualTo(FailureClassification.TRANSIENT);
@@ -298,7 +364,7 @@ class ResultsCommandGatewayTest {
                     .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
 
             try (CapturedLog log = CapturedLog.of(ResultsCommandGateway.class)) {
-                assertThatThrownBy(() -> gateway().post(body()))
+                assertThatThrownBy(() -> gateway().post(body(), CallerIdentity.SYSTEM))
                         .isInstanceOf(SubmissionFailedException.class);
 
                 assertThat(log.renderings())
@@ -314,7 +380,7 @@ class ResultsCommandGatewayTest {
             results.stubFor(post(urlEqualTo(PATH))
                     .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
 
-            assertThatThrownBy(() -> gateway().post(body()))
+            assertThatThrownBy(() -> gateway().post(body(), CallerIdentity.SYSTEM))
                     .isInstanceOf(SubmissionFailedException.class)
                     .extracting(failure -> ((SubmissionFailedException) failure).classification())
                     .isEqualTo(FailureClassification.TRANSIENT);
@@ -329,7 +395,7 @@ class ResultsCommandGatewayTest {
         void a_refused_body_should_never_be_retried() {
             results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(400)));
 
-            assertThatThrownBy(() -> gateway().post(body()))
+            assertThatThrownBy(() -> gateway().post(body(), CallerIdentity.SYSTEM))
                     .isInstanceOf(SubmissionFailedException.class)
                     .extracting(failure -> ((SubmissionFailedException) failure).classification())
                     .isEqualTo(FailureClassification.NON_TRANSIENT);
@@ -342,7 +408,7 @@ class ResultsCommandGatewayTest {
         void an_unauthorised_caller_should_be_a_refusal_rather_than_a_retry_loop() {
             results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(403)));
 
-            assertThatThrownBy(() -> gateway().post(body()))
+            assertThatThrownBy(() -> gateway().post(body(), CallerIdentity.SYSTEM))
                     .isInstanceOf(SubmissionFailedException.class)
                     .extracting(failure -> ((SubmissionFailedException) failure).reason())
                     .isEqualTo(ReasonCode.SUBMISSION_REJECTED);
@@ -361,7 +427,7 @@ class ResultsCommandGatewayTest {
         void a_success_the_contract_does_not_define_should_not_be_taken_for_an_accepted_command() {
             results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(200)));
 
-            assertThatThrownBy(() -> gateway().post(body()))
+            assertThatThrownBy(() -> gateway().post(body(), CallerIdentity.SYSTEM))
                     .isInstanceOf(SubmissionFailedException.class)
                     .extracting(failure -> ((SubmissionFailedException) failure).reason())
                     .isEqualTo(ReasonCode.SUBMISSION_NOT_ACCEPTED);
@@ -371,7 +437,7 @@ class ResultsCommandGatewayTest {
         void a_success_the_contract_does_not_define_should_never_be_posted_a_second_time() {
             results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(200)));
 
-            assertThatThrownBy(() -> gateway().post(body()))
+            assertThatThrownBy(() -> gateway().post(body(), CallerIdentity.SYSTEM))
                     .isInstanceOf(SubmissionFailedException.class)
                     .extracting(failure -> ((SubmissionFailedException) failure).classification())
                     .isEqualTo(FailureClassification.NON_TRANSIENT);
@@ -387,7 +453,7 @@ class ResultsCommandGatewayTest {
             results.stubFor(post(urlEqualTo(PATH)).willReturn(aResponse().withStatus(422)
                     .withBody("{\"error\":\"defendant SMITH, John is not known here\"}")));
 
-            assertThatThrownBy(() -> gateway().post(body()))
+            assertThatThrownBy(() -> gateway().post(body(), CallerIdentity.SYSTEM))
                     .isInstanceOf(SubmissionFailedException.class)
                     .hasMessage(ReasonCode.SUBMISSION_REJECTED.code())
                     .hasMessageNotContaining("SMITH");
@@ -452,7 +518,7 @@ class ResultsCommandGatewayTest {
                     });
 
             try {
-                assertThatThrownBy(() -> interruptible.post(body()))
+                assertThatThrownBy(() -> interruptible.post(body(), CallerIdentity.SYSTEM))
                         .isInstanceOf(SubmissionFailedException.class)
                         .extracting(failure -> ((SubmissionFailedException) failure).classification())
                         .isEqualTo(FailureClassification.TRANSIENT);

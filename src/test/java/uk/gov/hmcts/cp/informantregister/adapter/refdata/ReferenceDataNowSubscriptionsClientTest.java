@@ -3,6 +3,8 @@ package uk.gov.hmcts.cp.informantregister.adapter.refdata;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.http.Fault;
@@ -18,6 +20,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.ReferenceDataUnavailableException;
 
@@ -58,6 +61,9 @@ class ReferenceDataNowSubscriptionsClientTest {
     private static final String PATH =
             "/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2020-06-02";
     private static final String SYSTEM_USER_ID = "9f61bdbb-6f1a-4c0f-9a3d-6b8f0f1c2a44";
+
+    /** The user a message names, distinct from the configured identity so the two cannot be confused. */
+    private static final String SHARING_USER = "0b7a5c2e-4d19-4a6b-8c30-9e1f5d7b2a48";
 
     /**
      * The two contract headers, written out rather than read off the class under test.
@@ -137,6 +143,11 @@ class ReferenceDataNowSubscriptionsClientTest {
         return RestClient.builder().baseUrl(server.baseUrl()).requestFactory(factory).build();
     }
 
+    /** A run made by the user who shared the results, as a message naming one produces. */
+    private static CallerIdentity userIdentity() {
+        return new CallerIdentity(Optional.of(UUID.fromString(SHARING_USER)));
+    }
+
     private static void respondWith(final int status, final String body) {
         server.stubFor(get(urlEqualTo(PATH))
                 .willReturn(aResponse().withStatus(status)
@@ -153,7 +164,7 @@ class ReferenceDataNowSubscriptionsClientTest {
             // `ReferenceDataService.js:40` — the path, and `on` carrying a plain YYYY-MM-DD day.
             respondWith(200, BODY);
 
-            client.fetch(ON);
+            client.fetch(ON, CallerIdentity.SYSTEM);
 
             server.verify(1, getRequestedFor(urlEqualTo(PATH)));
         }
@@ -164,7 +175,7 @@ class ReferenceDataNowSubscriptionsClientTest {
             // the recorded oracle call carries verbatim.
             respondWith(200, BODY);
 
-            client.fetch(ON);
+            client.fetch(ON, CallerIdentity.SYSTEM);
 
             server.verify(getRequestedFor(urlEqualTo(PATH))
                     .withHeader("Accept", equalTo(LEGACY_ACCEPT))
@@ -172,10 +183,69 @@ class ReferenceDataNowSubscriptionsClientTest {
         }
 
         @Test
+        void fetch_should_read_as_the_user_the_run_names() {
+            // `ReferenceDataService.js:44` sends `input.cjscppuid`, which the trigger copied from
+            // the envelope's userId: the read is made as the user who shared the results, not as
+            // the service.
+            respondWith(200, BODY);
+
+            client.fetch(ON, userIdentity());
+
+            server.verify(getRequestedFor(urlEqualTo(PATH))
+                    .withHeader(LEGACY_IDENTITY_HEADER, equalTo(SHARING_USER)));
+        }
+
+        @Test
+        void fetch_should_read_as_the_configured_identity_when_the_run_names_nobody() {
+            // A replayed message, and every message published before the field existed. The read
+            // still has to be attributable, so the configured identity is the fallback.
+            respondWith(200, BODY);
+
+            client.fetch(ON, CallerIdentity.SYSTEM);
+
+            server.verify(getRequestedFor(urlEqualTo(PATH))
+                    .withHeader(LEGACY_IDENTITY_HEADER, equalTo(SYSTEM_USER_ID)));
+        }
+
+        @Test
+        void fetch_should_send_the_run_identity_once_however_many_attempts_it_takes() {
+            // Resolved once per call, not once per attempt: a retry that changed caller would make
+            // a register's recipients depend on which attempt answered.
+            server.stubFor(get(urlEqualTo(PATH))
+                    .inScenario("retried")
+                    .whenScenarioStateIs(Scenario.STARTED)
+                    .willReturn(aResponse().withStatus(503))
+                    .willSetStateTo("second"));
+            server.stubFor(get(urlEqualTo(PATH))
+                    .inScenario("retried")
+                    .whenScenarioStateIs("second")
+                    .willReturn(aResponse().withStatus(200)
+                            .withHeader("Content-Type", LEGACY_ACCEPT)
+                            .withBody(BODY)));
+
+            client.fetch(ON, userIdentity());
+
+            server.verify(2, getRequestedFor(urlEqualTo(PATH))
+                    .withHeader(LEGACY_IDENTITY_HEADER, equalTo(SHARING_USER)));
+        }
+
+        @Test
+        void fetch_should_keep_the_identity_out_of_the_query_it_sends() {
+            // The header is the only place an identity belongs. A query parameter reaches access
+            // logs and traces, which is where a user identifier must never end up.
+            respondWith(200, BODY);
+
+            client.fetch(ON, userIdentity());
+
+            final LoggedRequest sent = server.findAll(getRequestedFor(urlEqualTo(PATH))).get(0);
+            assertThat(sent.getUrl()).doesNotContain(SHARING_USER);
+        }
+
+        @Test
         void fetch_should_send_whatever_further_headers_the_mesh_is_configured_to_need() {
             respondWith(200, BODY);
 
-            clientFor(Map.of("X-Mesh-Route", "referencedata")).fetch(ON);
+            clientFor(Map.of("X-Mesh-Route", "referencedata")).fetch(ON, CallerIdentity.SYSTEM);
 
             server.verify(getRequestedFor(urlEqualTo(PATH))
                     .withHeader("X-Mesh-Route", equalTo("referencedata")));
@@ -192,7 +262,7 @@ class ReferenceDataNowSubscriptionsClientTest {
             respondWith(200, BODY);
 
             clientFor(Map.of(LEGACY_IDENTITY_HEADER, "somebody-else",
-                    "Accept", "text/plain")).fetch(ON);
+                    "Accept", "text/plain")).fetch(ON, CallerIdentity.SYSTEM);
 
             final LoggedRequest sent = server.findAll(getRequestedFor(urlEqualTo(PATH))).get(0);
             assertThat(sent.header("Accept").values()).containsExactly(LEGACY_ACCEPT);
@@ -211,7 +281,7 @@ class ReferenceDataNowSubscriptionsClientTest {
             // reads `nowSubscriptions` off it (`InformantRegisterSubscriptions/index.js:22,28`).
             respondWith(200, BODY);
 
-            final JsonNode answer = client.fetch(ON);
+            final JsonNode answer = client.fetch(ON, CallerIdentity.SYSTEM);
 
             assertThat(answer).isNotNull();
             assertThat(answer.get("nowSubscriptions").size()).isEqualTo(1);
@@ -224,7 +294,7 @@ class ReferenceDataNowSubscriptionsClientTest {
             // That is a business outcome, not a failure, so it is passed through rather than refused.
             respondWith(200, "[]");
 
-            final JsonNode answer = client.fetch(ON);
+            final JsonNode answer = client.fetch(ON, CallerIdentity.SYSTEM);
 
             assertThat(answer).isNotNull();
             assertThat(answer.isArray()).isTrue();
@@ -237,7 +307,7 @@ class ReferenceDataNowSubscriptionsClientTest {
             // answer is not an outage and must not be reported as one.
             respondWith(200, "");
 
-            assertThat(client.fetch(ON)).isNull();
+            assertThat(client.fetch(ON, CallerIdentity.SYSTEM)).isNull();
         }
     }
 
@@ -252,7 +322,7 @@ class ReferenceDataNowSubscriptionsClientTest {
             server.stubFor(get(urlEqualTo(PATH))
                     .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
 
-            assertThatThrownBy(() -> client.fetch(ON))
+            assertThatThrownBy(() -> client.fetch(ON, CallerIdentity.SYSTEM))
                     .isInstanceOf(ReferenceDataUnavailableException.class);
 
             server.verify(3, getRequestedFor(urlEqualTo(PATH)));
@@ -263,7 +333,7 @@ class ReferenceDataNowSubscriptionsClientTest {
             // 500 is above the wrapper's cut-off, so it is the one failure that is retried.
             respondWith(500, "{}");
 
-            assertThatThrownBy(() -> client.fetch(ON))
+            assertThatThrownBy(() -> client.fetch(ON, CallerIdentity.SYSTEM))
                     .isInstanceOf(ReferenceDataUnavailableException.class)
                     .satisfies(failure -> assertThat(
                             ((ReferenceDataUnavailableException) failure).reason())
@@ -284,7 +354,7 @@ class ReferenceDataNowSubscriptionsClientTest {
                             .withHeader("Content-Type", ReferenceDataNowSubscriptionsClient.ACCEPT)
                             .withBody(BODY)));
 
-            final JsonNode answer = client.fetch(ON);
+            final JsonNode answer = client.fetch(ON, CallerIdentity.SYSTEM);
 
             assertThat(answer.get("nowSubscriptions").size()).isEqualTo(1);
             server.verify(2, getRequestedFor(urlEqualTo(PATH)));
@@ -295,7 +365,7 @@ class ReferenceDataNowSubscriptionsClientTest {
             // `AxiosRetryWrapper.js:34` rethrows immediately for any status at or below 429.
             respondWith(404, "{}");
 
-            assertThatThrownBy(() -> client.fetch(ON))
+            assertThatThrownBy(() -> client.fetch(ON, CallerIdentity.SYSTEM))
                     .isInstanceOf(ReferenceDataUnavailableException.class);
 
             server.verify(1, getRequestedFor(urlEqualTo(PATH)));
@@ -307,7 +377,7 @@ class ReferenceDataNowSubscriptionsClientTest {
             // 500 is. Ported deliberately (constitution Principle I) and pinned here.
             respondWith(429, "{}");
 
-            assertThatThrownBy(() -> client.fetch(ON))
+            assertThatThrownBy(() -> client.fetch(ON, CallerIdentity.SYSTEM))
                     .isInstanceOf(ReferenceDataUnavailableException.class);
 
             server.verify(1, getRequestedFor(urlEqualTo(PATH)));
@@ -326,7 +396,7 @@ class ReferenceDataNowSubscriptionsClientTest {
                             .withBody(BODY)
                             .withFixedDelay(2000)));
 
-            assertThatThrownBy(() -> clientFor(Map.of(), timingOutAfter(200)).fetch(ON))
+            assertThatThrownBy(() -> clientFor(Map.of(), timingOutAfter(200)).fetch(ON, CallerIdentity.SYSTEM))
                     .isInstanceOf(ReferenceDataUnavailableException.class);
 
             server.verify(3, getRequestedFor(urlEqualTo(PATH)));
@@ -344,7 +414,7 @@ class ReferenceDataNowSubscriptionsClientTest {
         void fetch_should_report_a_not_modified_rather_than_read_it_as_no_subscriptions() {
             server.stubFor(get(urlEqualTo(PATH)).willReturn(aResponse().withStatus(304)));
 
-            assertThatThrownBy(() -> client.fetch(ON))
+            assertThatThrownBy(() -> client.fetch(ON, CallerIdentity.SYSTEM))
                     .isInstanceOf(ReferenceDataUnavailableException.class);
 
             server.verify(1, getRequestedFor(urlEqualTo(PATH)));
@@ -357,7 +427,7 @@ class ReferenceDataNowSubscriptionsClientTest {
             // silent loss `doc/DEVIATIONS.md` entry 14 exists to end.
             respondWith(200, "<html>gateway error</html>");
 
-            assertThatThrownBy(() -> client.fetch(ON))
+            assertThatThrownBy(() -> client.fetch(ON, CallerIdentity.SYSTEM))
                     .isInstanceOf(ReferenceDataUnavailableException.class);
         }
     }

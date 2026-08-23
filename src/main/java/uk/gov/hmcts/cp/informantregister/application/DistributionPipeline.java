@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
 import uk.gov.hmcts.cp.informantregister.domain.AuthoritySubmission;
+import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.CompletionReason;
 import uk.gov.hmcts.cp.informantregister.domain.DeliveryIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
@@ -198,6 +199,12 @@ public class DistributionPipeline {
      * its fragments, and each becomes exactly one submission in that order. Nothing downstream sorts,
      * so which authority is POSTed first is decided here and nowhere else.
      *
+     * <p>It is also where the run's caller is fixed. The command names the user who shared the
+     * results, or names nobody; either way the answer is settled once here and given to the
+     * transformation and to every submission, so the now-subscriptions read and all the POSTs of one
+     * run are made as the same caller. The payload read is made as that caller too — it is given the
+     * command itself, so it reads the same field.
+     *
      * @param command the request being run
      * @param payload the hearing payload the source answered with
      * @return the submissions, in the order they are to be made
@@ -205,12 +212,20 @@ public class DistributionPipeline {
     private List<AuthoritySubmission> submissionsFor(
             final DistributionCommand command, final JsonNode payload) {
 
-        return transformer.transform(payload, command.sharedTime().toString()).stream()
+        // Resolved once, from the command, and handed to everything that makes a call outwards. The
+        // legacy resolves it once too — the trigger copies the envelope's userId into the
+        // orchestration input and every activity is given that same value
+        // (InformantRegisterOrchestrator/index.js:13,31,46) — and "once" is the part that matters:
+        // a register read as one caller and posted as another is attributable to nobody.
+        final CallerIdentity identity = CallerIdentity.of(command);
+
+        return transformer.transform(payload, command.sharedTime().toString(), identity).stream()
                 .map(document -> new AuthoritySubmission(
                         command.source(),
                         command.requestId(),
                         document.prosecutionAuthorityId().toString(),
-                        document))
+                        document,
+                        identity))
                 .toList();
     }
 

@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import uk.gov.hmcts.cp.informantregister.application.NowSubscriptionsSource;
 import uk.gov.hmcts.cp.informantregister.application.RegisterTransformer;
+import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDocument;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterFragment;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterFragmentWithSubscriptions;
@@ -81,7 +82,7 @@ public final class RegisterTransformationChain implements RegisterTransformer {
     /** {@inheritDoc} */
     @Override
     public List<InformantRegisterDocument> transform(
-            final JsonNode hearing, final String sharedTime) {
+            final JsonNode hearing, final String sharedTime, final CallerIdentity identity) {
 
         // index.js:21-24 — SetInformantRegister.
         final List<RegisterFragment> fragments = builder.build(hearing, sharedTime);
@@ -97,7 +98,8 @@ public final class RegisterTransformationChain implements RegisterTransformer {
 
         // index.js:29-33 — InformantRegisterSubscriptions, whose first act is to find the register
         // date (index.js:17-18) and whose second is to fetch reference data dated with it.
-        final JsonNode answer = subscriptions.fetch(queryDate(matcher.registerDate(fragments)));
+        final JsonNode answer =
+                subscriptions.fetch(queryDate(matcher.registerDate(fragments)), identity);
         final List<RegisterFragmentWithSubscriptions> addressed = matcher.match(fragments, answer);
 
         // index.js:37-41 — OutboundInformantRegister, over the ORIGINAL hearing.

@@ -9,18 +9,21 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
 import uk.gov.hmcts.cp.informantregister.domain.AuthoritySubmission;
+import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.CompletionReason;
 import uk.gov.hmcts.cp.informantregister.domain.DeadLetterReason;
 import uk.gov.hmcts.cp.informantregister.domain.DeliveryIdentity;
@@ -41,6 +44,7 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -162,7 +166,7 @@ class DistributionPipelineTest {
     private void guardAdmitsTheDelivery() {
         when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
         when(payloadSource.fetch(command)).thenReturn(payload());
-        when(transformer.transform(any(), any())).thenReturn(List.of());
+        when(transformer.transform(any(), any(), any())).thenReturn(List.of());
     }
 
     private double counter(final String name, final String tag, final String value) {
@@ -267,7 +271,7 @@ class DistributionPipelineTest {
         private void transformationProduces(final List<InformantRegisterDocument> documents) {
             when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
             when(payloadSource.fetch(command)).thenReturn(payload());
-            when(transformer.transform(any(), any())).thenReturn(documents);
+            when(transformer.transform(any(), any(), any())).thenReturn(documents);
             when(guard.recordCompletion(claim, CompletionReason.AUTHORITIES_SUBMITTED))
                     .thenReturn(new GuardDecision.Complete(ReasonCode.RUN_COMPLETED));
         }
@@ -278,7 +282,8 @@ class DistributionPipelineTest {
 
             pipeline.process(command, delivery);
 
-            verify(transformer).transform(payload(), command.sharedTime().toString());
+            verify(transformer).transform(
+                    payload(), command.sharedTime().toString(), CallerIdentity.SYSTEM);
         }
 
         @Test
@@ -292,11 +297,71 @@ class DistributionPipelineTest {
             final InOrder order = inOrder(submissionClient);
             order.verify(submissionClient).submit(new AuthoritySubmission(
                     command.source(), command.requestId(),
-                    first.prosecutionAuthorityId().toString(), first));
+                    first.prosecutionAuthorityId().toString(), first, CallerIdentity.SYSTEM));
             order.verify(submissionClient).submit(new AuthoritySubmission(
                     command.source(), command.requestId(),
-                    second.prosecutionAuthorityId().toString(), second));
+                    second.prosecutionAuthorityId().toString(), second, CallerIdentity.SYSTEM));
             order.verifyNoMoreInteractions();
+        }
+
+        /**
+         * The legacy's single-{@code cjscppuid} semantics, at the level that decides them.
+         *
+         * <p>{@code InformantRegisterEventGridTrigger/index.js:15} copies the envelope's
+         * {@code userId} into the orchestration input once, and
+         * {@code InformantRegisterOrchestrator/index.js:13,31,46} hands that one value to the
+         * payload read, the subscriptions read and the POST. Three calls, one caller. A run that
+         * read as one caller and posted as another would be attributable to nobody, so this is the
+         * pipeline's property to hold and not each adapter's.
+         */
+        @Test
+        void every_call_of_one_run_should_be_made_as_the_user_the_message_named() {
+            final UUID user = UUID.fromString("0b7a5c2e-4d19-4a6b-8c30-9e1f5d7b2a48");
+            final DistributionCommand attributed = new DistributionCommand(
+                    command.source(), command.requestId(), command.hearingId(),
+                    command.hearingDay(), command.sharedTime(), command.eventType(),
+                    Optional.of(user));
+            final RunClaim attributedClaim = new RunClaim(
+                    attributed.source(), attributed.requestId(), OWNER, UUID.randomUUID(),
+                    MESSAGE_ID);
+            final InformantRegisterDocument first = document();
+            final InformantRegisterDocument second = secondDocument();
+            when(guard.admit(attributed, delivery))
+                    .thenReturn(new GuardDecision.Run(attributedClaim));
+            when(payloadSource.fetch(attributed)).thenReturn(payload());
+            when(transformer.transform(any(), any(), any())).thenReturn(List.of(first, second));
+            when(guard.recordCompletion(attributedClaim, CompletionReason.AUTHORITIES_SUBMITTED))
+                    .thenReturn(new GuardDecision.Complete(ReasonCode.RUN_COMPLETED));
+
+            pipeline.process(attributed, delivery);
+
+            final CallerIdentity expected = new CallerIdentity(Optional.of(user));
+            // The payload port is handed the command itself, so it reads the user from the same
+            // field the other two are given; asserting the command is asserting the identity.
+            verify(payloadSource).fetch(attributed);
+            verify(transformer).transform(any(), any(), eq(expected));
+            final ArgumentCaptor<AuthoritySubmission> submitted =
+                    ArgumentCaptor.forClass(AuthoritySubmission.class);
+            verify(submissionClient, times(2)).submit(submitted.capture());
+            assertThat(submitted.getAllValues())
+                    .extracting(AuthoritySubmission::identity)
+                    .containsExactly(expected, expected);
+        }
+
+        @Test
+        void a_run_the_message_named_no_user_for_should_be_made_as_the_system() {
+            // A replayed message, and every message published before the field existed. There is
+            // still exactly one caller for the run; it is just not a person.
+            final InformantRegisterDocument only = document();
+            transformationProduces(List.of(only));
+
+            pipeline.process(command, delivery);
+
+            verify(transformer).transform(any(), any(), eq(CallerIdentity.SYSTEM));
+            final ArgumentCaptor<AuthoritySubmission> submitted =
+                    ArgumentCaptor.forClass(AuthoritySubmission.class);
+            verify(submissionClient).submit(submitted.capture());
+            assertThat(submitted.getValue().identity()).isEqualTo(CallerIdentity.SYSTEM);
         }
 
         @Test
@@ -327,7 +392,7 @@ class DistributionPipelineTest {
         void should_park_a_transformation_the_payload_cannot_survive() {
             when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
             when(payloadSource.fetch(command)).thenReturn(payload());
-            when(transformer.transform(any(), any()))
+            when(transformer.transform(any(), any(), any()))
                     .thenThrow(new TransformationFailedException("unreadable hearing"));
             final GuardDecision parked = new GuardDecision.DeadLetter(
                     DeadLetterReason.NON_TRANSIENT, ReasonCode.TRANSFORMATION_FAILED);
@@ -351,7 +416,7 @@ class DistributionPipelineTest {
         void should_hand_back_a_delivery_whose_reference_data_could_not_be_reached() {
             when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
             when(payloadSource.fetch(command)).thenReturn(payload());
-            when(transformer.transform(any(), any())).thenThrow(
+            when(transformer.transform(any(), any(), any())).thenThrow(
                     new ReferenceDataUnavailableException(ReasonCode.REFERENCE_DATA_UNAVAILABLE));
             final GuardDecision handedBack =
                     new GuardDecision.Abandon(ReasonCode.REFERENCE_DATA_UNAVAILABLE);
@@ -884,7 +949,8 @@ class DistributionPipelineTest {
             final InformantRegisterDocument document = document();
 
             final AuthoritySubmission submission =
-                    new AuthoritySubmission("RESULTS", UUID.randomUUID(), "PA-1", document);
+                    new AuthoritySubmission("RESULTS", UUID.randomUUID(), "PA-1", document,
+                            CallerIdentity.SYSTEM);
 
             assertThat(submission.prosecutionAuthorityId()).isEqualTo("PA-1");
             assertThat(submission.document()).isSameAs(document);

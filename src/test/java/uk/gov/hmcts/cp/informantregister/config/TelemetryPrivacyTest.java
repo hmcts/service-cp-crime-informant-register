@@ -174,7 +174,7 @@ class TelemetryPrivacyTest {
         // A transformation that produces nothing: what is under test here is what the run *says*,
         // and a hearing with no register in it exercises every log line the run emits.
         return new DistributionPipeline(
-                guard, payloads, (hearing, sharedTime) -> List.of(),
+                guard, payloads, (hearing, sharedTime, identity) -> List.of(),
                 mock(RegisterSubmissionClient.class),
                 new ProcessingMetrics(new SimpleMeterRegistry()), Clock.systemUTC(), RUN_DEADLINE);
     }

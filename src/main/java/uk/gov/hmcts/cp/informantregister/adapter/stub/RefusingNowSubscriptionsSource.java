@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import uk.gov.hmcts.cp.informantregister.application.NowSubscriptionsSource;
+import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.ReferenceDataUnavailableException;
 
@@ -35,7 +36,7 @@ public class RefusingNowSubscriptionsSource implements NowSubscriptionsSource {
 
     /** {@inheritDoc} */
     @Override
-    public JsonNode fetch(final LocalDate on) {
+    public JsonNode fetch(final LocalDate on, final CallerIdentity identity) {
         LOG.error("No now-subscriptions adapter is wired: the register cannot be addressed, so the "
                 + "delivery is handed back rather than sent to nobody. queryDate={}", on);
         throw new ReferenceDataUnavailableException(ReasonCode.REFERENCE_DATA_UNAVAILABLE);

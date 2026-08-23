@@ -6,11 +6,14 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import uk.gov.hmcts.cp.informantregister.application.NowSubscriptionsSource;
+import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDocument;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.ReferenceDataUnavailableException;
@@ -50,10 +53,17 @@ class RegisterTransformationChainTest {
                 source);
     }
 
+    /** The chain run over a case's own hearing, with no user attributed - the common shape here. */
+    private List<InformantRegisterDocument> transform(final ParityCase parityCase) {
+        return chainFor(parityCase).transform(
+                parityCase.hearing(), parityCase.sharedTime(), CallerIdentity.SYSTEM);
+    }
+
     /** A source that records what it was asked for and answers what the test tells it to. */
     private static final class RecordingSubscriptionsSource implements NowSubscriptionsSource {
 
         private final List<LocalDate> asked = new ArrayList<>();
+        private final List<CallerIdentity> askedAs = new ArrayList<>();
         private JsonNode answer;
         private RuntimeException failure;
 
@@ -67,8 +77,9 @@ class RegisterTransformationChainTest {
         }
 
         @Override
-        public JsonNode fetch(final LocalDate on) {
+        public JsonNode fetch(final LocalDate on, final CallerIdentity identity) {
             asked.add(on);
+            askedAs.add(identity);
             if (failure != null) {
                 throw failure;
             }
@@ -88,7 +99,7 @@ class RegisterTransformationChainTest {
             source.answers(parityCase.subscriptions());
 
             final List<InformantRegisterDocument> documents =
-                    chainFor(parityCase).transform(parityCase.hearing(), parityCase.sharedTime());
+                    transform(parityCase);
 
             assertThat(documents).hasSize(2);
             assertThat(documents).extracting(InformantRegisterDocument::prosecutionAuthorityCode)
@@ -103,10 +114,26 @@ class RegisterTransformationChainTest {
             // value the real service produced.
             source.answers(parityCase.subscriptions());
 
-            chainFor(parityCase).transform(parityCase.hearing(), parityCase.sharedTime());
+            transform(parityCase);
 
             assertThat(source.asked)
                     .containsExactly(LocalDate.parse(parityCase.recordedRefdataQueryDate()));
+        }
+
+        @Test
+        @DisplayName("asks reference data as the caller the run was given")
+        void asks_reference_data_as_the_run_caller() {
+            // `InformantRegisterOrchestrator/index.js:31` hands the activity `inputs.cjscppuid`,
+            // which `ReferenceDataService.js:44` sends: the transformation makes its one outward
+            // call as the run's caller, and does not resolve an identity of its own.
+            final CallerIdentity caller = new CallerIdentity(
+                    Optional.of(UUID.fromString("0b7a5c2e-4d19-4a6b-8c30-9e1f5d7b2a48")));
+            source.answers(parityCase.subscriptions());
+
+            chainFor(parityCase).transform(
+                    parityCase.hearing(), parityCase.sharedTime(), caller);
+
+            assertThat(source.askedAs).containsExactly(caller);
         }
 
         @Test
@@ -120,7 +147,7 @@ class RegisterTransformationChainTest {
             final JsonNode hearing = parityCase.hearing();
             final String before = hearing.toString();
 
-            chainFor(parityCase).transform(hearing, parityCase.sharedTime());
+            chainFor(parityCase).transform(hearing, parityCase.sharedTime(), CallerIdentity.SYSTEM);
 
             assertThat(hearing.toString()).isEqualTo(before);
         }
@@ -141,7 +168,7 @@ class RegisterTransformationChainTest {
             source.answers(parityCase.subscriptions());
 
             final List<InformantRegisterDocument> documents =
-                    chainFor(parityCase).transform(parityCase.hearing(), parityCase.sharedTime());
+                    transform(parityCase);
 
             assertThat(documents).isEmpty();
             assertThat(source.asked).isEmpty();
@@ -167,7 +194,7 @@ class RegisterTransformationChainTest {
             source.answers(parityCase.subscriptions());
 
             assertThatThrownBy(() ->
-                    chainFor(parityCase).transform(parityCase.hearing(), parityCase.sharedTime()))
+                    transform(parityCase))
                     .isInstanceOf(TransformationFailedException.class);
             assertThat(source.asked).isEmpty();
         }
@@ -195,7 +222,7 @@ class RegisterTransformationChainTest {
         void dates_the_query_with_the_misleading_z() {
             source.answers(parityCase.subscriptions());
 
-            chainFor(parityCase).transform(parityCase.hearing(), parityCase.sharedTime());
+            transform(parityCase);
 
             // The recording is the authority; the literals say out loud what it recorded, so a port
             // that "corrected" the day would fail here with the correction visible rather than with
@@ -228,7 +255,7 @@ class RegisterTransformationChainTest {
                     ReasonCode.REFERENCE_DATA_UNAVAILABLE));
 
             assertThatThrownBy(() ->
-                    chainFor(parityCase).transform(parityCase.hearing(), parityCase.sharedTime()))
+                    transform(parityCase))
                     .isInstanceOf(ReferenceDataUnavailableException.class);
         }
     }
@@ -248,7 +275,7 @@ class RegisterTransformationChainTest {
             source.answers(null);
 
             final List<InformantRegisterDocument> documents =
-                    chainFor(parityCase).transform(parityCase.hearing(), parityCase.sharedTime());
+                    transform(parityCase);
 
             assertThat(documents).hasSize(2);
             assertThat(documents).extracting(InformantRegisterDocument::recipients)
@@ -289,7 +316,7 @@ class RegisterTransformationChainTest {
             source.answers(nulled.subscriptions());
 
             final List<InformantRegisterDocument> documents =
-                    chainFor(nulled).transform(nulled.hearing(), nulled.sharedTime());
+                    transform(nulled);
 
             assertThat(documents).hasSize(2);
             assertThat(documents.getFirst().registerDate().toInstant())
@@ -312,7 +339,7 @@ class RegisterTransformationChainTest {
             source.answers(parityCase.subscriptions());
 
             final List<InformantRegisterDocument> documents =
-                    chainFor(parityCase).transform(parityCase.hearing(), parityCase.sharedTime());
+                    transform(parityCase);
 
             assertThat(documents).isNotEmpty();
             assertThat(documents.getFirst().registerDate().toInstant())
