@@ -307,7 +307,7 @@ Everything `${ENV_VAR:default}` in `application.yaml`, bound to typed `@Configur
 | `informantregister.results.connect-timeout` / `read-timeout` | 5s / 30s | Worst case must stay inside `claim.processing-deadline` |
 | `informantregister.referencedata.mode` | `LIVE` | `LIVE` is the reference-data query-API adapter; `STUB` is the refusing stub, for local runs and the suites that address no register. Startup refuses `STUB` on the deployed credential source |
 | `informantregister.referencedata.base-url` | — | Reference-data query API base; no default, the local value in `application.yaml` is the query API's own declared `baseUri`. **Required in `LIVE`** |
-| `informantregister.referencedata.system-user-id` | — | `CJSCPPUID` identity; a secret, from Key Vault. **Required in `LIVE`** — reference data authorises the query on it. Falls back to `RESULTS_SYSTEM_USER_ID`, because the function app threads one `cjscppuid` through both calls |
+| `informantregister.referencedata.system-user-id` | — | `CJSCPPUID` identity; a secret, from Key Vault. **Required in `LIVE`** — reference data authorises the query on it. Falls back to `INFORMANT_REGISTER_SYSTEM_USER_ID`, because the function app threads one `cjscppuid` through both calls |
 | `informantregister.referencedata.headers.*` | — | Any further header the mesh requires; same reason as the Results one |
 | `informantregister.referencedata.max-attempts` / `retry-interval` | 3 / 1s | The legacy `AxiosRetryWrapper` defaults, ported — including its inverted rule that a status at or below 429 is never retried while a 5xx is |
 | `informantregister.referencedata.connect-timeout` / `read-timeout` | 5s / 30s | Worst case must stay inside `claim.processing-deadline` |
