@@ -181,13 +181,7 @@ public class InformantRegisterMessageListener {
      * <p>Nothing escapes: a decision is the only thing this method can produce, which is what makes
      * the settlement below unconditional.
      */
-    @SuppressWarnings({"PMD.AvoidCatchingGenericException", "PMD.IdenticalCatchBranches"})
-    // PMD.IdenticalCatchBranches: the contention branch and the catch-all below it do read alike,
-    // and they cannot be merged. A multi-catch may not name a type and its own supertype, and the
-    // ordering here *is* the behaviour — ConcurrencyFailureException has to be caught above the
-    // outage classes it extends, or a deadlock would stop the queue. Collapsing the two would move
-    // that branch below them and change what a contended row does.
-    //
+    @SuppressWarnings("PMD.AvoidCatchingGenericException")
     // Deliberate, and narrow: this is the boundary that owns the delivery's settlement. An exception
     // escaping here would leave the message locked with no settlement attempt — the silent loss the
     // whole design exists to prevent — so the catch is total and each branch still logs at ERROR and
@@ -198,12 +192,7 @@ public class InformantRegisterMessageListener {
         try {
             decision = examine(message);
         } catch (ConcurrencyFailureException contention) {
-            // Caught before the outage classes because it extends TransientDataAccessException
-            // and is the one transient kind that is not an outage: a deadlock or lock timeout is
-            // the store *answering* — two writers met on one row — and the loser's delivery simply
-            // comes round again. Suspending the whole queue for one contended row would stall
-            // every message behind it.
-            decision = unexpectedFailure(contention);
+            decision = lostContentionRace(contention);
         } catch (TransientDataAccessException | RecoverableDataAccessException
                 | DataAccessResourceFailureException storeGone) {
             // The outage classes, and deliberately not the whole DataAccessException hierarchy.
@@ -218,6 +207,26 @@ public class InformantRegisterMessageListener {
             decision = unexpectedFailure(unexpected);
         }
         return decision;
+    }
+
+    /**
+     * The store answered by refusing a contended row, not by going away.
+     *
+     * <p>It has a branch of its own because it has to be caught <em>above</em> the outage classes,
+     * and the catch order is the behaviour. {@link ConcurrencyFailureException} extends
+     * {@link TransientDataAccessException}, so without this branch a deadlock would be read as an
+     * outage and stop intake — and a deadlock is the opposite of an outage. It is the store
+     * <em>answering</em>: two writers met on one row and this delivery lost. Suspending the whole
+     * queue for one contended row would stall every message behind it, for a fault that clears
+     * itself on the next delivery.
+     *
+     * <p>So the outcome is the ordinary one — handed back, reported, counted — and the branch exists
+     * for where it sits, not for what it does. Merging it into the catch-all below is not available
+     * even when the outcome is the same: a multi-catch may not name a type and its own supertype,
+     * and moving it below the outage classes is the very thing this branch prevents.
+     */
+    private GuardDecision lostContentionRace(final ConcurrencyFailureException contention) {
+        return unexpectedFailure(contention);
     }
 
     /**
