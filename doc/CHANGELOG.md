@@ -6,7 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- 2026-08-23 — **The transformation runs, and the parity pack is armed against it.** The three
+  ported steps are chained as `InformantRegisterOrchestrator` chains them, behind a new
+  `RegisterTransformer` port, and `DistributionPipeline` calls it between the payload fetch and the
+  submission loop — so the loop that was written to execute zero times now executes once per
+  prosecuting authority. The listener is untouched.
+  - **384 differential cases** run the whole chain against recordings of the real function app
+    (Node commit `a8d3c00b`, clock pinned) and compare with the golden comparator: **382 pass, 0
+    fail, 2 are held back** on the open `s05` question and name it in the skip message. Each case is
+    asserted against what the corpus says it is owed — an input the producer cannot send owes an
+    explicit outcome and not Node's body, because eighteen of those recordings violate the frozen
+    contract on the way out.
+  - **26 pinning tests**, one per manifest entry: 19 assert against a recorded run, 7 are disabled
+    carrying the manifest's own reason and the suite that does cover them. Six of the nineteen are
+    places the port deliberately answers differently, all of them registered and none of them a
+    register reaching an authority.
+  - **The comparator's own contract** is pinned by the pack's 57 adversarial vectors, bound to
+    `JsonParity`: 116 assertions, none skipped.
+  - The reference-data fetch is a port (`NowSubscriptionsSource`) whose adapter is a later story.
+    Until it exists the port **refuses** rather than answering "nobody is subscribed" — the two are
+    indistinguishable downstream, and answering would let a real hearing be filed to nobody and
+    recorded done. Deviations #14, sign-off pending.
+  - Deviations #14 added. A completion now records *which* success it was: `no-authorities` or
+    `authorities-submitted`.
+
 ### Fixed
+- 2026-08-23 — **Two ordered-date defects the differential corpus found**, both of which made the
+  port refuse hearings the legacy files — the one direction a bug-for-bug port must not drift in.
+  - **The parse format is a token walk, not the pattern it looks like.** `DateService.parse` is
+    `moment(value, 'YYYY/MM/DD')` with no strict flag, so moment walks the format's tokens and gives
+    each a width — up to four digits of year, two of month, two of day — skipping whatever separates
+    them, and applies its two-digit-year rule on the way. `20-01-2020`, the ordered date both
+    unmodified `OutboundInformantRegister` fixtures carry, is therefore 20 January 2020 and not a
+    refusal. `HearingDates.orderingKey` reproduces the walk; the `moment.tz` fallback it used to
+    share a pattern with is a different parser and is left alone.
+  - **`Array.prototype.sort` decides whether a bad date is fatal.** It never calls the comparator on
+    a lone element, and it moves `undefined` elements to the end without comparing them — so an
+    unreadable ordered date is harmless alone and fatal in company (defect D10, pin `s06`), and a
+    result carrying no ordered date cannot destroy a hearing at all. New `pipeline/OrderedDates`
+    carries both rules for the two call sites that need them, and keeps an absent date apart from an
+    explicit JSON null, because `sort` does.
+
 - 2026-08-23 — **Post-review parity corrections to the aggregation mapper.** Every one is a place
   where the port answered differently from the Node source, found by reading the two side by side;
   each is traced to the legacy line it reproduces.
