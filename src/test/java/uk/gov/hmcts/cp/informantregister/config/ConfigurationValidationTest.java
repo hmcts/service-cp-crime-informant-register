@@ -763,7 +763,7 @@ class ConfigurationValidationTest {
      *
      * <p>Asserted against the real file rather than against property values a test invents, because
      * the failure this covers is a documented environment variable that reaches nothing. A comment
-     * naming {@code RESULTS_SYSTEM_USER_ID} is not a binding, and a deployment that sets it and
+     * naming {@code INFORMANT_REGISTER_SYSTEM_USER_ID} is not a binding, and a deployment that sets it and
      * still fails to start with "system-user-id is required" is a deployment nobody can debug from
      * the configuration in front of them.
      */
@@ -793,7 +793,7 @@ class ConfigurationValidationTest {
 
         @Test
         void the_identity_should_arrive_from_the_environment_variable_the_file_documents() {
-            shipped.withSystemProperties("RESULTS_SYSTEM_USER_ID=b6c8b0a4-1f2e-4a3b-9c4d-5e6f70819234")
+            shipped.withSystemProperties("INFORMANT_REGISTER_SYSTEM_USER_ID=b6c8b0a4-1f2e-4a3b-9c4d-5e6f70819234")
                     .run(context -> {
                         assertThat(context).hasNotFailed();
                         assertThat(context.getBean(InformantRegisterProperties.class)
@@ -834,7 +834,7 @@ class ConfigurationValidationTest {
         @Test
         void the_reference_data_identity_should_fall_back_to_the_one_the_results_calls_use() {
             shippedOnTheStub
-                    .withSystemProperties("RESULTS_SYSTEM_USER_ID=b6c8b0a4-1f2e-4a3b-9c4d-5e6f70819234")
+                    .withSystemProperties("INFORMANT_REGISTER_SYSTEM_USER_ID=b6c8b0a4-1f2e-4a3b-9c4d-5e6f70819234")
                     .run(context -> {
                         assertThat(context).hasNotFailed();
                         assertThat(context.getBean(InformantRegisterProperties.class)
@@ -846,7 +846,7 @@ class ConfigurationValidationTest {
         @Test
         void the_reference_data_identity_should_be_settable_on_its_own() {
             shippedOnTheStub.withSystemProperties(
-                    "RESULTS_SYSTEM_USER_ID=b6c8b0a4-1f2e-4a3b-9c4d-5e6f70819234",
+                    "INFORMANT_REGISTER_SYSTEM_USER_ID=b6c8b0a4-1f2e-4a3b-9c4d-5e6f70819234",
                     "REFERENCEDATA_SYSTEM_USER_ID=2c7b1e64-0f4a-4f0e-9b2c-8d1a6f3e5c07")
                     .run(context -> {
                         assertThat(context).hasNotFailed();

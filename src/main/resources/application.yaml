@@ -79,7 +79,7 @@ informantregister:
     # identity to use has nothing to post with either. Named here rather than left to relaxed
     # binding: a variable a comment documents and no key reads is a deployment that sets it
     # correctly and still fails to start.
-    system-user-id: ${RESULTS_SYSTEM_USER_ID:}
+    system-user-id: ${INFORMANT_REGISTER_SYSTEM_USER_ID:}
     # Retry policy for the POST. Connect and read failures, 5xx and 429 are retried; any other 4xx is
     # a refusal and is never retried. The numbers are this service's own: the contract documents that
     # back-off happens, not how much of it, so they are configuration rather than constants.
@@ -107,12 +107,12 @@ informantregister:
     # behind a different host.
     base-url: ${REFERENCEDATA_BASE_URL:http://localhost:8080}
     # The CJSCPPUID identity, a secret from Key Vault via the Secrets Store CSI driver. It falls back
-    # to the Results identity because the function app threads a single `cjscppuid` through both
-    # calls (ReferenceDataService.js:44), so an environment that mounts one identity is not asked for
-    # a second; REFERENCEDATA_SYSTEM_USER_ID exists for the day reference data authorises a different
-    # one. REQUIRED in LIVE mode: an anonymous query is refused every time, so the service refuses to
-    # start rather than park every hearing that produced a register.
-    system-user-id: ${REFERENCEDATA_SYSTEM_USER_ID:${RESULTS_SYSTEM_USER_ID:}}
+    # to this service's own identity because the function app threads a single `cjscppuid` through
+    # both calls (ReferenceDataService.js:44), so an environment that mounts one identity is not
+    # asked for a second; REFERENCEDATA_SYSTEM_USER_ID exists for the day reference data authorises
+    # a different one. REQUIRED in LIVE mode: an anonymous query is refused every time, so the
+    # service refuses to start rather than park every hearing that produced a register.
+    system-user-id: ${REFERENCEDATA_SYSTEM_USER_ID:${INFORMANT_REGISTER_SYSTEM_USER_ID:}}
     # The function app's DEFAULT_PUBLISH_RETRY_COUNT and DEFAULT_PUBLISH_RETRY_INTERVAL
     # (AxiosRetryWrapper.js:10-11). This call goes through the same wrapper the payload fallback
     # does, so the rule is ported rather than redesigned — which includes the legacy's inverted

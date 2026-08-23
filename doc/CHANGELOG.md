@@ -371,9 +371,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 2026-08-22 — **Second review pass over the submission leg** (findings re-verified against the
   rules and the Node source before fixing; the ones that contradicted a rule were rebutted, not
   applied):
-  - `RESULTS_SYSTEM_USER_ID` now reaches something. `application.yaml` documented the variable in a
+  - `INFORMANT_REGISTER_SYSTEM_USER_ID` now reaches something. `application.yaml` documented the variable in a
     comment and bound no key to it, so a deployment that set the identity correctly still refused to
-    start with "system-user-id is required". It is bound as `${RESULTS_SYSTEM_USER_ID:}`, in the
+    start with "system-user-id is required". It is bound as `${INFORMANT_REGISTER_SYSTEM_USER_ID:}`, in the
     same shape as `RESULTS_BASE_URL`, and the shipped file's binding is now asserted against the
     real file rather than against property values a test invents;
   - the retry policy is validated at startup alongside the claim timings and the credential rule.
