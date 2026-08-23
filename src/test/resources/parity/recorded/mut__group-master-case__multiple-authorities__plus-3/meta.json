@@ -1,0 +1,73 @@
+{
+  "caseId": "mut__group-master-case__multiple-authorities__plus-3",
+  "recordedAt": null,
+  "oracle": {
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js, as the Durable Task extension serialises them; OutboundInformantRegister therefore receives the ORCHESTRATOR's hearing, not the copy SetInformantRegister mutated",
+    "runner": "oracle/run-transform.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "recorded/provenance.json"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 4,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "refdataCallCount": 1,
+    "refdataCalls": [
+      {
+        "verb": "GET",
+        "url": "http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2021-09-27",
+        "on": "2021-09-27",
+        "headers": {
+          "CJSCPPUID": "00000000-0000-0000-0000-000000000000",
+          "Accept": "application/vnd.referencedata.query.get-now-subscriptions+json"
+        },
+        "attempt": 1,
+        "answered": "resolve status=200"
+      }
+    ]
+  },
+  "deterministic": true,
+  "clockDependent": false,
+  "clockProbe": null,
+  "digests": {
+    "hearing": "55358016a6700df85ec0d4d0f0e3a60f0afa8d30b96a9c1e4a3d7b3035b3fcfa",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "bffc94ac365db6ea5582818bd310de55f6c1aeba7ba016536e28b6fe0154ec70",
+    "expected": "5d08a2fcc7979916584e4f297ef0dfa17b3e9de7a3760a5745ebb3d07d76e060"
+  },
+  "contract": {
+    "status": "IN_CONTRACT",
+    "basis": "each clone is a complete prosecutionCase with fresh, distinct uuids for the case, its defendants, their masterDefendantIds and their offences, so no identity is duplicated and cpp-platform-core-domain/criminal-court-public-model/src/main/resources/json/schema/global/hearing.json prosecutionCases.minItems is satisfied a fortiori",
+    "note": "Parity obligation: the Java port must reproduce this."
+  },
+  "evidence": "CONSTRUCTED — one hearing carrying 3 to 8 prosecuting authorities is legal but not drawn from observed data",
+  "provenance": {
+    "kind": "mutation",
+    "baseCase": "group-master-case",
+    "baseFixture": "fixtures/hearings/group-master-case.json",
+    "baseFixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/SetInformantRegister/test/group-master-case.json",
+    "subscriptionsInput": "fixtures/subscriptions/now-subscriptions-ir-sample.json",
+    "subscriptionsOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/NowsVariantsSubscriptions/test/subscriptions.json (first 5 informant-register entries, verbatim)",
+    "sharedTimeSource": "SetInformantRegister/test/index.test.js:213",
+    "operator": "multiple-authorities",
+    "operatorVariant": "plus-3",
+    "note": "The only real fixture carrying majorCreditorCode (PF45) and isGroupMaster/groupId.",
+    "operatorScope": "hearing",
+    "operatorDescription": "Clones the first prosecution case under fresh authority identifiers, so one hearing yields N documents.",
+    "operatorRationale": "One document per prosecuting authority is the whole point of the service. SetInformantRegister/index.js:39-53 de-duplicates by prosecutionAuthorityId only; the per-authority defendant filter is a separate pass (index.js:121-139). A port that keys on the wrong field produces the right count and the wrong contents, which only shows up at N >= 3.",
+    "operatorDetail": {
+      "extraAuthorities": 3,
+      "reader": "SetInformantRegister/index.js:39-53"
+    }
+  }
+}

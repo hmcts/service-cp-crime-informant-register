@@ -1,0 +1,77 @@
+{
+  "caseId": "mut__court-application__duplicate-array-entry__hearingdays",
+  "recordedAt": null,
+  "oracle": {
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js, as the Durable Task extension serialises them; OutboundInformantRegister therefore receives the ORCHESTRATOR's hearing, not the copy SetInformantRegister mutated",
+    "runner": "oracle/run-transform.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "recorded/provenance.json"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 1,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "refdataCallCount": 1,
+    "refdataCalls": [
+      {
+        "verb": "GET",
+        "url": "http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2021-03-11",
+        "on": "2021-03-11",
+        "headers": {
+          "CJSCPPUID": "00000000-0000-0000-0000-000000000000",
+          "Accept": "application/vnd.referencedata.query.get-now-subscriptions+json"
+        },
+        "attempt": 1,
+        "answered": "resolve status=200"
+      }
+    ]
+  },
+  "deterministic": true,
+  "clockDependent": false,
+  "clockProbe": null,
+  "digests": {
+    "hearing": "b4f9b873596aa0c8eeee613d0038d4dec6db4f1d081a5578e17be38b57539e93",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "914cac66e9f394a6f0e39872d5747524e198630f849f02ae66603fa8f9e3452c",
+    "expected": "8dc0c2dfa54bb58774b5555845f719f51c977783fdbf68f0a2a2e3acfc6d5344"
+  },
+  "contract": {
+    "status": "PRODUCER_IMPLAUSIBLE",
+    "basis": "the copy duplicates sittingDay + listingSequence (one sitting day cannot be listed twice); schema-valid (no uniqueness keyword) but not producer output",
+    "note": "The producer cannot emit this. The recording is what the Node app DOES with the input, and is evidence about robustness; it is NOT a parity obligation. The Java port's behaviour here is a design decision — see doc/DEVIATIONS.md and the message-contract gate in .claude/rules/workflow.md."
+  },
+  "evidence": "CONSTRUCTED — a real fixture's array is rewritten by this harness",
+  "provenance": {
+    "kind": "mutation",
+    "baseCase": "court-application",
+    "baseFixture": "fixtures/hearings/hearing-results-from-court-application.json",
+    "baseFixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/SetInformantRegister/test/hearing-results-from-court-application.json",
+    "subscriptionsInput": "fixtures/subscriptions/now-subscriptions-ir-sample.json",
+    "subscriptionsOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/NowsVariantsSubscriptions/test/subscriptions.json (first 5 informant-register entries, verbatim)",
+    "sharedTimeSource": "SetInformantRegister/test/index.test.js:230",
+    "operator": "duplicate-array-entry",
+    "operatorVariant": "hearingdays",
+    "note": "Court application only (DERPF), one hearing day, populated courtCentre with lja.",
+    "operatorScope": "hearing",
+    "operatorDescription": "Appends a deep copy of the first element of one array.",
+    "operatorRationale": "SetInformantRegister de-duplicates authorities by Set (index.js:39-53) but nothing de-duplicates defendants, offences, results or prompts; where de-duplication is absent the document must contain the duplicate, and a Java port that \"tidies\" it diverges. CAVEAT, recorded per variant: an exact deep copy also duplicates the element's IDENTITY. Two prosecution cases with one uuid, two offences with one uuid, two judicialResults with one judicialResultId, or one defendant sitting twice on one day is schema-valid (no JSON Schema keyword forbids it) but is not something the producer emits — those variants are PRODUCER_IMPLAUSIBLE. judicialResultPrompts have no identifier and genuinely can repeat, so that one variant is IN_CONTRACT and is the one that carries a real parity obligation.",
+    "operatorDetail": {
+      "field": "hearingDays",
+      "occurrences": 1,
+      "reader": "RegisterFragmentService.js:47-53; CourtSessionMapper.js:26",
+      "mode": "all-occurrences",
+      "schemaMinItems": 1,
+      "schemaMinItemsSource": "cpp-platform-core-domain/criminal-court-public-model/src/main/resources/json/schema/global/hearing.json hearingDays.minItems"
+    }
+  }
+}

@@ -1,0 +1,117 @@
+[
+  {
+    "registerDate": "2020-06-01T11:00:00Z",
+    "hearingDate": "2020-01-20T00:00:00Z",
+    "hearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+    "prosecutionAuthorityId": "31af405e-7b60-4dd8-a244-c24c2d3fa595",
+    "prosecutionAuthorityCode": "TFL",
+    "prosecutionAuthorityOuCode": "GAFTL00",
+    "fileName": "InformantRegister_TFL_2020-06-01.csv",
+    "hearingVenue": {
+      "courtSessions": [
+        {
+          "defendants": [
+            {
+              "name": "Fred Smith",
+              "dateOfBirth": "1965-12-27",
+              "title": "MR",
+              "firstName": "Fred",
+              "lastName": "Smith",
+              "prosecutionCasesOrApplications": [
+                {
+                  "caseOrApplicationReference": "TFL4359536",
+                  "offences": [
+                    {
+                      "offenceCode": "PS90010",
+                      "orderIndex": 1,
+                      "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+                      "pleaValue": "NOT_GUILTY",
+                      "offenceResults": [
+                        {
+                          "resultText": "Pay by date"
+                        }
+                      ],
+                      "originatingCaseUrn": "TFL4359536"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Fred Smith",
+              "dateOfBirth": "1965-12-27",
+              "title": "MR",
+              "firstName": "Fred",
+              "lastName": "Smith",
+              "prosecutionCasesOrApplications": [
+                {
+                  "caseOrApplicationReference": "TFL4359536",
+                  "offences": [
+                    {
+                      "offenceCode": "PS90010",
+                      "orderIndex": 1,
+                      "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+                      "pleaValue": "GUILTY",
+                      "offenceResults": [
+                        {
+                          "resultText": "Imprisonment court order"
+                        }
+                      ],
+                      "originatingCaseUrn": "TFL4359536"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "registerDate": "2020-06-01T11:00:00Z",
+    "hearingDate": "2020-01-20T00:00:00Z",
+    "hearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+    "prosecutionAuthorityId": "9d3ad709-cb0c-4711-8ad5-f9e60d6b0530",
+    "prosecutionAuthorityCode": "TVL",
+    "prosecutionAuthorityOuCode": "GAEAA01",
+    "fileName": "InformantRegister_TVL_2020-06-01.csv",
+    "hearingVenue": {
+      "courtSessions": [
+        {
+          "defendants": [
+            {
+              "name": "Fred Smith",
+              "dateOfBirth": "1965-12-27",
+              "title": "MR",
+              "firstName": "Fred",
+              "lastName": "Smith",
+              "prosecutionCasesOrApplications": [
+                {
+                  "caseOrApplicationReference": "TVL298320922",
+                  "offences": [
+                    {
+                      "offenceCode": "PS90010",
+                      "orderIndex": 1,
+                      "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+                      "pleaValue": "GUILTY",
+                      "offenceResults": [
+                        {
+                          "resultText": "Instalments only"
+                        },
+                        {
+                          "resultText": "Financial Penalty"
+                        }
+                      ],
+                      "originatingCaseUrn": "TVL298320922"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

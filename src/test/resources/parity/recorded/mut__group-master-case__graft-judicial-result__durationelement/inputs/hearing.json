@@ -1,0 +1,412 @@
+{
+  "courtCentre": {
+    "address": {
+      "address1": "176A Lavender Hill",
+      "address2": "London",
+      "address3": "",
+      "address4": "",
+      "address5": "",
+      "postcode": "SW11 1JU"
+    },
+    "code": "B01LY00",
+    "id": "f8254db1-1683-483e-afb3-b87fde5a0a26",
+    "lja": {
+      "ljaCode": "2577",
+      "ljaName": "South West London Magistrates' Court"
+    },
+    "name": "Lavender Hill Magistrates' Court",
+    "roomId": "9e4932f7-97b2-3010-b942-ddd2624e4dd8",
+    "roomName": "Courtroom 01"
+  },
+  "hasSharedResults": true,
+  "hearingDays": [
+    {
+      "courtCentreId": "f8254db1-1683-483e-afb3-b87fde5a0a26",
+      "courtRoomId": "9e4932f7-97b2-3010-b942-ddd2624e4dd8",
+      "isCancelled": false,
+      "listedDurationMinutes": 20,
+      "listingSequence": 0,
+      "sittingDay": "2021-09-29T10:00:00.000Z"
+    }
+  ],
+  "hearingLanguage": "ENGLISH",
+  "id": "2d209c6b-2b5e-428c-a668-938f223370fb",
+  "isGroupProceedings": true,
+  "jurisdictionType": "MAGISTRATES",
+  "numberOfGroupCases": 2,
+  "prosecutionCases": [
+    {
+      "civilFees": [
+        {
+          "feeId": "f19fbdb0-3cb4-4a00-a9d1-418e39cbf91e",
+          "feeStatus": "OUTSTANDING",
+          "feeType": "INITIAL",
+          "paymentReference": "paymentReferenceXXX"
+        }
+      ],
+      "defendants": [
+        {
+          "courtProceedingsInitiated": "2021-09-27T12:22:07.602Z",
+          "id": "9a023a97-de4f-47f3-a473-e5edb8d36baf",
+          "masterDefendantId": "9a023a97-de4f-47f3-a473-e5edb8d36baf",
+          "offences": [
+            {
+              "arrestDate": "2021-08-15",
+              "chargeDate": "2021-08-15",
+              "count": 0,
+              "dvlaOffenceCode": "DR10",
+              "id": "077a4b7d-eda0-41e1-8149-f13479ab5b65",
+              "isDisposed": true,
+              "judicialResults": [
+                {
+                  "alwaysPublished": false,
+                  "category": "FINAL",
+                  "cjsCode": "1115",
+                  "courtClerk": {
+                    "firstName": "Marion",
+                    "lastName": "Martin",
+                    "userId": "10e850ec-6602-48e7-b216-c0891f7dc981"
+                  },
+                  "d20": false,
+                  "durationElement": {
+                    "primaryDurationUnit": "M",
+                    "primaryDurationValue": 5,
+                    "secondaryDurationUnit": "Y",
+                    "secondaryDurationValue": 2,
+                    "durationStartDate": "26/02/2019",
+                    "durationEndDate": "26/07/2021"
+                  },
+                  "excludedFromResults": false,
+                  "isAdjournmentResult": false,
+                  "isAvailableForCourtExtract": true,
+                  "isConvictedResult": true,
+                  "isDeleted": false,
+                  "isFinancialResult": false,
+                  "isUnscheduled": false,
+                  "judicialResultId": "10334941-73c9-4480-a531-70d2595d3c6d",
+                  "judicialResultPrompts": [
+                    {
+                      "courtExtract": "Y",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "b2cf5a1e-8539-45a1-a287-4be5094a0e73",
+                      "label": "Total custodial period",
+                      "promptReference": "totalCustodialPeriod",
+                      "promptSequence": 100,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "5 Months",
+                      "welshLabel": "Cyfanswm y cyfnod yn y ddalfa",
+                      "welshValue": "5 Mis"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "durationSequence": 2,
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "95618691-0742-417e-82b9-c4d4bff94585",
+                      "label": "Suspended period",
+                      "promptReference": "suspendedPeriod",
+                      "promptSequence": 200,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "2 Years",
+                      "welshLabel": "Cyfnod Gohiriedig",
+                      "welshValue": "2 Flynedd"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "68c92035-27fd-4ee6-b03c-fe18ea6dbcb0",
+                      "label": "Probation team to be notified organisation name",
+                      "promptReference": "probationteamtobenotifiedOrganisationName",
+                      "promptSequence": 700,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "Wales Division NPS",
+                      "welshValue": "Wales Division NPS"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "68c92035-27fd-4ee6-b03c-fe18ea6dbcb0",
+                      "label": "Probation team to be notified email address 1",
+                      "promptReference": "probationteamtobenotifiedEmailAddress1",
+                      "promptSequence": 700,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "walesnps.court@justice.gov.uk",
+                      "welshValue": "walesnps.court@justice.gov.uk"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "durationSequence": 1,
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "76f15753-1706-42fb-b922-0d56d01e5706",
+                      "label": "Imprisonment Period",
+                      "promptReference": "imprisonmentPeriod",
+                      "promptSequence": 100,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "5 Months",
+                      "welshLabel": "Cyfnod Carcharu",
+                      "welshValue": "5 Mis"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "4d10cd4b-fb39-40dd-88e1-2397832bc914",
+                      "label": "Bail remand days to count (tagged days)",
+                      "promptReference": "bailRemandDaysToCountTaggedDays",
+                      "promptSequence": 700,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "0",
+                      "welshLabel": "Dyddiau mechnïaeth ar remand i’w cyfrif (dyddiad gyda tag)",
+                      "welshValue": "0"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "judicialResultPromptTypeId": "dada120c-160a-49a9-b040-e8b6b7128d67",
+                      "label": "Notification of electronic monitoring order (requirement)",
+                      "promptReference": "907a24cb-55be-4ed2-82d3-9a91dd32e390",
+                      "promptSequence": 800,
+                      "usergroups": [],
+                      "value": "First notification of electronic monitoring:Yes\nElectronic monitoring contractor organisation name:Electronic Monitoring Contractor\nElectronic monitoring contractor email address 1:LPadmin@ems.co.uk.cjsm.net",
+                      "welshLabel": "Hysbysiad o orchymyn monitro electronig (gofyniad)"
+                    }
+                  ],
+                  "judicialResultTypeId": "8b1cff00-a456-40da-9ce4-f11c20959084",
+                  "label": "Suspended sentence order - imprisonment",
+                  "lastSharedDateTime": "2021-02-26",
+                  "lifeDuration": false,
+                  "orderedDate": "2021-02-26",
+                  "orderedHearingId": "2d209c6b-2b5e-428c-a668-938f223370fb",
+                  "postHearingCustodyStatus": "A",
+                  "publishedAsAPrompt": false,
+                  "publishedForNows": false,
+                  "rank": 19900,
+                  "resultText": "Suspended sentence order - imprisonment\nTotal custodial period 5 Months\nSuspended period 2 Years\nProbation team to be notified organisation name Wales Division NPS\nProbation team to be notified email address 1 walesnps.court@justice.gov.uk\nImprisonment Period 5 Months\nBail remand days to count (tagged days) 0\nNotification of electronic monitoring order (requirement) First notification of electronic monitoring:Yes\nElectronic monitoring contractor organisation name:Electronic Monitoring Contractor\nElectronic monitoring contractor email address 1:LPadmin@ems.co.uk.cjsm.net",
+                  "rollUpPrompts": true,
+                  "rootJudicialResultId": "10334941-73c9-4480-a531-70d2595d3c6c",
+                  "rootJudicialResultTypeId": "8b1cff00-a456-40da-9ce4-f11c20959084",
+                  "terminatesOffenceProceedings": false,
+                  "urgent": false,
+                  "usergroups": [],
+                  "welshLabel": "Gorchymyn dedfryd ohiriedig - carcharu"
+                }
+              ],
+              "modeOfTrial": "Summary",
+              "offenceCode": "RT88007",
+              "offenceDateCode": 1,
+              "offenceDefinitionId": "323b0db0-995e-3ff0-9a01-a28c6a601120",
+              "offenceLegislation": "Contrary to section 5(1)(a) of the Road Traffic Act 1988 and Schedule 2 to the Road Traffic Offenders Act 1988.",
+              "offenceTitle": "Drive motor vehicle when alcohol level above limit",
+              "orderIndex": 1,
+              "startDate": "2021-08-15",
+              "wording": "Wording: Drive motor vehicle when alcohol level above limit"
+            },
+            {
+              "arrestDate": "2021-08-15",
+              "chargeDate": "2021-08-15",
+              "count": 0,
+              "dvlaOffenceCode": "DR10",
+              "id": "09d25c94-759b-4b95-83b1-9d1a3ec77fd1",
+              "isDisposed": true,
+              "judicialResults": [
+                {
+                  "alwaysPublished": false,
+                  "category": "FINAL",
+                  "cjsCode": "1115",
+                  "courtClerk": {
+                    "firstName": "Marion",
+                    "lastName": "Martin",
+                    "userId": "10e850ec-6602-48e7-b216-c0891f7dc981"
+                  },
+                  "d20": false,
+                  "durationElement": {
+                    "primaryDurationUnit": "M",
+                    "primaryDurationValue": 5,
+                    "secondaryDurationUnit": "Y",
+                    "secondaryDurationValue": 2,
+                    "durationStartDate": "26/02/2019",
+                    "durationEndDate": "26/07/2021"
+                  },
+                  "excludedFromResults": false,
+                  "isAdjournmentResult": false,
+                  "isAvailableForCourtExtract": true,
+                  "isConvictedResult": true,
+                  "isDeleted": false,
+                  "isFinancialResult": false,
+                  "isUnscheduled": false,
+                  "judicialResultId": "10334941-73c9-4480-a531-70d2595d3c6e",
+                  "judicialResultPrompts": [
+                    {
+                      "courtExtract": "Y",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "b2cf5a1e-8539-45a1-a287-4be5094a0e73",
+                      "label": "Total custodial period",
+                      "promptReference": "totalCustodialPeriod",
+                      "promptSequence": 100,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "5 Months",
+                      "welshLabel": "Cyfanswm y cyfnod yn y ddalfa",
+                      "welshValue": "5 Mis"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "durationSequence": 2,
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "95618691-0742-417e-82b9-c4d4bff94585",
+                      "label": "Suspended period",
+                      "promptReference": "suspendedPeriod",
+                      "promptSequence": 200,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "2 Years",
+                      "welshLabel": "Cyfnod Gohiriedig",
+                      "welshValue": "2 Flynedd"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "68c92035-27fd-4ee6-b03c-fe18ea6dbcb0",
+                      "label": "Probation team to be notified organisation name",
+                      "promptReference": "probationteamtobenotifiedOrganisationName",
+                      "promptSequence": 700,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "Wales Division NPS",
+                      "welshValue": "Wales Division NPS"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "68c92035-27fd-4ee6-b03c-fe18ea6dbcb0",
+                      "label": "Probation team to be notified email address 1",
+                      "promptReference": "probationteamtobenotifiedEmailAddress1",
+                      "promptSequence": 700,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "walesnps.court@justice.gov.uk",
+                      "welshValue": "walesnps.court@justice.gov.uk"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "durationSequence": 1,
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "76f15753-1706-42fb-b922-0d56d01e5706",
+                      "label": "Imprisonment Period",
+                      "promptReference": "imprisonmentPeriod",
+                      "promptSequence": 100,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "5 Months",
+                      "welshLabel": "Cyfnod Carcharu",
+                      "welshValue": "5 Mis"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "4d10cd4b-fb39-40dd-88e1-2397832bc914",
+                      "label": "Bail remand days to count (tagged days)",
+                      "promptReference": "bailRemandDaysToCountTaggedDays",
+                      "promptSequence": 700,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "0",
+                      "welshLabel": "Dyddiau mechnïaeth ar remand i’w cyfrif (dyddiad gyda tag)",
+                      "welshValue": "0"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "judicialResultPromptTypeId": "dada120c-160a-49a9-b040-e8b6b7128d67",
+                      "label": "Notification of electronic monitoring order (requirement)",
+                      "promptReference": "907a24cb-55be-4ed2-82d3-9a91dd32e390",
+                      "promptSequence": 800,
+                      "usergroups": [],
+                      "value": "First notification of electronic monitoring:Yes\nElectronic monitoring contractor organisation name:Electronic Monitoring Contractor\nElectronic monitoring contractor email address 1:LPadmin@ems.co.uk.cjsm.net",
+                      "welshLabel": "Hysbysiad o orchymyn monitro electronig (gofyniad)"
+                    }
+                  ],
+                  "judicialResultTypeId": "8b1cff00-a456-40da-9ce4-f11c20959084",
+                  "label": "Suspended sentence order - imprisonment",
+                  "lastSharedDateTime": "2021-02-26",
+                  "lifeDuration": false,
+                  "orderedDate": "2021-02-26",
+                  "orderedHearingId": "2d209c6b-2b5e-428c-a668-938f223370fb",
+                  "postHearingCustodyStatus": "A",
+                  "publishedAsAPrompt": false,
+                  "publishedForNows": false,
+                  "rank": 19900,
+                  "resultText": "Suspended sentence order - imprisonment\nTotal custodial period 5 Months\nSuspended period 2 Years\nProbation team to be notified organisation name Wales Division NPS\nProbation team to be notified email address 1 walesnps.court@justice.gov.uk\nImprisonment Period 5 Months\nBail remand days to count (tagged days) 0\nNotification of electronic monitoring order (requirement) First notification of electronic monitoring:Yes\nElectronic monitoring contractor organisation name:Electronic Monitoring Contractor\nElectronic monitoring contractor email address 1:LPadmin@ems.co.uk.cjsm.net",
+                  "rollUpPrompts": true,
+                  "rootJudicialResultId": "10334941-73c9-4480-a531-70d2595d3c6c",
+                  "rootJudicialResultTypeId": "8b1cff00-a456-40da-9ce4-f11c20959084",
+                  "terminatesOffenceProceedings": false,
+                  "urgent": false,
+                  "usergroups": [],
+                  "welshLabel": "Gorchymyn dedfryd ohiriedig - carcharu"
+                }
+              ],
+              "modeOfTrial": "Summary",
+              "offenceCode": "RT88007",
+              "offenceDateCode": 1,
+              "offenceDefinitionId": "323b0db0-995e-3ff0-9a01-a28c6a601120",
+              "offenceLegislation": "Contrary to section 5(1)(a) of the Road Traffic Act 1988 and Schedule 2 to the Road Traffic Offenders Act 1988.",
+              "offenceTitle": "Drive motor vehicle when alcohol level above limit",
+              "orderIndex": 1,
+              "startDate": "2021-08-15",
+              "wording": "Wording: Drive motor vehicle when alcohol level above limit"
+            }
+          ],
+          "personDefendant": {
+            "bailConditions": "",
+            "personDetails": {
+              "address": {
+                "address1": "849 Akeem Stravenue",
+                "postcode": "CR0 1XG"
+              },
+              "documentationLanguageNeeds": "ENGLISH",
+              "firstName": "Aditya",
+              "gender": "MALE",
+              "hearingLanguageNeeds": "ENGLISH",
+              "lastName": "Ondricka"
+            }
+          },
+          "prosecutionAuthorityReference": "655d2f05-0359-4e59-89e1-bd620393dc46",
+          "prosecutionCaseId": "9e7fd066-9a58-4d51-93a0-8d5ea03896e6"
+        }
+      ],
+      "groupId": "47a08b62-e790-474b-94da-0fd406d2bcc8",
+      "id": "9e7fd066-9a58-4d51-93a0-8d5ea03896e6",
+      "initiationCode": "C",
+      "isCivil": true,
+      "isGroupMaster": true,
+      "isGroupMember": true,
+      "originatingOrganisation": "0450000",
+      "prosecutionCaseIdentifier": {
+        "address": {
+          "address1": "Southern House",
+          "address2": "Bond Street",
+          "address3": "Guildford",
+          "postcode": "GU15 1TL"
+        },
+        "contact": {
+          "primaryEmail": "test@surreypolice.com"
+        },
+        "majorCreditorCode": "PF45",
+        "prosecutionAuthorityCode": "SURRPF",
+        "prosecutionAuthorityId": "764bff92-a135-34cb-b858-8bb6b4b66301",
+        "prosecutionAuthorityName": "Surrey Police",
+        "prosecutionAuthorityOUCode": "0450000",
+        "caseURN": "60GD3207921"
+      },
+      "statementOfFacts": "statementOfFacts"
+    }
+  ],
+  "shadowListedOffences": [],
+  "type": {
+    "description": "First hearing",
+    "id": "4a0e892d-c0c5-3c51-95b8-704d8c781776"
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "caseId": "d06-empty-defendant-fragment-loses-whole-hearing",
+  "defect": "D6",
+  "title": "One authority with no defendants destroys the register for every other authority",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "swallowed-exception",
+    "stage": "OutboundInformantRegister",
+    "documentCount": null,
+    "subscriptionsReturnedUndefined": true,
+    "swallowedErrors": [
+      "[Hearing ID: e100d08a-ed4e-43a2-aae2-e9c5735713b0] - Exception in InformantRegisterSubscriptions TypeError: Cannot read properties of undefined (reading 'vocabulary')",
+      "[Hearing ID: 1828f356-f746-4f2d-932b-79ef2df95c80] -Exception in OutboundInformantRegister TypeError: Cannot read properties of undefined (reading 'length')"
+    ],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "hearing: prosecutionCases[1].defendants set to [] — one edit, on the SECOND authority only, so the first authority stays healthy and the blast radius is visible."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "7e3ab5a1327edc9d6207db61c52da584791f4ceb745162e5a4baddeb508858ce",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+  },
+  "nodeEvidence": [
+    {
+      "file": "SetInformantRegister/index.js",
+      "lines": "92-94",
+      "what": "`if (informantRegisterFragment.registerDefendants) { push }` — registerDefendants comes from getDefendantsFromContext (:121-139), which always returns an Array. `[]` is truthy, so the guard never rejects anything and an authority with no defendants gets a fragment."
+    },
+    {
+      "file": "SetInformantRegister/index.js",
+      "lines": "138",
+      "what": "`return defendantContextBaseList.filter(...)` — an Array, empty when no masterDefendantId matches."
+    },
+    {
+      "file": "InformantRegisterSubscriptions/index.js",
+      "lines": "46",
+      "what": "`subscriptionObj.vocabulary = informantRegister.registerDefendants[0].vocabulary;` — no length check. On the empty fragment this throws TypeError: Cannot read properties of undefined."
+    },
+    {
+      "file": "InformantRegisterSubscriptions/index.js",
+      "lines": "89-92",
+      "what": "the throw is caught and logged; the handler returns undefined for the WHOLE hearing, not just the bad fragment."
+    },
+    {
+      "file": "OutboundInformantRegister/index.js",
+      "lines": "17",
+      "what": "`this.informantRegisterWithSubscriptions.length` on that undefined throws a second TypeError..."
+    },
+    {
+      "file": "OutboundInformantRegister/index.js",
+      "lines": "57-59",
+      "what": "...which is swallowed in turn. No documents, no POST, no error anywhere the platform can see."
+    }
+  ],
+  "assertion": "The input is the prosecution-case fixture with prosecutionCases[1] (TVL) emptied of defendants and NOTHING else changed. TFL is untouched and, on its own, produces a perfectly good document — recorded/base__prosecution-case/expected.json proves it. Assert EXACTLY: (1) expected.json is JSON null — the chain produced NO document array at all, so the healthy TFL register is lost along with the broken TVL one; (2) meta.json observed.outcome is \"swallowed-exception\"; (3) meta.json observed.swallowedErrors contains a TypeError. The Java port MUST produce zero documents for this input — that is the parity requirement — and MUST NOT produce a TFL-only document, because dropping the empty fragment and carrying on is the FIX described in the design register (D6, priority 1), and shipping a fix silently is exactly what this pack exists to prevent. It becomes correct behaviour only when doc/DEVIATIONS.md carries an entry for it; at that point this test is updated in the same commit as the deviation, never before. The Java port MUST ALSO, unlike Node, reach an explicit classified failure for this input rather than returning quietly: assert the pipeline raised a non-transient failure and the request was persisted FAILED with a reason before dead-lettering."
+}

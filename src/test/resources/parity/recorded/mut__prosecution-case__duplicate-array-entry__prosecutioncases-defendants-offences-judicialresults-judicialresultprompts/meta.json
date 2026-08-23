@@ -1,0 +1,77 @@
+{
+  "caseId": "mut__prosecution-case__duplicate-array-entry__prosecutioncases-defendants-offences-judicialresults-judicialresultprompts",
+  "recordedAt": null,
+  "oracle": {
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js, as the Durable Task extension serialises them; OutboundInformantRegister therefore receives the ORCHESTRATOR's hearing, not the copy SetInformantRegister mutated",
+    "runner": "oracle/run-transform.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "recorded/provenance.json"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 2,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "refdataCallCount": 1,
+    "refdataCalls": [
+      {
+        "verb": "GET",
+        "url": "http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2020-06-01",
+        "on": "2020-06-01",
+        "headers": {
+          "CJSCPPUID": "00000000-0000-0000-0000-000000000000",
+          "Accept": "application/vnd.referencedata.query.get-now-subscriptions+json"
+        },
+        "attempt": 1,
+        "answered": "resolve status=200"
+      }
+    ]
+  },
+  "deterministic": true,
+  "clockDependent": false,
+  "clockProbe": null,
+  "digests": {
+    "hearing": "13f0ee67be66efd361bed902cb390280af788d5fc6110456c0af27b89df4898f",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "1d92a11c4c4d38fd0c7667375f3fafd28a8436c49606acf3c94a979fd819263e"
+  },
+  "contract": {
+    "status": "IN_CONTRACT",
+    "basis": "cpp-platform-core-domain/criminal-court-public-model/src/main/resources/json/schema/global/judicialResultPrompt.json required is [\"label\",\"courtExtract\",\"judicialResultPromptTypeId\"] — no identifier, and the same prompt type genuinely can be recorded twice",
+    "note": "Parity obligation: the Java port must reproduce this."
+  },
+  "evidence": "CONSTRUCTED — a real fixture's array is rewritten by this harness",
+  "provenance": {
+    "kind": "mutation",
+    "baseCase": "prosecution-case",
+    "baseFixture": "fixtures/hearings/hearing-results-from-prosecution-case.json",
+    "baseFixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/SetInformantRegister/test/hearing-results-from-prosecution-case.json",
+    "subscriptionsInput": "fixtures/subscriptions/now-subscriptions-ir-sample.json",
+    "subscriptionsOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/NowsVariantsSubscriptions/test/subscriptions.json (first 5 informant-register entries, verbatim)",
+    "sharedTimeSource": "SetInformantRegister/test/index.test.js:12",
+    "operator": "duplicate-array-entry",
+    "operatorVariant": "prosecutioncases-defendants-offences-judicialresults-judicialresultprompts",
+    "note": "Two prosecution authorities (TFL, TVL), no courtCentre fields, hearingDays empty.",
+    "operatorScope": "hearing",
+    "operatorDescription": "Appends a deep copy of the first element of one array.",
+    "operatorRationale": "SetInformantRegister de-duplicates authorities by Set (index.js:39-53) but nothing de-duplicates defendants, offences, results or prompts; where de-duplication is absent the document must contain the duplicate, and a Java port that \"tidies\" it diverges. CAVEAT, recorded per variant: an exact deep copy also duplicates the element's IDENTITY. Two prosecution cases with one uuid, two offences with one uuid, two judicialResults with one judicialResultId, or one defendant sitting twice on one day is schema-valid (no JSON Schema keyword forbids it) but is not something the producer emits — those variants are PRODUCER_IMPLAUSIBLE. judicialResultPrompts have no identifier and genuinely can repeat, so that one variant is IN_CONTRACT and is the one that carries a real parity obligation.",
+    "operatorDetail": {
+      "field": "prosecutionCases[*].defendants[*].offences[*].judicialResults[*].judicialResultPrompts",
+      "occurrences": 1,
+      "reader": "RegisterFragmentService.js:11; VocabularyService.js:282; ResultDataMapper.js:28",
+      "mode": "all-occurrences",
+      "schemaMinItems": 1,
+      "schemaMinItemsSource": "cpp-platform-core-domain/criminal-court-public-model/src/main/resources/json/schema/global/judicialResult.json judicialResultPrompts.minItems"
+    }
+  }
+}

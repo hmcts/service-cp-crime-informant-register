@@ -1,0 +1,75 @@
+{
+  "caseId": "mut__court-application__unicode-name__cjk",
+  "recordedAt": null,
+  "oracle": {
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js, as the Durable Task extension serialises them; OutboundInformantRegister therefore receives the ORCHESTRATOR's hearing, not the copy SetInformantRegister mutated",
+    "runner": "oracle/run-transform.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "recorded/provenance.json"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 1,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "refdataCallCount": 1,
+    "refdataCalls": [
+      {
+        "verb": "GET",
+        "url": "http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2021-03-11",
+        "on": "2021-03-11",
+        "headers": {
+          "CJSCPPUID": "00000000-0000-0000-0000-000000000000",
+          "Accept": "application/vnd.referencedata.query.get-now-subscriptions+json"
+        },
+        "attempt": 1,
+        "answered": "resolve status=200"
+      }
+    ]
+  },
+  "deterministic": true,
+  "clockDependent": false,
+  "clockProbe": null,
+  "digests": {
+    "hearing": "0ef4b4448699df49a4dbe7be5ffa8127f2fea897128456d14a924fed352508a8",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "914cac66e9f394a6f0e39872d5747524e198630f849f02ae66603fa8f9e3452c",
+    "expected": "68073099ac2579a18446d9d1677f300312e6384e909cc1084ae679047b1be925"
+  },
+  "contract": {
+    "status": "IN_CONTRACT",
+    "basis": "cpp-platform-core-domain/criminal-court-public-model/src/main/resources/json/schema/global/person.json types firstName/middleName/lastName as \"string\" with no pattern, and organisation.name likewise; any JSON string is a legal name",
+    "note": "Parity obligation: the Java port must reproduce this."
+  },
+  "evidence": "CONSTRUCTED — no real fixture carries non-ASCII names; these probe the port's string handling",
+  "provenance": {
+    "kind": "mutation",
+    "baseCase": "court-application",
+    "baseFixture": "fixtures/hearings/hearing-results-from-court-application.json",
+    "baseFixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/SetInformantRegister/test/hearing-results-from-court-application.json",
+    "subscriptionsInput": "fixtures/subscriptions/now-subscriptions-ir-sample.json",
+    "subscriptionsOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/NowsVariantsSubscriptions/test/subscriptions.json (first 5 informant-register entries, verbatim)",
+    "sharedTimeSource": "SetInformantRegister/test/index.test.js:230",
+    "operator": "unicode-name",
+    "operatorVariant": "cjk",
+    "note": "Court application only (DERPF), one hearing day, populated courtCentre with lja.",
+    "operatorScope": "hearing",
+    "operatorDescription": "Rewrites defendant person names (and legal-entity organisation names) with non-ASCII text.",
+    "operatorRationale": "DefendantMapper.js:167-173 builds `name` by joining firstName/middleName/lastName with a space and calling trim(). Java String.trim() strips codepoints <= U+0020 while JavaScript String.prototype.trim() strips the full Unicode whitespace set — they disagree on U+00A0 and friends. Zero-width and astral-plane characters additionally probe surrogate handling.",
+    "operatorDetail": {
+      "why": "non-Latin script",
+      "people": 1,
+      "organisations": 0,
+      "reader": "DefendantMapper.js:167-173"
+    }
+  }
+}

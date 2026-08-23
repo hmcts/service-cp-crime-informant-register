@@ -1,0 +1,74 @@
+{
+  "caseId": "d12-groupid-only-from-group-master-case",
+  "defect": "D12 (KEEP) / sanctioned oddity \"groupId comes only from group-master prosecution cases\"",
+  "title": "groupId is emitted only when the prosecution case is a group master; applications never carry one",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 1,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "hearing: prosecutionCases[0].isGroupMaster deleted. prosecutionCases[0].groupId is deliberately LEFT IN PLACE — the whole point is that the value is available and still not used."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "15e78f59278a3db6594dc34edfa3f4341778935f0c0a12101a85ad74fb8d3f12",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "3afff37d8f49d6647e0c837dcee71611257a78aec6b1d6d2411847e1d4bc4b2c"
+  },
+  "nodeEvidence": [
+    {
+      "file": "SetInformantRegister/index.js",
+      "lines": "141-145",
+      "what": "`getProsecutionCaseGroupId(prosecutionCase) { if (prosecutionCase.isGroupMaster) { return prosecutionCase.groupId; } }` — no else, so a non-master case yields undefined even when it HAS a groupId."
+    },
+    {
+      "file": "SetInformantRegister/index.js",
+      "lines": "49",
+      "what": "the only place groupId enters the identifier, and only for prosecution cases."
+    },
+    {
+      "file": "SetInformantRegister/index.js",
+      "lines": "59-65",
+      "what": "the court-application identifier literal has NO groupId key at all — an application-only authority can never have one."
+    },
+    {
+      "file": "SetInformantRegister/index.js",
+      "lines": "42, 51",
+      "what": "first-occurrence-wins de-duplication by prosecutionAuthorityId: if a group-master case and a non-master case share an authority, whichever comes FIRST in the array decides whether groupId is present."
+    },
+    {
+      "file": "OutboundInformantRegister/index.js",
+      "lines": "31",
+      "what": "undefined groupId means the key is absent from the POSTed body (JSON.stringify drops undefined), not null."
+    }
+  ],
+  "assertion": "The input is the group-master-case fixture with isGroupMaster deleted and the groupId field LEFT IN PLACE on the prosecution case. Assert EXACTLY: the single document has NO `groupId` key — assert key-absent, not null and not empty string. THE POSITIVE CONTROL: recorded/base__group-master-case is the identical fixture WITH isGroupMaster, and its document has groupId \"47a08b62-e790-474b-94da-0fd406d2bcc8\" (the same value asserted by the function app's own Jest test, SetInformantRegister/test/index.test.js:218). The pair pins the rule precisely: the groupId is present in the input in BOTH cases; only the isGroupMaster flag decides whether it reaches the wire. This is a KEEP (D12), not a bug: design_rules.md names it as intended behaviour — only masters carry the group. The trap it guards against is a Java port that reads groupId wherever it finds one, which would start populating group ids on ordinary cases and on applications. That would look like a tidy-up and would silently change what Results receives."
+}

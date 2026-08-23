@@ -1,0 +1,701 @@
+{
+  "id": "1828f356-f746-4f2d-932b-79ef2df95c80",
+  "jurisdictionType": "MAGISTRATES",
+  "courtCentre": {},
+  "hearingLanguage": "ENGLISH",
+  "hasSharedResults": true,
+  "defendantReferralReasons": [],
+  "type": {
+    "description": "Sentence",
+    "id": "c6d76309-c912-436b-a21b-a4c4450bc052"
+  },
+  "hearingDays": [],
+  "judiciary": [],
+  "prosecutionCases": [
+    {
+      "id": "c10e3b71-6a6d-45ef-9b62-34df4d54971a",
+      "prosecutionCaseIdentifier": {
+        "prosecutionAuthorityId": "31af405e-7b60-4dd8-a244-c24c2d3fa595",
+        "prosecutionAuthorityCode": "TFL",
+        "prosecutionAuthorityOUCode": "GAFTL00",
+        "prosecutionAuthorityReference": "TFL4359536"
+      },
+      "initiationCode": "J",
+      "caseStatus": "SJP_REFERRAL",
+      "statementOfFacts": "Prosecution Facts",
+      "defendants": [
+        {
+          "id": "6647df67-a065-4d07-90ba-a8daa064ecc4",
+          "masterDefendantId": "6647df67-a065-4d07-90ba-a8daa064ecc4",
+          "prosecutionCaseId": "c10e3b71-6a6d-45ef-9b62-34df4d54971a",
+          "numberOfPreviousConvictionsCited": 99,
+          "offences": [
+            {
+              "id": "a154d828-1234-47f0-b8d5-e81227831d94",
+              "offenceDefinitionId": "20f3dd74-1d32-43fa-bec3-7ffca5b73ebe",
+              "offenceCode": "PS90010",
+              "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+              "offenceTitleWelsh": "",
+              "offenceLegislation": "Contrary to regulation 7(1)(a) of the Public Service Vehicles (Conduct of Drivers, Inspectors, Conductors and Passengers) Regulations 1990 and section 25 of the Public Passenger Vehicles Act 1981.",
+              "offenceLegislationWelsh": "",
+              "modeOfTrial": "Summary",
+              "wording": "On 02/07/2018 at Bond street, being a passenger on a vehicle, namely Volvo B9TL 30x, used for the carriage of passengers at separate fares, used a ticket which had been altered or defaced.",
+              "startDate": "2018-07-02",
+              "chargeDate": "2018-08-01",
+              "allocationDecision": {},
+              "convictionDate": "2019-11-14",
+              "count": 1,
+              "indicatedPlea": {},
+              "judicialResults": [
+                {
+                  "alwaysPublished": false,
+                  "category": "FINAL",
+                  "cjsCode": "1115",
+                  "courtClerk": {
+                    "firstName": "Marion",
+                    "lastName": "Martin",
+                    "userId": "10e850ec-6602-48e7-b216-c0891f7dc981"
+                  },
+                  "d20": false,
+                  "durationElement": {
+                    "primaryDurationUnit": "M",
+                    "primaryDurationValue": 5,
+                    "secondaryDurationUnit": "Y",
+                    "secondaryDurationValue": 2,
+                    "durationStartDate": "26/02/2019",
+                    "durationEndDate": "26/07/2021"
+                  },
+                  "excludedFromResults": false,
+                  "isAdjournmentResult": false,
+                  "isAvailableForCourtExtract": true,
+                  "isConvictedResult": true,
+                  "isDeleted": false,
+                  "isFinancialResult": false,
+                  "isUnscheduled": false,
+                  "judicialResultId": "10334941-73c9-4480-a531-70d2595d3c6d",
+                  "judicialResultPrompts": [
+                    {
+                      "courtExtract": "Y",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "b2cf5a1e-8539-45a1-a287-4be5094a0e73",
+                      "label": "Total custodial period",
+                      "promptReference": "totalCustodialPeriod",
+                      "promptSequence": 100,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "5 Months",
+                      "welshLabel": "Cyfanswm y cyfnod yn y ddalfa",
+                      "welshValue": "5 Mis"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "durationSequence": 2,
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "95618691-0742-417e-82b9-c4d4bff94585",
+                      "label": "Suspended period",
+                      "promptReference": "suspendedPeriod",
+                      "promptSequence": 200,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "2 Years",
+                      "welshLabel": "Cyfnod Gohiriedig",
+                      "welshValue": "2 Flynedd"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "68c92035-27fd-4ee6-b03c-fe18ea6dbcb0",
+                      "label": "Probation team to be notified organisation name",
+                      "promptReference": "probationteamtobenotifiedOrganisationName",
+                      "promptSequence": 700,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "Wales Division NPS",
+                      "welshValue": "Wales Division NPS"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "68c92035-27fd-4ee6-b03c-fe18ea6dbcb0",
+                      "label": "Probation team to be notified email address 1",
+                      "promptReference": "probationteamtobenotifiedEmailAddress1",
+                      "promptSequence": 700,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "walesnps.court@justice.gov.uk",
+                      "welshValue": "walesnps.court@justice.gov.uk"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "durationSequence": 1,
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "76f15753-1706-42fb-b922-0d56d01e5706",
+                      "label": "Imprisonment Period",
+                      "promptReference": "imprisonmentPeriod",
+                      "promptSequence": 100,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "5 Months",
+                      "welshLabel": "Cyfnod Carcharu",
+                      "welshValue": "5 Mis"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "4d10cd4b-fb39-40dd-88e1-2397832bc914",
+                      "label": "Bail remand days to count (tagged days)",
+                      "promptReference": "bailRemandDaysToCountTaggedDays",
+                      "promptSequence": 700,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "0",
+                      "welshLabel": "Dyddiau mechnïaeth ar remand i’w cyfrif (dyddiad gyda tag)",
+                      "welshValue": "0"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "judicialResultPromptTypeId": "dada120c-160a-49a9-b040-e8b6b7128d67",
+                      "label": "Notification of electronic monitoring order (requirement)",
+                      "promptReference": "907a24cb-55be-4ed2-82d3-9a91dd32e390",
+                      "promptSequence": 800,
+                      "usergroups": [],
+                      "value": "First notification of electronic monitoring:Yes\nElectronic monitoring contractor organisation name:Electronic Monitoring Contractor\nElectronic monitoring contractor email address 1:LPadmin@ems.co.uk.cjsm.net",
+                      "welshLabel": "Hysbysiad o orchymyn monitro electronig (gofyniad)"
+                    }
+                  ],
+                  "judicialResultTypeId": "8b1cff00-a456-40da-9ce4-f11c20959084",
+                  "label": "Suspended sentence order - imprisonment",
+                  "lastSharedDateTime": "2021-02-26",
+                  "lifeDuration": false,
+                  "orderedDate": "2021-02-26",
+                  "orderedHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                  "postHearingCustodyStatus": "A",
+                  "publishedAsAPrompt": false,
+                  "publishedForNows": false,
+                  "rank": 19900,
+                  "resultText": "Suspended sentence order - imprisonment\nTotal custodial period 5 Months\nSuspended period 2 Years\nProbation team to be notified organisation name Wales Division NPS\nProbation team to be notified email address 1 walesnps.court@justice.gov.uk\nImprisonment Period 5 Months\nBail remand days to count (tagged days) 0\nNotification of electronic monitoring order (requirement) First notification of electronic monitoring:Yes\nElectronic monitoring contractor organisation name:Electronic Monitoring Contractor\nElectronic monitoring contractor email address 1:LPadmin@ems.co.uk.cjsm.net",
+                  "rollUpPrompts": true,
+                  "rootJudicialResultId": "10334941-73c9-4480-a531-70d2595d3c6c",
+                  "rootJudicialResultTypeId": "8b1cff00-a456-40da-9ce4-f11c20959084",
+                  "terminatesOffenceProceedings": false,
+                  "urgent": false,
+                  "usergroups": [],
+                  "welshLabel": "Gorchymyn dedfryd ohiriedig - carcharu"
+                }
+              ],
+              "notifiedPlea": {
+                "notifiedPleaDate": "2019-11-13",
+                "notifiedPleaValue": "NO_NOTIFICATION",
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94"
+              },
+              "orderIndex": 1,
+              "plea": {
+                "delegatedPowers": {
+                  "firstName": "FirstName",
+                  "lastName": "LastName",
+                  "userId": "7eaf9c85-220d-4040-845c-d84c919b3b6f"
+                },
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94",
+                "originatingHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                "pleaDate": "2019-11-14",
+                "pleaValue": "NOT_GUILTY"
+              },
+              "verdict": {
+                "jurors": {
+                  "numberOfJurors": 12,
+                  "numberOfSplitJurors": 0,
+                  "unanimous": true
+                },
+                "lesserOrAlternativeOffence": {
+                  "offenceCode": "PS90010",
+                  "offenceDefinitionId": "20f3dd74-1d32-43fa-bec3-7ffca5b73ebe",
+                  "offenceLegislation": "Contrary to regulation 7(1)(a) of the Public Service Vehicles (Conduct of Drivers, Inspectors, Conductors and Passengers) Regulations 1990 and section 25 of the Public Passenger Vehicles Act 1981.",
+                  "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket"
+                },
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94",
+                "originatingHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                "verdictDate": "2019-11-14",
+                "verdictType": {
+                  "category": "Guilty",
+                  "categoryType": "GUILTY_CONVICTED",
+                  "id": "165f95b1-fc13-4d87-9685-3eff703c1039"
+                }
+              }
+            }
+          ],
+          "personDefendant": {
+            "personDetails": {
+              "address": {
+                "address1": "Flat 1",
+                "address2": "1 Old Road",
+                "address3": "London",
+                "address4": "Merton",
+                "postcode": "SW99 1AA"
+              },
+              "contact": {},
+              "dateOfBirth": "1965-12-27",
+              "documentationLanguageNeeds": "ENGLISH",
+              "ethnicity": {},
+              "firstName": "Fred",
+              "gender": "MALE",
+              "lastName": "Smith",
+              "title": "MR"
+            }
+          }
+        },
+        {
+          "id": "ded76309-c912-436b-a21b-a4c4450bc052",
+          "masterDefendantId": "ded76309-c912-436b-a21b-a4c4450bc052",
+          "prosecutionCaseId": "c10e3b71-6a6d-45ef-9b62-34df4d54971a",
+          "numberOfPreviousConvictionsCited": 99,
+          "offences": [
+            {
+              "id": "a154d828-1234-47f0-b8d5-e81227831d94",
+              "offenceDefinitionId": "20f3dd74-1d32-43fa-bec3-7ffca5b73ebe",
+              "offenceCode": "PS90010",
+              "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+              "offenceTitleWelsh": "",
+              "offenceLegislation": "Contrary to regulation 7(1)(a) of the Public Service Vehicles (Conduct of Drivers, Inspectors, Conductors and Passengers) Regulations 1990 and section 25 of the Public Passenger Vehicles Act 1981.",
+              "offenceLegislationWelsh": "",
+              "modeOfTrial": "Summary",
+              "wording": "On 02/07/2018 at Bond street, being a passenger on a vehicle, namely Volvo B9TL 30x, used for the carriage of passengers at separate fares, used a ticket which had been altered or defaced.",
+              "startDate": "2018-07-02",
+              "chargeDate": "2018-08-01",
+              "allocationDecision": {},
+              "convictionDate": "2019-11-14",
+              "count": 1,
+              "indicatedPlea": {},
+              "judicialResults": [
+                {
+                  "alwaysPublished": false,
+                  "category": "FINAL",
+                  "cjsCode": "1115",
+                  "courtClerk": {
+                    "firstName": "Marion",
+                    "lastName": "Martin",
+                    "userId": "10e850ec-6602-48e7-b216-c0891f7dc981"
+                  },
+                  "d20": false,
+                  "durationElement": {
+                    "primaryDurationUnit": "M",
+                    "primaryDurationValue": 5,
+                    "secondaryDurationUnit": "Y",
+                    "secondaryDurationValue": 2,
+                    "durationStartDate": "26/02/2019",
+                    "durationEndDate": "26/07/2021"
+                  },
+                  "excludedFromResults": false,
+                  "isAdjournmentResult": false,
+                  "isAvailableForCourtExtract": true,
+                  "isConvictedResult": true,
+                  "isDeleted": false,
+                  "isFinancialResult": false,
+                  "isUnscheduled": false,
+                  "judicialResultId": "10334941-73c9-4480-a531-70d2595d3c6e",
+                  "judicialResultPrompts": [
+                    {
+                      "courtExtract": "Y",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "b2cf5a1e-8539-45a1-a287-4be5094a0e73",
+                      "label": "Total custodial period",
+                      "promptReference": "totalCustodialPeriod",
+                      "promptSequence": 100,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "5 Months",
+                      "welshLabel": "Cyfanswm y cyfnod yn y ddalfa",
+                      "welshValue": "5 Mis"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "durationSequence": 2,
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "95618691-0742-417e-82b9-c4d4bff94585",
+                      "label": "Suspended period",
+                      "promptReference": "suspendedPeriod",
+                      "promptSequence": 200,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "2 Years",
+                      "welshLabel": "Cyfnod Gohiriedig",
+                      "welshValue": "2 Flynedd"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "68c92035-27fd-4ee6-b03c-fe18ea6dbcb0",
+                      "label": "Probation team to be notified organisation name",
+                      "promptReference": "probationteamtobenotifiedOrganisationName",
+                      "promptSequence": 700,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "Wales Division NPS",
+                      "welshValue": "Wales Division NPS"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "68c92035-27fd-4ee6-b03c-fe18ea6dbcb0",
+                      "label": "Probation team to be notified email address 1",
+                      "promptReference": "probationteamtobenotifiedEmailAddress1",
+                      "promptSequence": 700,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "walesnps.court@justice.gov.uk",
+                      "welshValue": "walesnps.court@justice.gov.uk"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "durationSequence": 1,
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "76f15753-1706-42fb-b922-0d56d01e5706",
+                      "label": "Imprisonment Period",
+                      "promptReference": "imprisonmentPeriod",
+                      "promptSequence": 100,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "5 Months",
+                      "welshLabel": "Cyfnod Carcharu",
+                      "welshValue": "5 Mis"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "4d10cd4b-fb39-40dd-88e1-2397832bc914",
+                      "label": "Bail remand days to count (tagged days)",
+                      "promptReference": "bailRemandDaysToCountTaggedDays",
+                      "promptSequence": 700,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "0",
+                      "welshLabel": "Dyddiau mechnïaeth ar remand i’w cyfrif (dyddiad gyda tag)",
+                      "welshValue": "0"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "judicialResultPromptTypeId": "dada120c-160a-49a9-b040-e8b6b7128d67",
+                      "label": "Notification of electronic monitoring order (requirement)",
+                      "promptReference": "907a24cb-55be-4ed2-82d3-9a91dd32e390",
+                      "promptSequence": 800,
+                      "usergroups": [],
+                      "value": "First notification of electronic monitoring:Yes\nElectronic monitoring contractor organisation name:Electronic Monitoring Contractor\nElectronic monitoring contractor email address 1:LPadmin@ems.co.uk.cjsm.net",
+                      "welshLabel": "Hysbysiad o orchymyn monitro electronig (gofyniad)"
+                    }
+                  ],
+                  "judicialResultTypeId": "8b1cff00-a456-40da-9ce4-f11c20959084",
+                  "label": "Suspended sentence order - imprisonment",
+                  "lastSharedDateTime": "2021-02-26",
+                  "lifeDuration": false,
+                  "orderedDate": "2021-02-26",
+                  "orderedHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                  "postHearingCustodyStatus": "A",
+                  "publishedAsAPrompt": false,
+                  "publishedForNows": false,
+                  "rank": 19900,
+                  "resultText": "Suspended sentence order - imprisonment\nTotal custodial period 5 Months\nSuspended period 2 Years\nProbation team to be notified organisation name Wales Division NPS\nProbation team to be notified email address 1 walesnps.court@justice.gov.uk\nImprisonment Period 5 Months\nBail remand days to count (tagged days) 0\nNotification of electronic monitoring order (requirement) First notification of electronic monitoring:Yes\nElectronic monitoring contractor organisation name:Electronic Monitoring Contractor\nElectronic monitoring contractor email address 1:LPadmin@ems.co.uk.cjsm.net",
+                  "rollUpPrompts": true,
+                  "rootJudicialResultId": "10334941-73c9-4480-a531-70d2595d3c6c",
+                  "rootJudicialResultTypeId": "8b1cff00-a456-40da-9ce4-f11c20959084",
+                  "terminatesOffenceProceedings": false,
+                  "urgent": false,
+                  "usergroups": [],
+                  "welshLabel": "Gorchymyn dedfryd ohiriedig - carcharu"
+                }
+              ],
+              "notifiedPlea": {
+                "notifiedPleaDate": "2019-11-13",
+                "notifiedPleaValue": "NO_NOTIFICATION",
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94"
+              },
+              "orderIndex": 1,
+              "plea": {
+                "delegatedPowers": {
+                  "firstName": "FirstName",
+                  "lastName": "LastName",
+                  "userId": "7eaf9c85-220d-4040-845c-d84c919b3b6f"
+                },
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94",
+                "originatingHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                "pleaDate": "2019-11-14",
+                "pleaValue": "GUILTY"
+              },
+              "verdict": {
+                "jurors": {
+                  "numberOfJurors": 12,
+                  "numberOfSplitJurors": 0,
+                  "unanimous": true
+                },
+                "lesserOrAlternativeOffence": {
+                  "offenceCode": "PS90010",
+                  "offenceDefinitionId": "20f3dd74-1d32-43fa-bec3-7ffca5b73ebe",
+                  "offenceLegislation": "Contrary to regulation 7(1)(a) of the Public Service Vehicles (Conduct of Drivers, Inspectors, Conductors and Passengers) Regulations 1990 and section 25 of the Public Passenger Vehicles Act 1981.",
+                  "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket"
+                },
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94",
+                "originatingHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                "verdictDate": "2019-11-14",
+                "verdictType": {
+                  "category": "Guilty",
+                  "categoryType": "GUILTY_CONVICTED",
+                  "id": "165f95b1-fc13-4d87-9685-3eff703c1039"
+                }
+              }
+            }
+          ],
+          "personDefendant": {
+            "personDetails": {
+              "address": {
+                "address1": "Flat 1",
+                "address2": "1 Old Road",
+                "address3": "London",
+                "address4": "Merton",
+                "postcode": "SW99 1AA"
+              },
+              "contact": {},
+              "dateOfBirth": "1965-12-27",
+              "documentationLanguageNeeds": "ENGLISH",
+              "ethnicity": {},
+              "firstName": "Fred",
+              "gender": "MALE",
+              "lastName": "Smith",
+              "title": "MR"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "caf8311f-65b6-474b-990a-976e51589f83",
+      "prosecutionCaseIdentifier": {
+        "prosecutionAuthorityId": "9d3ad709-cb0c-4711-8ad5-f9e60d6b0530",
+        "prosecutionAuthorityCode": "TVL",
+        "prosecutionAuthorityOUCode": "GAEAA01",
+        "prosecutionAuthorityReference": "TVL298320922"
+      },
+      "initiationCode": "J",
+      "caseStatus": "SJP_REFERRAL",
+      "statementOfFacts": "Prosecution Facts",
+      "defendants": [
+        {
+          "id": "b48a6e2e-a3e5-47e3-8243-ac17b378d04d",
+          "masterDefendantId": "b48a6e2e-a3e5-47e3-8243-ac17b378d04d",
+          "prosecutionCaseId": "9d3ad709-cb0c-4711-8ad5-f9e60d6b0530",
+          "numberOfPreviousConvictionsCited": 99,
+          "offences": [
+            {
+              "id": "9d1e5276-f9ee-402b-b00e-9eed6fa0bbf0",
+              "offenceDefinitionId": "20f3dd74-1d32-43fa-bec3-7ffca5b73ebe",
+              "offenceCode": "PS90010",
+              "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+              "offenceTitleWelsh": "",
+              "offenceLegislation": "Contrary to regulation 7(1)(a) of the Public Service Vehicles (Conduct of Drivers, Inspectors, Conductors and Passengers) Regulations 1990 and section 25 of the Public Passenger Vehicles Act 1981.",
+              "offenceLegislationWelsh": "",
+              "modeOfTrial": "Summary",
+              "wording": "On 02/07/2018 at Bond street, being a passenger on a vehicle, namely Volvo B9TL 30x, used for the carriage of passengers at separate fares, used a ticket which had been altered or defaced.",
+              "startDate": "2018-07-02",
+              "chargeDate": "2018-08-01",
+              "allocationDecision": {},
+              "convictionDate": "2019-11-14",
+              "count": 1,
+              "indicatedPlea": {},
+              "judicialResults": [
+                {
+                  "alwaysPublished": false,
+                  "category": "FINAL",
+                  "cjsCode": "1115",
+                  "courtClerk": {
+                    "firstName": "Marion",
+                    "lastName": "Martin",
+                    "userId": "10e850ec-6602-48e7-b216-c0891f7dc981"
+                  },
+                  "d20": false,
+                  "durationElement": {
+                    "primaryDurationUnit": "M",
+                    "primaryDurationValue": 5,
+                    "secondaryDurationUnit": "Y",
+                    "secondaryDurationValue": 2,
+                    "durationStartDate": "26/02/2019",
+                    "durationEndDate": "26/07/2021"
+                  },
+                  "excludedFromResults": false,
+                  "isAdjournmentResult": false,
+                  "isAvailableForCourtExtract": true,
+                  "isConvictedResult": true,
+                  "isDeleted": false,
+                  "isFinancialResult": false,
+                  "isUnscheduled": false,
+                  "judicialResultId": "10334941-73c9-4480-a531-70d2595d3c6f",
+                  "judicialResultPrompts": [
+                    {
+                      "courtExtract": "Y",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "b2cf5a1e-8539-45a1-a287-4be5094a0e73",
+                      "label": "Total custodial period",
+                      "promptReference": "totalCustodialPeriod",
+                      "promptSequence": 100,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "5 Months",
+                      "welshLabel": "Cyfanswm y cyfnod yn y ddalfa",
+                      "welshValue": "5 Mis"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "durationSequence": 2,
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "95618691-0742-417e-82b9-c4d4bff94585",
+                      "label": "Suspended period",
+                      "promptReference": "suspendedPeriod",
+                      "promptSequence": 200,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "2 Years",
+                      "welshLabel": "Cyfnod Gohiriedig",
+                      "welshValue": "2 Flynedd"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "68c92035-27fd-4ee6-b03c-fe18ea6dbcb0",
+                      "label": "Probation team to be notified organisation name",
+                      "promptReference": "probationteamtobenotifiedOrganisationName",
+                      "promptSequence": 700,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "Wales Division NPS",
+                      "welshValue": "Wales Division NPS"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "68c92035-27fd-4ee6-b03c-fe18ea6dbcb0",
+                      "label": "Probation team to be notified email address 1",
+                      "promptReference": "probationteamtobenotifiedEmailAddress1",
+                      "promptSequence": 700,
+                      "type": "NAMEADDRESS",
+                      "usergroups": [],
+                      "value": "walesnps.court@justice.gov.uk",
+                      "welshValue": "walesnps.court@justice.gov.uk"
+                    },
+                    {
+                      "courtExtract": "Y",
+                      "durationSequence": 1,
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "76f15753-1706-42fb-b922-0d56d01e5706",
+                      "label": "Imprisonment Period",
+                      "promptReference": "imprisonmentPeriod",
+                      "promptSequence": 100,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "5 Months",
+                      "welshLabel": "Cyfnod Carcharu",
+                      "welshValue": "5 Mis"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "isFinancialImposition": false,
+                      "judicialResultPromptTypeId": "4d10cd4b-fb39-40dd-88e1-2397832bc914",
+                      "label": "Bail remand days to count (tagged days)",
+                      "promptReference": "bailRemandDaysToCountTaggedDays",
+                      "promptSequence": 700,
+                      "type": "INT",
+                      "usergroups": [],
+                      "value": "0",
+                      "welshLabel": "Dyddiau mechnïaeth ar remand i’w cyfrif (dyddiad gyda tag)",
+                      "welshValue": "0"
+                    },
+                    {
+                      "courtExtract": "N",
+                      "judicialResultPromptTypeId": "dada120c-160a-49a9-b040-e8b6b7128d67",
+                      "label": "Notification of electronic monitoring order (requirement)",
+                      "promptReference": "907a24cb-55be-4ed2-82d3-9a91dd32e390",
+                      "promptSequence": 800,
+                      "usergroups": [],
+                      "value": "First notification of electronic monitoring:Yes\nElectronic monitoring contractor organisation name:Electronic Monitoring Contractor\nElectronic monitoring contractor email address 1:LPadmin@ems.co.uk.cjsm.net",
+                      "welshLabel": "Hysbysiad o orchymyn monitro electronig (gofyniad)"
+                    }
+                  ],
+                  "judicialResultTypeId": "8b1cff00-a456-40da-9ce4-f11c20959084",
+                  "label": "Suspended sentence order - imprisonment",
+                  "lastSharedDateTime": "2021-02-26",
+                  "lifeDuration": false,
+                  "orderedDate": "2021-02-26",
+                  "orderedHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                  "postHearingCustodyStatus": "A",
+                  "publishedAsAPrompt": false,
+                  "publishedForNows": false,
+                  "rank": 19900,
+                  "resultText": "Suspended sentence order - imprisonment\nTotal custodial period 5 Months\nSuspended period 2 Years\nProbation team to be notified organisation name Wales Division NPS\nProbation team to be notified email address 1 walesnps.court@justice.gov.uk\nImprisonment Period 5 Months\nBail remand days to count (tagged days) 0\nNotification of electronic monitoring order (requirement) First notification of electronic monitoring:Yes\nElectronic monitoring contractor organisation name:Electronic Monitoring Contractor\nElectronic monitoring contractor email address 1:LPadmin@ems.co.uk.cjsm.net",
+                  "rollUpPrompts": true,
+                  "rootJudicialResultId": "10334941-73c9-4480-a531-70d2595d3c6c",
+                  "rootJudicialResultTypeId": "8b1cff00-a456-40da-9ce4-f11c20959084",
+                  "terminatesOffenceProceedings": false,
+                  "urgent": false,
+                  "usergroups": [],
+                  "welshLabel": "Gorchymyn dedfryd ohiriedig - carcharu"
+                }
+              ],
+              "notifiedPlea": {
+                "notifiedPleaDate": "2019-11-13",
+                "notifiedPleaValue": "NO_NOTIFICATION",
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94"
+              },
+              "orderIndex": 1,
+              "plea": {
+                "delegatedPowers": {
+                  "firstName": "FirstName",
+                  "lastName": "LastName",
+                  "userId": "7eaf9c85-220d-4040-845c-d84c919b3b6f"
+                },
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94",
+                "originatingHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                "pleaDate": "2019-11-14",
+                "pleaValue": "GUILTY"
+              },
+              "verdict": {
+                "jurors": {
+                  "numberOfJurors": 12,
+                  "numberOfSplitJurors": 0,
+                  "unanimous": true
+                },
+                "lesserOrAlternativeOffence": {
+                  "offenceCode": "PS90010",
+                  "offenceDefinitionId": "20f3dd74-1d32-43fa-bec3-7ffca5b73ebe",
+                  "offenceLegislation": "Contrary to regulation 7(1)(a) of the Public Service Vehicles (Conduct of Drivers, Inspectors, Conductors and Passengers) Regulations 1990 and section 25 of the Public Passenger Vehicles Act 1981.",
+                  "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket"
+                },
+                "offenceId": "a154d828-eaa7-47f0-b8d5-e81227831d94",
+                "originatingHearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+                "verdictDate": "2019-11-14",
+                "verdictType": {
+                  "category": "Guilty",
+                  "categoryType": "GUILTY_CONVICTED",
+                  "id": "165f95b1-fc13-4d87-9685-3eff703c1039"
+                }
+              }
+            }
+          ],
+          "personDefendant": {
+            "personDetails": {
+              "address": {
+                "address1": "Flat 1",
+                "address2": "1 Old Road",
+                "address3": "London",
+                "address4": "Merton",
+                "postcode": "SW99 1AA"
+              },
+              "contact": {},
+              "dateOfBirth": "1965-12-27",
+              "documentationLanguageNeeds": "ENGLISH",
+              "ethnicity": {},
+              "firstName": "Fred",
+              "gender": "MALE",
+              "lastName": "Smith",
+              "title": "MR"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "caseId": "base__mapper-hearing-with-multiple-cases",
+  "recordedAt": null,
+  "oracle": {
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js, as the Durable Task extension serialises them; OutboundInformantRegister therefore receives the ORCHESTRATOR's hearing, not the copy SetInformantRegister mutated",
+    "runner": "oracle/run-transform.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "recorded/provenance.json"
+  },
+  "observed": {
+    "outcome": "swallowed-exception",
+    "stage": "SetInformantRegister",
+    "documentCount": null,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [
+      "[Hearing ID: 1828f356-f746-4f2d-932b-79ef2df95c80] - Exception in SetInformantRegister TypeError: Cannot read properties of undefined (reading 'results')"
+    ],
+    "refdataCallCount": 0,
+    "refdataCalls": []
+  },
+  "deterministic": true,
+  "clockDependent": false,
+  "clockProbe": null,
+  "digests": {
+    "hearing": "101ca723e5a8b072cd8c58949e7d74b5dfac40d020bcf97bc275d5547d2ced6d",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "1a120fbfba4446527face04bdad19962683766374b974900a7a4d34ac34ae73f",
+    "expected": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+  },
+  "contract": {
+    "status": "IN_CONTRACT",
+    "basis": "unmutated real Jest fixture; see baseFixtureCaveat",
+    "note": "Parity obligation: the Java port must reproduce this."
+  },
+  "evidence": "OBSERVED — byte-identical copy of the function app's own Jest fixture",
+  "provenance": {
+    "kind": "real-fixture",
+    "baseCase": "mapper-hearing-with-multiple-cases",
+    "baseFixture": "fixtures/hearings/hearing_with_multiple_cases.json",
+    "baseFixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/test/hearing_with_multiple_cases.json",
+    "subscriptionsInput": "fixtures/subscriptions/now-subscriptions-ir-sample.json",
+    "subscriptionsOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/NowsVariantsSubscriptions/test/subscriptions.json (first 5 informant-register entries, verbatim)",
+    "sharedTimeSource": "CHOSEN — as above",
+    "operator": null,
+    "operatorVariant": null,
+    "note": "Two prosecution cases sharing ONE authority — the de-duplication path at SetInformantRegister/index.js:42."
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "caseId": "base__court-application-without-masterdefendant",
+  "recordedAt": null,
+  "oracle": {
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js, as the Durable Task extension serialises them; OutboundInformantRegister therefore receives the ORCHESTRATOR's hearing, not the copy SetInformantRegister mutated",
+    "runner": "oracle/run-transform.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "recorded/provenance.json"
+  },
+  "observed": {
+    "outcome": "no-fragments",
+    "stage": "SetInformantRegister",
+    "documentCount": null,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "refdataCallCount": 0,
+    "refdataCalls": []
+  },
+  "deterministic": true,
+  "clockDependent": false,
+  "clockProbe": null,
+  "digests": {
+    "hearing": "a2c7b7985ff23b3f51360825f9bb7e6a9306467f567461df40c2357e94495622",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "914cac66e9f394a6f0e39872d5747524e198630f849f02ae66603fa8f9e3452c",
+    "expected": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+  },
+  "contract": {
+    "status": "IN_CONTRACT",
+    "basis": "unmutated real Jest fixture; see baseFixtureCaveat",
+    "note": "Parity obligation: the Java port must reproduce this."
+  },
+  "evidence": "OBSERVED — byte-identical copy of the function app's own Jest fixture",
+  "provenance": {
+    "kind": "real-fixture",
+    "baseCase": "court-application-without-masterdefendant",
+    "baseFixture": "fixtures/hearings/hearing-results-from-court-application-without-masterdefendant.json",
+    "baseFixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/SetInformantRegister/test/hearing-results-from-court-application-without-masterdefendant.json",
+    "subscriptionsInput": "fixtures/subscriptions/now-subscriptions-ir-sample.json",
+    "subscriptionsOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/NowsVariantsSubscriptions/test/subscriptions.json (first 5 informant-register entries, verbatim)",
+    "sharedTimeSource": "SetInformantRegister/test/index.test.js:249",
+    "operator": null,
+    "operatorVariant": null,
+    "note": "Jest asserts SetInformantRegister returns undefined here — the \"no documents at all\" path."
+  }
+}

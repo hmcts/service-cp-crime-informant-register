@@ -1,0 +1,80 @@
+[
+  {
+    "registerDate": "2021-09-27T14:02:32Z",
+    "hearingDate": "2021-02-26T00:00:00Z",
+    "hearingId": "2d209c6b-2b5e-428c-a668-938f223370fb",
+    "prosecutionAuthorityId": "764bff92-a135-34cb-b858-8bb6b4b66301",
+    "prosecutionAuthorityCode": "SURRPF",
+    "prosecutionAuthorityOuCode": "0450000",
+    "fileName": "InformantRegister_SURRPF_2021-09-27.csv",
+    "hearingVenue": {
+      "courtHouse": "Lavender Hill Magistrates' Court",
+      "ljaName": "South West London Magistrates' Court",
+      "courtSessions": [
+        {
+          "courtRoom": "Courtroom 01",
+          "hearingStartTime": "2021-09-29T11:00:00Z",
+          "defendants": [
+            {
+              "name": "Aditya Ondricka",
+              "address1": "849 Akeem Stravenue",
+              "postCode": "CR0 1XG",
+              "firstName": "Aditya",
+              "lastName": "Ondricka",
+              "prosecutionCasesOrApplications": [
+                {
+                  "caseOrApplicationReference": "60GD3207921",
+                  "offences": [
+                    {
+                      "offenceCode": "RT88007",
+                      "orderIndex": 1,
+                      "offenceTitle": "Drive motor vehicle when alcohol level above limit",
+                      "offenceResults": [
+                        {
+                          "cjsResultCode": "1115",
+                          "resultText": "Suspended sentence order - imprisonment\nTotal custodial period 5 Months\nSuspended period 2 Years\nProbation team to be notified organisation name Wales Division NPS\nProbation team to be notified email address 1 walesnps.court@justice.gov.uk\nImprisonment Period 5 Months\nBail remand days to count (tagged days) 0\nNotification of electronic monitoring order (requirement) First notification of electronic monitoring:Yes\nElectronic monitoring contractor organisation name:Electronic Monitoring Contractor\nElectronic monitoring contractor email address 1:LPadmin@ems.co.uk.cjsm.net",
+                          "resultData": {
+                            "durationValue": "5",
+                            "durationUnit": "M",
+                            "durationStartDate": "2019-02-26T00:00:00Z",
+                            "durationEndDate": "2021-07-26T00:00:00Z",
+                            "secondaryDurationValue": "2",
+                            "secondaryDurationUnit": "Y"
+                          }
+                        }
+                      ],
+                      "originatingCaseUrn": "60GD3207921"
+                    },
+                    {
+                      "offenceCode": "RT88007",
+                      "orderIndex": 1,
+                      "offenceTitle": "Drive motor vehicle when alcohol level above limit",
+                      "offenceResults": [
+                        {
+                          "cjsResultCode": "1115",
+                          "resultText": "Suspended sentence order - imprisonment\nTotal custodial period 5 Months\nSuspended period 2 Years\nProbation team to be notified organisation name Wales Division NPS\nProbation team to be notified email address 1 walesnps.court@justice.gov.uk\nImprisonment Period 5 Months\nBail remand days to count (tagged days) 0\nNotification of electronic monitoring order (requirement) First notification of electronic monitoring:Yes\nElectronic monitoring contractor organisation name:Electronic Monitoring Contractor\nElectronic monitoring contractor email address 1:LPadmin@ems.co.uk.cjsm.net",
+                          "resultData": {
+                            "durationValue": "5",
+                            "durationUnit": "M",
+                            "durationStartDate": "2019-02-26T00:00:00Z",
+                            "durationEndDate": "2021-07-26T00:00:00Z",
+                            "secondaryDurationValue": "2",
+                            "secondaryDurationUnit": "Y"
+                          }
+                        }
+                      ],
+                      "originatingCaseUrn": "60GD3207921"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "groupId": "47a08b62-e790-474b-94da-0fd406d2bcc8",
+    "majorCreditorCode": "PF45",
+    "prosecutionAuthorityName": "Surrey Police"
+  }
+]

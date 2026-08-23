@@ -1,0 +1,205 @@
+[
+  {
+    "registerDate": "2021-03-11T22:18:24Z",
+    "hearingDate": "2021-03-11T00:00:00Z",
+    "hearingId": "053cb01f-def9-4182-8fef-d4970afeb1da",
+    "prosecutionAuthorityId": "31af405e-7b60-4dd8-a244-c24c2d3fa595",
+    "prosecutionAuthorityCode": "TFL",
+    "prosecutionAuthorityOuCode": "GAFTL00",
+    "fileName": "InformantRegister_TFL_2021-03-11.csv",
+    "hearingVenue": {
+      "courtHouse": "City of London Magistrates' Court",
+      "ljaName": "Central London Magistrates' Court",
+      "courtSessions": [
+        {
+          "courtRoom": "N/A",
+          "hearingStartTime": "2021-03-11T00:00:00Z",
+          "defendants": [
+            {
+              "name": "Fred Smith",
+              "dateOfBirth": "1965-12-27",
+              "address1": "Flat 1",
+              "address2": "1 Old Road",
+              "address3": "London",
+              "address4": "Merton",
+              "postCode": "SW99 1AA",
+              "title": "MR",
+              "firstName": "Fred",
+              "lastName": "Smith",
+              "prosecutionCasesOrApplications": [
+                {
+                  "caseOrApplicationReference": "TFL4359536",
+                  "offences": [
+                    {
+                      "offenceCode": "PS90010",
+                      "orderIndex": 1,
+                      "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+                      "pleaValue": "NOT_GUILTY",
+                      "offenceResults": [
+                        {
+                          "resultText": "Pay by date"
+                        }
+                      ],
+                      "originatingCaseUrn": "TFL4359536"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Fred Smith",
+              "dateOfBirth": "1965-12-27",
+              "address1": "Flat 1",
+              "address2": "1 Old Road",
+              "address3": "London",
+              "address4": "Merton",
+              "postCode": "SW99 1AA",
+              "title": "MR",
+              "firstName": "Fred",
+              "lastName": "Smith",
+              "prosecutionCasesOrApplications": [
+                {
+                  "caseOrApplicationReference": "TFL4359536",
+                  "offences": [
+                    {
+                      "offenceCode": "PS90010",
+                      "orderIndex": 1,
+                      "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+                      "pleaValue": "GUILTY",
+                      "offenceResults": [
+                        {
+                          "resultText": "Imprisonment court order"
+                        }
+                      ],
+                      "originatingCaseUrn": "TFL4359536"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "majorCreditorCode": "CDE04"
+  },
+  {
+    "registerDate": "2021-03-11T22:18:24Z",
+    "hearingDate": "2021-03-11T00:00:00Z",
+    "hearingId": "053cb01f-def9-4182-8fef-d4970afeb1da",
+    "prosecutionAuthorityId": "9d3ad709-cb0c-4711-8ad5-f9e60d6b0530",
+    "prosecutionAuthorityCode": "TVL",
+    "prosecutionAuthorityOuCode": "GAEAA01",
+    "fileName": "InformantRegister_TVL_2021-03-11.csv",
+    "hearingVenue": {
+      "courtHouse": "City of London Magistrates' Court",
+      "ljaName": "Central London Magistrates' Court",
+      "courtSessions": [
+        {
+          "courtRoom": "N/A",
+          "hearingStartTime": "2021-03-11T00:00:00Z",
+          "defendants": [
+            {
+              "name": "Fred Smith",
+              "dateOfBirth": "1965-12-27",
+              "address1": "Flat 1",
+              "address2": "1 Old Road",
+              "address3": "London",
+              "address4": "Merton",
+              "postCode": "SW99 1AA",
+              "title": "MR",
+              "firstName": "Fred",
+              "lastName": "Smith",
+              "prosecutionCasesOrApplications": [
+                {
+                  "caseOrApplicationReference": "TVL298320922",
+                  "offences": [
+                    {
+                      "offenceCode": "PS90010",
+                      "orderIndex": 1,
+                      "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+                      "pleaValue": "GUILTY",
+                      "offenceResults": [
+                        {
+                          "resultText": "Instalments only"
+                        },
+                        {
+                          "resultText": "Financial Penalty"
+                        }
+                      ],
+                      "originatingCaseUrn": "TVL298320922"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "majorCreditorCode": "CDE04"
+  },
+  {
+    "registerDate": "2021-03-11T22:18:24Z",
+    "hearingDate": "2021-03-11T00:00:00Z",
+    "hearingId": "053cb01f-def9-4182-8fef-d4970afeb1da",
+    "prosecutionAuthorityId": "bdc190e7-c939-37ca-be4b-9f615d6ef40e",
+    "prosecutionAuthorityCode": "DERPF",
+    "prosecutionAuthorityOuCode": "0300000",
+    "fileName": "InformantRegister_DERPF_2021-03-11.csv",
+    "hearingVenue": {
+      "courtHouse": "City of London Magistrates' Court",
+      "ljaName": "Central London Magistrates' Court",
+      "courtSessions": [
+        {
+          "courtRoom": "N/A",
+          "hearingStartTime": "2021-03-11T00:00:00Z",
+          "defendants": [
+            {
+              "name": "test7 NOWSPROS",
+              "dateOfBirth": "2005-05-04",
+              "address1": "34",
+              "address2": "Unknown Street",
+              "address3": "Locality",
+              "firstName": "test7",
+              "lastName": "NOWSPROS",
+              "prosecutionCasesOrApplications": [
+                {
+                  "caseOrApplicationReference": "30V77690609",
+                  "offences": [
+                    {
+                      "offenceCode": "CJO3522",
+                      "orderIndex": 1,
+                      "offenceTitle": "Use / install a television set without a licence",
+                      "originatingCaseUrn": "30V77690609"
+                    },
+                    {
+                      "offenceCode": "CJO3522",
+                      "orderIndex": 2,
+                      "offenceTitle": "Possess a television set with intent to install / use without a licence",
+                      "originatingCaseUrn": "30V77690609"
+                    },
+                    {
+                      "offenceCode": "CJO3522",
+                      "orderIndex": 3,
+                      "offenceTitle": "Possess / control TV set with intent another use install without a licence",
+                      "originatingCaseUrn": "30V77690609"
+                    }
+                  ],
+                  "results": [
+                    {
+                      "resultText": "Summons approved\nProsecution costs £100.00\nTHIS SUMMONS IS FOR PERSONAL SERVICE true\nThis summons will be served by a Prosecutor true\nProsecutor's email address (used summons notification) s@w.com"
+                    }
+                  ],
+                  "arrestSummonsNumber": "TFL"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "majorCreditorCode": "CDE04",
+    "prosecutionAuthorityName": "Derbyshire Police"
+  }
+]

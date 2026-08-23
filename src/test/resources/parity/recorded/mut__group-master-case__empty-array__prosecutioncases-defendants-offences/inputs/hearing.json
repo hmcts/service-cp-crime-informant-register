@@ -1,0 +1,103 @@
+{
+  "courtCentre": {
+    "address": {
+      "address1": "176A Lavender Hill",
+      "address2": "London",
+      "address3": "",
+      "address4": "",
+      "address5": "",
+      "postcode": "SW11 1JU"
+    },
+    "code": "B01LY00",
+    "id": "f8254db1-1683-483e-afb3-b87fde5a0a26",
+    "lja": {
+      "ljaCode": "2577",
+      "ljaName": "South West London Magistrates' Court"
+    },
+    "name": "Lavender Hill Magistrates' Court",
+    "roomId": "9e4932f7-97b2-3010-b942-ddd2624e4dd8",
+    "roomName": "Courtroom 01"
+  },
+  "hasSharedResults": true,
+  "hearingDays": [
+    {
+      "courtCentreId": "f8254db1-1683-483e-afb3-b87fde5a0a26",
+      "courtRoomId": "9e4932f7-97b2-3010-b942-ddd2624e4dd8",
+      "isCancelled": false,
+      "listedDurationMinutes": 20,
+      "listingSequence": 0,
+      "sittingDay": "2021-09-29T10:00:00.000Z"
+    }
+  ],
+  "hearingLanguage": "ENGLISH",
+  "id": "2d209c6b-2b5e-428c-a668-938f223370fb",
+  "isGroupProceedings": true,
+  "jurisdictionType": "MAGISTRATES",
+  "numberOfGroupCases": 2,
+  "prosecutionCases": [
+    {
+      "civilFees": [
+        {
+          "feeId": "f19fbdb0-3cb4-4a00-a9d1-418e39cbf91e",
+          "feeStatus": "OUTSTANDING",
+          "feeType": "INITIAL",
+          "paymentReference": "paymentReferenceXXX"
+        }
+      ],
+      "defendants": [
+        {
+          "courtProceedingsInitiated": "2021-09-27T12:22:07.602Z",
+          "id": "9a023a97-de4f-47f3-a473-e5edb8d36baf",
+          "masterDefendantId": "9a023a97-de4f-47f3-a473-e5edb8d36baf",
+          "offences": [],
+          "personDefendant": {
+            "bailConditions": "",
+            "personDetails": {
+              "address": {
+                "address1": "849 Akeem Stravenue",
+                "postcode": "CR0 1XG"
+              },
+              "documentationLanguageNeeds": "ENGLISH",
+              "firstName": "Aditya",
+              "gender": "MALE",
+              "hearingLanguageNeeds": "ENGLISH",
+              "lastName": "Ondricka"
+            }
+          },
+          "prosecutionAuthorityReference": "655d2f05-0359-4e59-89e1-bd620393dc46",
+          "prosecutionCaseId": "9e7fd066-9a58-4d51-93a0-8d5ea03896e6"
+        }
+      ],
+      "groupId": "47a08b62-e790-474b-94da-0fd406d2bcc8",
+      "id": "9e7fd066-9a58-4d51-93a0-8d5ea03896e6",
+      "initiationCode": "C",
+      "isCivil": true,
+      "isGroupMaster": true,
+      "isGroupMember": true,
+      "originatingOrganisation": "0450000",
+      "prosecutionCaseIdentifier": {
+        "address": {
+          "address1": "Southern House",
+          "address2": "Bond Street",
+          "address3": "Guildford",
+          "postcode": "GU15 1TL"
+        },
+        "contact": {
+          "primaryEmail": "test@surreypolice.com"
+        },
+        "majorCreditorCode": "PF45",
+        "prosecutionAuthorityCode": "SURRPF",
+        "prosecutionAuthorityId": "764bff92-a135-34cb-b858-8bb6b4b66301",
+        "prosecutionAuthorityName": "Surrey Police",
+        "prosecutionAuthorityOUCode": "0450000",
+        "caseURN": "60GD3207921"
+      },
+      "statementOfFacts": "statementOfFacts"
+    }
+  ],
+  "shadowListedOffences": [],
+  "type": {
+    "description": "First hearing",
+    "id": "4a0e892d-c0c5-3c51-95b8-704d8c781776"
+  }
+}

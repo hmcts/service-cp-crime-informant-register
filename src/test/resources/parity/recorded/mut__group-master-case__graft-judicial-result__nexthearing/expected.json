@@ -1,0 +1,72 @@
+[
+  {
+    "registerDate": "2021-09-27T14:02:32Z",
+    "hearingDate": "2020-12-01T00:00:00Z",
+    "hearingId": "2d209c6b-2b5e-428c-a668-938f223370fb",
+    "prosecutionAuthorityId": "764bff92-a135-34cb-b858-8bb6b4b66301",
+    "prosecutionAuthorityCode": "SURRPF",
+    "prosecutionAuthorityOuCode": "0450000",
+    "fileName": "InformantRegister_SURRPF_2021-09-27.csv",
+    "hearingVenue": {
+      "courtHouse": "Lavender Hill Magistrates' Court",
+      "ljaName": "South West London Magistrates' Court",
+      "courtSessions": [
+        {
+          "courtRoom": "Courtroom 01",
+          "hearingStartTime": "2021-09-29T11:00:00Z",
+          "defendants": [
+            {
+              "name": "Aditya Ondricka",
+              "address1": "849 Akeem Stravenue",
+              "postCode": "CR0 1XG",
+              "firstName": "Aditya",
+              "lastName": "Ondricka",
+              "prosecutionCasesOrApplications": [
+                {
+                  "caseOrApplicationReference": "60GD3207921",
+                  "offences": [
+                    {
+                      "offenceCode": "RT88007",
+                      "orderIndex": 1,
+                      "offenceTitle": "Drive motor vehicle when alcohol level above limit",
+                      "offenceResults": [
+                        {
+                          "cjsResultCode": "4028",
+                          "resultText": "Remanded in custody\nRemand basis Before conviction\nBail exception Already in custody, Likely to offend, Likely to offend (physical or mental injury)\nBail exception reason Nature and seriousness of offence, Offended on bail, Previous record and character\nPrison organisation name HMP/YOI Nottingham\nPrison email address 1 Courts.Nottingham@justice.gov.uk\nPrison email address 2 Reception.Nottingham@justice.gov.uk\nConveyor / custodian name organisation name Derby Justice Centre (aka Derby St Mary Adult): PECS\nConveyor / custodian name email address 1 derbymc@geoamey.co.uk\nFor the trial to take place \nAdjournment reasons \nNext hearing in magistrates' court Date of hearing:10/12/2020\nTime of hearing:14:00\nCourtroom:Courtroom 09\nHearing type:Trial\nEstimated duration:6 HOURS\nBooking reference:5a567ac0-ebf7-4999-94ae-7fee40ace81a\nCourthouse organisation name:Westminster Magistrates' Court\nCourthouse address line 1:181 Marylebone Road\nCourthouse address line 2:London\nCourthouse post code:NW1 5BR",
+                          "resultData": {
+                            "nextHearingDate": "2020-12-10T14:00:00Z",
+                            "nextCourtLocation": "Westminster Magistrates' Court"
+                          }
+                        }
+                      ],
+                      "originatingCaseUrn": "60GD3207921"
+                    },
+                    {
+                      "offenceCode": "RT88007",
+                      "orderIndex": 1,
+                      "offenceTitle": "Drive motor vehicle when alcohol level above limit",
+                      "offenceResults": [
+                        {
+                          "cjsResultCode": "4028",
+                          "resultText": "Remanded in custody\nRemand basis Before conviction\nBail exception Already in custody, Likely to offend, Likely to offend (physical or mental injury)\nBail exception reason Nature and seriousness of offence, Offended on bail, Previous record and character\nPrison organisation name HMP/YOI Nottingham\nPrison email address 1 Courts.Nottingham@justice.gov.uk\nPrison email address 2 Reception.Nottingham@justice.gov.uk\nConveyor / custodian name organisation name Derby Justice Centre (aka Derby St Mary Adult): PECS\nConveyor / custodian name email address 1 derbymc@geoamey.co.uk\nFor the trial to take place \nAdjournment reasons \nNext hearing in magistrates' court Date of hearing:10/12/2020\nTime of hearing:14:00\nCourtroom:Courtroom 09\nHearing type:Trial\nEstimated duration:6 HOURS\nBooking reference:5a567ac0-ebf7-4999-94ae-7fee40ace81a\nCourthouse organisation name:Westminster Magistrates' Court\nCourthouse address line 1:181 Marylebone Road\nCourthouse address line 2:London\nCourthouse post code:NW1 5BR",
+                          "resultData": {
+                            "nextHearingDate": "2020-12-10T14:00:00Z",
+                            "nextCourtLocation": "Westminster Magistrates' Court"
+                          }
+                        }
+                      ],
+                      "originatingCaseUrn": "60GD3207921"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "groupId": "47a08b62-e790-474b-94da-0fd406d2bcc8",
+    "majorCreditorCode": "PF45",
+    "prosecutionAuthorityName": "Surrey Police"
+  }
+]

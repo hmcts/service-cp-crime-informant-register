@@ -1,0 +1,31 @@
+{
+  "courtApplications": [],
+  "courtCentre": {
+    "address": {
+      "address1": "1 Queen Victoria Street",
+      "address2": "London",
+      "postcode": "EC4N 4XY"
+    },
+    "code": "B01DU00",
+    "id": "c133d0de-c989-48b9-bd20-0431943e347e",
+    "lja": {
+      "ljaCode": "2570",
+      "ljaName": "Central London Magistrates' Court"
+    },
+    "name": "City of London Magistrates' Court"
+  },
+  "hasSharedResults": true,
+  "hearingDays": [
+    {
+      "listedDurationMinutes": 10,
+      "sittingDay": "2021-03-11T00:00:00.000Z"
+    }
+  ],
+  "id": "053cb01f-def9-4182-8fef-d4970afeb1da",
+  "isBoxHearing": true,
+  "jurisdictionType": "MAGISTRATES",
+  "type": {
+    "description": "Application",
+    "id": "3449743b-95d6-4836-8941-57f588b52068"
+  }
+}

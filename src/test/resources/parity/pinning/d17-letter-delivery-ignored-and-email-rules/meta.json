@@ -1,0 +1,85 @@
+{
+  "caseId": "d17-letter-delivery-ignored-and-email-rules",
+  "defect": "D17 (KEEP) / sanctioned oddity \"letter-delivery recipients are ignored\"",
+  "title": "Letter-delivery subscriptions are logged and dropped; a recipient without emailAddress1 is dropped; the template defaults",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 2,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "hearing: prosecutionCases[0].prosecutionCaseIdentifier.majorCreditorCode set to \"CDE04\" so all five subscriptions match TFL via matchProsecutor.",
+      "subscriptions: five copies of the real nowSubscriptions[0], each with a fresh identity and informantCode \"CDE04\".",
+      "[0] emailDelivery false, firstClassLetterDelivery true — the letter-only case.",
+      "[1] firstClassLetterDelivery true AND email delivery left on, emailTemplateName \"tpl_named\".",
+      "[2] recipient.emailAddress1 deleted.",
+      "[3] emailTemplateName deleted, to show the ir_standard default.",
+      "[4] emailAddress1 padded with spaces, emailAddress2 added and padded, secondClassLetterDelivery true."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "336ffa95eaeb8ed8bf44bc8f5e70dae3932cfbcf4c7e66cc1d88c88ea7972453",
+    "subscriptions": "37eeed80520a114bdfe12403b9d7c9b7a8e88ca6129ea22a9ec0c910bafce606",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "cf3a670e07f163d23047d3989b6e15c1c73296c35945ad453fc243f6d2f40bd5"
+  },
+  "nodeEvidence": [
+    {
+      "file": "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/RecipientMapper.js",
+      "lines": "15",
+      "what": "`if (subscription.forDistribution && subscription.emailDelivery && subscription.recipient)` — all three required. A letter-only subscription fails the emailDelivery test and produces no recipient."
+    },
+    {
+      "file": "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/RecipientMapper.js",
+      "lines": "27-33",
+      "what": "firstClassLetterDelivery / secondClassLetterDelivery are handled by logging \"Informant Register does not support ... letter delivery distribution\" and nothing else. Note these run OUTSIDE the email branch, so a subscription can be both matched for email and logged for letter."
+    },
+    {
+      "file": "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/RecipientMapper.js",
+      "lines": "22-24",
+      "what": "`if (recipient.emailAddress1 !== undefined) { recipients.push(recipient); }` — a matched, distributing, email-delivery subscription whose recipient has no emailAddress1 is dropped SILENTLY."
+    },
+    {
+      "file": "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/RecipientMapper.js",
+      "lines": "20",
+      "what": "emailTemplateName defaults to the literal 'ir_standard' when the subscription does not name one."
+    },
+    {
+      "file": "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/RecipientMapper.js",
+      "lines": "18-19, 41-43",
+      "what": "both addresses are trimmed; emailAddress2 becomes undefined (key absent) when falsy rather than null."
+    },
+    {
+      "file": "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/RecipientMapper.js",
+      "lines": "36-38",
+      "what": "when no recipient survived, the mapper returns undefined, so the outbound body has no `recipients` key at all."
+    }
+  ],
+  "assertion": "Five subscriptions are supplied, all matching TFL on informantCode \"CDE04\", covering one rule each. Assert EXACTLY, on the TFL document's `recipients` array — length 3, in this order: [0] recipientName \"email-plus-first-class-letter\", emailTemplateName \"tpl_named\", NO emailAddress2 key; [1] recipientName \"no-template-name\", emailTemplateName exactly \"ir_standard\"; [2] recipientName \"trimmed-and-second-address\", emailAddress1 \"trimmed-and-second-address@pinning.invalid\" with NO leading or trailing whitespace, emailAddress2 \"second@pinning.invalid\". And assert ABSENT: \"letter-only-no-email-delivery\" (emailDelivery false) and \"email-delivery-without-address\" (recipient present, emailAddress1 missing). Five things are pinned at once and each must be its own assertion so a failure names itself. Two of them are traps. First: entry [0] carries firstClassLetterDelivery true AND email delivery, and is included — a Java port that treats letter delivery as \"not our channel, skip the subscription\" drops a recipient who should receive email. Second: \"email-delivery-without-address\" disappearing is the KEEP — D17 records email-only as the product behaviour — and a Java port that raises an error, or substitutes emailAddress2, or emits a recipient with a null address, changes who gets the register. Both are sanctioned oddities in design_rules.md and neither may change without a DEVIATIONS.md entry."
+}

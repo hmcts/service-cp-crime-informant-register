@@ -1,0 +1,75 @@
+{
+  "caseId": "mut__prosecution-case__drop-optional-field__prosecutioncases-defendants-offences-orderindex",
+  "recordedAt": null,
+  "oracle": {
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js, as the Durable Task extension serialises them; OutboundInformantRegister therefore receives the ORCHESTRATOR's hearing, not the copy SetInformantRegister mutated",
+    "runner": "oracle/run-transform.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "recorded/provenance.json"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 2,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "refdataCallCount": 1,
+    "refdataCalls": [
+      {
+        "verb": "GET",
+        "url": "http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2020-06-01",
+        "on": "2020-06-01",
+        "headers": {
+          "CJSCPPUID": "00000000-0000-0000-0000-000000000000",
+          "Accept": "application/vnd.referencedata.query.get-now-subscriptions+json"
+        },
+        "attempt": 1,
+        "answered": "resolve status=200"
+      }
+    ]
+  },
+  "deterministic": true,
+  "clockDependent": false,
+  "clockProbe": null,
+  "digests": {
+    "hearing": "f7f87a515215860e6fd86ea72120469178f92d4c58317663a0881661b6c09ffc",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "aa9e35f32b3aa17e4ba744e8f3cec88e45c71d2be3547b7bf7263c2d8b8f66c2"
+  },
+  "contract": {
+    "status": "IN_CONTRACT",
+    "basis": "cpp-platform-core-domain/criminal-court-public-model/src/main/resources/json/schema/global/offence.json:205 required does not include orderIndex",
+    "note": "Parity obligation: the Java port must reproduce this."
+  },
+  "evidence": "CONSTRUCTED — the field is removed from a real fixture by this harness",
+  "provenance": {
+    "kind": "mutation",
+    "baseCase": "prosecution-case",
+    "baseFixture": "fixtures/hearings/hearing-results-from-prosecution-case.json",
+    "baseFixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/SetInformantRegister/test/hearing-results-from-prosecution-case.json",
+    "subscriptionsInput": "fixtures/subscriptions/now-subscriptions-ir-sample.json",
+    "subscriptionsOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/NowsVariantsSubscriptions/test/subscriptions.json (first 5 informant-register entries, verbatim)",
+    "sharedTimeSource": "SetInformantRegister/test/index.test.js:12",
+    "operator": "drop-optional-field",
+    "operatorVariant": "prosecutioncases-defendants-offences-orderindex",
+    "note": "Two prosecution authorities (TFL, TVL), no courtCentre fields, hearingDays empty.",
+    "operatorScope": "hearing",
+    "operatorDescription": "Removes one optional field entirely (the key is absent, not null).",
+    "operatorRationale": "The producer omits optional fields rather than nulling them. Every `x && x.y` and `(x || {}).y` guard in the mappers is a branch the Java port must reproduce; this operator walks them one at a time.",
+    "operatorDetail": {
+      "field": "prosecutionCases[*].defendants[*].offences[*].orderIndex",
+      "occurrences": 3,
+      "reader": "OffenceMapper.js:63",
+      "mode": "all-occurrences"
+    }
+  }
+}

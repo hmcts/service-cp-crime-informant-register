@@ -1,0 +1,75 @@
+{
+  "caseId": "mut__case-and-application__null-field__prosecutioncases-prosecutioncaseidentifier-prosecutionauthorityreference",
+  "recordedAt": null,
+  "oracle": {
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js, as the Durable Task extension serialises them; OutboundInformantRegister therefore receives the ORCHESTRATOR's hearing, not the copy SetInformantRegister mutated",
+    "runner": "oracle/run-transform.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "recorded/provenance.json"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 3,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "refdataCallCount": 1,
+    "refdataCalls": [
+      {
+        "verb": "GET",
+        "url": "http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2021-03-11",
+        "on": "2021-03-11",
+        "headers": {
+          "CJSCPPUID": "00000000-0000-0000-0000-000000000000",
+          "Accept": "application/vnd.referencedata.query.get-now-subscriptions+json"
+        },
+        "attempt": 1,
+        "answered": "resolve status=200"
+      }
+    ]
+  },
+  "deterministic": true,
+  "clockDependent": false,
+  "clockProbe": null,
+  "digests": {
+    "hearing": "f904eacb9020c3cd579e02643e58fb93920acf7efc3e7995aab9bab2b3acd0b3",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "914cac66e9f394a6f0e39872d5747524e198630f849f02ae66603fa8f9e3452c",
+    "expected": "735f4ab029781197c86aabd3bdcad49954d42df0487b2b34ef68f0cd9b54ac69"
+  },
+  "contract": {
+    "status": "SCHEMA_INVALID",
+    "basis": "Every field in this catalogue is declared with a concrete type and no null union — courtCentre.name/roomName, prosecutionCaseIdentifier.{majorCreditorCode,caseURN,prosecutionAuthorityReference,prosecutionAuthorityName,prosecutionAuthorityOUCode}, person.{middleName,nationalityCode} and offence.{offenceTitle} are \"type\":\"string\"; prosecutionCase.isGroupMaster and defendant.isYouth are \"type\":\"boolean\"; the rest are $refs to object or integer schemas (address, plea, verdict, courtOrder, personTitle, custodyEstablishment, positiveInteger, uuid). Verified against cpp-platform-core-domain/criminal-court-public-model/src/main/resources/json/schema/global/. In this model \"optional\" means ABSENT, never present-with-null, so a null here is a contract violation and not a producible input.",
+    "note": "The producer cannot emit this. The recording is what the Node app DOES with the input, and is evidence about robustness; it is NOT a parity obligation. The Java port's behaviour here is a design decision — see doc/DEVIATIONS.md and the message-contract gate in .claude/rules/workflow.md."
+  },
+  "evidence": "CONSTRUCTED — the field is nulled in a real fixture by this harness",
+  "provenance": {
+    "kind": "mutation",
+    "baseCase": "case-and-application",
+    "baseFixture": "fixtures/hearings/hearing-results-from-case-and-application.json",
+    "baseFixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/SetInformantRegister/test/hearing-results-from-case-and-application.json",
+    "subscriptionsInput": "fixtures/subscriptions/now-subscriptions-ir-sample.json",
+    "subscriptionsOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/NowsVariantsSubscriptions/test/subscriptions.json (first 5 informant-register entries, verbatim)",
+    "sharedTimeSource": "SetInformantRegister/test/index.test.js:456",
+    "operator": "null-field",
+    "operatorVariant": "prosecutioncases-prosecutioncaseidentifier-prosecutionauthorityreference",
+    "note": "Three authorities across cases and an application — the multi-document base.",
+    "operatorScope": "hearing",
+    "operatorDescription": "Sets one optional field to JSON null (the key is present, the value is null).",
+    "operatorRationale": "EVERY variant of this operator is SCHEMA_INVALID and is recorded as such: the model types these fields concretely with no null union, so \"optional\" means absent, never present-with-null. The operator is kept because the recordings are the evidence for what the Node app does with a null — it does not guard against one, and copies it straight into the outbound body, producing 18 documents that violate the frozen add-informant-register contract (README.md §5 finding 6). That is a robustness observation and a decision to take with Results; it is NOT a parity obligation on the Java port. Absent and null are different inputs and JavaScript treats them almost — but not exactly — alike (`x && x.y` is falsy for both; `Object.keys` and `hasOwnProperty` are not), which is how the null survives to the wire.",
+    "operatorDetail": {
+      "field": "prosecutionCases[*].prosecutionCaseIdentifier.prosecutionAuthorityReference",
+      "occurrences": 2,
+      "reader": "OffenceMapper.js:81 — the fallback itself",
+      "mode": "all-occurrences"
+    }
+  }
+}

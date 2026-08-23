@@ -1,0 +1,15 @@
+{
+  "id": "1828f356-f746-4f2d-932b-79ef2df95c80",
+  "jurisdictionType": "MAGISTRATES",
+  "courtCentre": {},
+  "hearingLanguage": "ENGLISH",
+  "hasSharedResults": true,
+  "defendantReferralReasons": [],
+  "type": {
+    "description": "Sentence",
+    "id": "c6d76309-c912-436b-a21b-a4c4450bc052"
+  },
+  "hearingDays": [],
+  "judiciary": [],
+  "prosecutionCases": []
+}

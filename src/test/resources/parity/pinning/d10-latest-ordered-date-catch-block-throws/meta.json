@@ -1,0 +1,72 @@
+{
+  "caseId": "d10-latest-ordered-date-catch-block-throws",
+  "defect": "D10",
+  "title": "The date-sort error handler is itself broken, so a bad orderedDate loses the hearing",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "swallowed-exception",
+    "stage": "SetInformantRegister",
+    "documentCount": null,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [
+      "[Hearing ID: 1828f356-f746-4f2d-932b-79ef2df95c80] - Exception in SetInformantRegister TypeError: Cannot read properties of undefined (reading 'log')"
+    ],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "hearing: each TFL defendant's offences[0].judicialResults truncated to its FIRST element, so every defendant context holds exactly one result and the per-defendant sort at DefendantContextBaseService.js:296 never calls its comparator.",
+      "hearing: prosecutionCases[0].defendants[1].offences[0].judicialResults[0].orderedDate set to \"not/a/date\". The other stays \"2020-01-20\", so the Set handed to RegisterFragmentService.getLatestOrderedDate holds two distinct values and Array#sort must call ITS comparator."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "5e03fc568db808144003cd0551a2009b48a1bc3b6133521d781f596334ba1a94",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+  },
+  "nodeEvidence": [
+    {
+      "file": "NowsHelper/service/RegisterFragmentService.js",
+      "lines": "30-34",
+      "what": "`const getLatestOrderedDate = (datesToSort) => { try { [...datesToSort].sort((a,b) => dateService.parse(b).getTime() - dateService.parse(a).getTime()) ...` — a module-scope ARROW function, so `this` is the module scope, not an object with a context."
+    },
+    {
+      "file": "NowsHelper/service/DateService.js",
+      "lines": "10-18",
+      "what": "parse(dateString, format = 'YYYY/MM/DD') throws `new Error('Invalid date format')` when moment cannot parse. Note the default format is slash-separated while the fixture data is hyphen-separated ISO; moment's non-strict parsing tolerates the mismatch, which is why this has never been noticed."
+    },
+    {
+      "file": "NowsHelper/service/RegisterFragmentService.js",
+      "lines": "38-41",
+      "what": "`catch (ex) { //TODO HOW THE ORCHESTRATOR WILL HANDLE THIS.  this.context.log(...) }` — `this.context` is undefined here, so the catch block throws TypeError: Cannot read properties of undefined (reading 'log'). The error handler destroys the error."
+    },
+    {
+      "file": "SetInformantRegister/index.js",
+      "lines": "74, 159-161",
+      "what": "getLatestOrderedDate is called at :74, outside any inner try, so the TypeError escapes to the activity catch at :159 and the hearing is lost."
+    }
+  ],
+  "assertion": "Each of the two TFL defendants is reduced to exactly ONE judicial result, and the second defendant's orderedDate is \"not/a/date\". Both details are load-bearing and neither may be \"simplified\": one result per defendant keeps DefendantContextBaseService.getLatestOrderedDate (which sorts PER DEFENDANT and would otherwise throw first — see s06-unguarded-date-parse-in-defendant-context) below the two-element threshold at which Array#sort invokes a comparator, while the two DISTINCT dates across defendants push RegisterFragmentService.getLatestOrderedDate above it. Assert EXACTLY: (1) expected.json is JSON null; (2) meta.json observed.outcome is \"swallowed-exception\"; (3) observed.swallowedErrors has exactly one entry, from SetInformantRegister, and it is a TypeError whose message names 'log' — NOT the Error(\"Invalid date format\") that was actually raised. Assert on the TypeError specifically. It is the fingerprint of the broken catch block: the error handler destroyed the diagnosis before anyone could read it, and the operator is left with a hearing that vanished and a message about a missing property. Parity requirement: zero documents. The Java port MUST NOT sort defensively past a bad date and MUST NOT pick the parseable date and carry on — either would be an unregistered fix. It MUST, unlike Node, classify and persist the failure. If a future reader is tempted to make the Java sort null-safe \"because it is obviously a bug\": it is, and fixing it is welcome, in a commit that also adds the DEVIATIONS.md row and updates this expectation."
+}

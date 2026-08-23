@@ -1,0 +1,67 @@
+{
+  "caseId": "s02-authority-dedupe-first-occurrence-wins",
+  "defect": "design doc §2.2 step 2 (behaviour-lock)",
+  "title": "One fragment per prosecutionAuthorityId; the FIRST case seen supplies every identifier field",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 2,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "hearing: prosecutionCases[0].prosecutionCaseIdentifier.majorCreditorCode set to \"FIRST-WINS\".",
+      "hearing: a second TFL case inserted at index 1, cloned from case [0], keeping the SAME prosecutionAuthorityId but with prosecutionAuthorityCode \"TFL-SECOND\", majorCreditorCode \"SECOND-LOSES\", prosecutionAuthorityReference \"TFL-SECOND-CASE\" and a fresh id.",
+      "the two TFL defendants are split one per case — defendants[0] stays on the first case, defendants[1] moves to the second — so the losing case is the ONLY source of its defendant and the union behaviour is visible.",
+      "the losing case's defendant is renamed firstName \"Loser\", lastName \"Onlyonsecondcase\" (the fixture gives both defendants the identical name \"Fred Smith\", which would make the union invisible in the output). The name is synthetic and carries no PII."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "410ca0ab6c9d978e4106778893f3fd8d0567b90825996be634b986be63a74826",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "58a171301e579a46bd95c7d34d237d1b31e5492b16afcfbb253aa8f9f3082ca5"
+  },
+  "nodeEvidence": [
+    {
+      "file": "SetInformantRegister/index.js",
+      "lines": "42, 51",
+      "what": "`if (!prosecutionCaseIdentifiersSet.has(...prosecutionAuthorityId))` then `.add(...)` — a second case for the same authority is skipped entirely, so its code, OU code, major-creditor code, name and groupId are all discarded."
+    },
+    {
+      "file": "SetInformantRegister/index.js",
+      "lines": "56-58",
+      "what": "court applications are considered AFTER all prosecution cases and are subject to the same set, so a case always wins over an application for the same authority."
+    },
+    {
+      "file": "SetInformantRegister/index.js",
+      "lines": "121-139",
+      "what": "getDefendantsFromContext, by contrast, gathers defendants from ALL cases and applications of that authority — so the single fragment carries defendants from cases whose identifier fields were thrown away."
+    }
+  ],
+  "assertion": "The hearing gives TFL two prosecution cases with the SAME prosecutionAuthorityId and DELIBERATELY DIFFERENT identifier fields: case [0] has prosecutionAuthorityCode \"TFL\" and majorCreditorCode \"FIRST-WINS\"; case [1] has \"TFL-SECOND\" and \"SECOND-LOSES\". The one defendant on the losing case is renamed \"Loser Onlyonsecondcase\" so it can be identified in the output. Assert EXACTLY: (1) the array has exactly 2 documents — one for TFL, one for TVL — NOT three; (2) the TFL document has prosecutionAuthorityCode \"TFL\" and majorCreditorCode \"FIRST-WINS\"; (3) the TFL document's fileName is \"InformantRegister_TFL_2020-06-01.csv\", built from the winning code; (4) the string \"SECOND-LOSES\" appears NOWHERE in the serialised document array — the losing case's major-creditor code is discarded outright. Then assert the asymmetry that makes this worth pinning: (5) the TFL document's hearingVenue.courtSessions[0].defendants has length 2 and contains a defendant with lastName \"Onlyonsecondcase\", who belongs ONLY to the losing case, whose prosecutionCasesOrApplications[0].caseOrApplicationReference is \"TFL-SECOND-CASE\" and whose offence carries originatingCaseUrn \"TFL-SECOND-CASE\". Note the two halves are DIFFERENT fields of the same discarded case: its prosecutionAuthorityCode and majorCreditorCode are thrown away (first-wins, header level), while its prosecutionAuthorityReference survives inside the body (union, per-case level). Do NOT collapse assertions (4) and (5) into one substring search over the whole document — \"TFL-SECOND-CASE\" IS present and \"TFL-SECOND\" IS NOT, and a naive contains() check would confuse the two. Identifier fields are FIRST-WINS; defendants and offences are UNION. So the document names one case in its header and carries another case's people and offences in its body, with no field anywhere saying so. A Java port that groups by authority and merges identifier fields, or that emits one document per case, breaks a different half of this, which is why (2)-(4) and (5) are separate assertions."
+}

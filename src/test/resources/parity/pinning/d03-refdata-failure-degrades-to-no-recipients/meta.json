@@ -1,0 +1,90 @@
+{
+  "caseId": "d03-refdata-failure-degrades-to-no-recipients",
+  "defect": "D3",
+  "title": "A reference-data failure silently produces a register with no recipients",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 2,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [
+      "[Hearing ID: e100d08a-ed4e-43a2-aae2-e9c5735713b0] - All retries failed for GET http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2020-06-01: Too Many Requests",
+      "[Hearing ID: e100d08a-ed4e-43a2-aae2-e9c5735713b0] - getWrapper- Request to GET http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2020-06-01 failed: Too Many Requests",
+      "[Hearing ID: e100d08a-ed4e-43a2-aae2-e9c5735713b0] - ReferenceDataService: Error retrieving nows subscription metadata -->> Error: Too Many Requests"
+    ],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "hearing: prosecutionCases[0].prosecutionCaseIdentifier.majorCreditorCode set to \"CDE04\" (the fixture has no majorCreditorCode; CDE04 is the informantCode of a real subscription in now-subscriptions-ir-sample.json).",
+      "params.refdata: the now-subscriptions GET is made to fail with HTTP 429 — the boundary value of the `status <= 429` test at AxiosRetryWrapper.js:34.",
+      "no subscriptions body is supplied, because the GET never succeeds."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "336ffa95eaeb8ed8bf44bc8f5e70dae3932cfbcf4c7e66cc1d88c88ea7972453",
+    "subscriptions": null,
+    "params": "de05501c2b07389b16de21c5f13a3184be7d6533078b9c73aaf59e4535680e1d",
+    "expected": "a4610e054161b02e8eba38a6974d0b5f6b516ca9e16668e138bd1f8f2da513bd"
+  },
+  "nodeEvidence": [
+    {
+      "file": "CommonUtility/AxiosRetryWrapper.js",
+      "lines": "34",
+      "what": "`if (retriesLeft <= 1 || (error.response && status <= 429)) throw error;` — any response-bearing status at or below 429 is rethrown immediately, so 400, 401, 403, 404 and 429 are NEVER retried. Only >429 (i.e. 5xx) and connection-level errors reach the retry."
+    },
+    {
+      "file": "CommonUtility/AxiosRetryWrapper.js",
+      "lines": "38",
+      "what": "`await sleep(interval)` — a fixed interval, no exponential back-off and no Retry-After handling."
+    },
+    {
+      "file": "CommonUtility/AxiosRetryWrapper.js",
+      "lines": "10-11",
+      "what": "DEFAULT_RETRY_COUNT / DEFAULT_RETRY_INTERVAL are read from the environment ONCE at module load, so a config change needs a restart."
+    },
+    {
+      "file": "NowsHelper/service/ReferenceDataService.js",
+      "lines": "50-53",
+      "what": "the catch returns `null`. The failure is now indistinguishable from \"reference data legitimately returned nothing\"."
+    },
+    {
+      "file": "InformantRegisterSubscriptions/index.js",
+      "lines": "22-25",
+      "what": "`if (!subscriptionsMetaData || ...) { log(\"No Subscriptions found.\"); return informantRegisters; }` — the fragments flow on with matchedSubscriptions still undefined."
+    },
+    {
+      "file": "OutboundInformantRegister/index.js",
+      "lines": "44",
+      "what": "`new RecipientMapper(this.context, informantRegister.matchedSubscriptions || [], ...)` — the `|| []` converts the outage into an empty recipient list."
+    },
+    {
+      "file": "OutboundInformantRegister/InformantRegisterAggregationRequest/Mapper/RecipientMapper.js",
+      "lines": "36-38",
+      "what": "returns undefined when no recipients were built, so the `recipients` key is absent from the POSTed body entirely."
+    }
+  ],
+  "assertion": "The input is the prosecution-case fixture with majorCreditorCode CDE04 on case 0 — the SAME hearing as d04-subscription-matched-on-major-creditor-code, where reference data answers normally and TFL gets recipients. Here the now-subscriptions GET fails with HTTP 429. Assert EXACTLY: (1) two documents are still produced, for TFL and TVL, in that order; (2) NEITHER document has a `recipients` key at all — assert key-absent, not `recipients == null` and not `recipients.isEmpty()`, because absent/null/empty are three different wire bodies (README.md §3 comparator rules); (3) every other field is byte-identical to the d04 control document. The point of this pin is that a transient reference-data outage is INVISIBLE in the outbound body: Node ships a register that quietly reaches nobody. The Java port must reproduce these documents ONLY if it also classifies the refdata failure as transient and abandons/retries the message rather than POSTing this body — so the Java test MUST additionally assert that the pipeline raised a classified transient failure. A Java implementation that produces these two documents and reports success has reproduced the defect instead of the behaviour, and this test MUST fail it. NOT observable through the oracle, and therefore NOT assertable from this case: the number of GET attempts. 429 is attempted once and HTTP 500 twice (DEFAULT_PUBLISH_RETRY_COUNT=2 under the oracle, oracle/lib/stubs.js:92), but both produce the identical document array — compare recorded/mut__prosecution-case__refdata-unavailable__http-500. Retry policy must therefore be asserted in the adapter test, never inferred from a golden document."
+}

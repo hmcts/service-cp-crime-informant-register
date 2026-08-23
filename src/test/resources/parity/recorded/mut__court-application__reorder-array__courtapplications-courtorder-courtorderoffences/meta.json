@@ -1,0 +1,77 @@
+{
+  "caseId": "mut__court-application__reorder-array__courtapplications-courtorder-courtorderoffences",
+  "recordedAt": null,
+  "oracle": {
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js, as the Durable Task extension serialises them; OutboundInformantRegister therefore receives the ORCHESTRATOR's hearing, not the copy SetInformantRegister mutated",
+    "runner": "oracle/run-transform.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "recorded/provenance.json"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 1,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "refdataCallCount": 1,
+    "refdataCalls": [
+      {
+        "verb": "GET",
+        "url": "http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2021-03-11",
+        "on": "2021-03-11",
+        "headers": {
+          "CJSCPPUID": "00000000-0000-0000-0000-000000000000",
+          "Accept": "application/vnd.referencedata.query.get-now-subscriptions+json"
+        },
+        "attempt": 1,
+        "answered": "resolve status=200"
+      }
+    ]
+  },
+  "deterministic": true,
+  "clockDependent": false,
+  "clockProbe": null,
+  "digests": {
+    "hearing": "be09ee681543061c5c3519f595432f5d7e6cd8a84c5b9591e14b700eca301fde",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "914cac66e9f394a6f0e39872d5747524e198630f849f02ae66603fa8f9e3452c",
+    "expected": "8e07580e31f853a04be9ce06374be2e9c8cf8e769ece924685c7b0f3378a1709"
+  },
+  "contract": {
+    "status": "IN_CONTRACT",
+    "basis": "cpp-platform-core-domain/criminal-court-public-model/src/main/resources/json/schema/global/courtOrder.json courtOrderOffences.minItems = 0 — reversal changes neither cardinality nor any element; no schema in the model constrains array order",
+    "note": "Parity obligation: the Java port must reproduce this."
+  },
+  "evidence": "CONSTRUCTED — a real fixture's array is rewritten by this harness",
+  "provenance": {
+    "kind": "mutation",
+    "baseCase": "court-application",
+    "baseFixture": "fixtures/hearings/hearing-results-from-court-application.json",
+    "baseFixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/SetInformantRegister/test/hearing-results-from-court-application.json",
+    "subscriptionsInput": "fixtures/subscriptions/now-subscriptions-ir-sample.json",
+    "subscriptionsOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/NowsVariantsSubscriptions/test/subscriptions.json (first 5 informant-register entries, verbatim)",
+    "sharedTimeSource": "SetInformantRegister/test/index.test.js:230",
+    "operator": "reorder-array",
+    "operatorVariant": "courtapplications-courtorder-courtorderoffences",
+    "note": "Court application only (DERPF), one hearing day, populated courtCentre with lja.",
+    "operatorScope": "hearing",
+    "operatorDescription": "Reverses one array.",
+    "operatorRationale": "The outbound document is array-order-sensitive (the parity comparator says so). Nothing in the transform sorts defendants, offences or results, so input order IS output order — except where a Set or Map re-orders it (SetInformantRegister/index.js:39, DefendantContextBaseService.js:39). This operator separates \"order is carried\" from \"order is re-derived\".",
+    "operatorDetail": {
+      "field": "courtApplications[*].courtOrder.courtOrderOffences",
+      "occurrences": 1,
+      "reader": "DefendantContextBaseService.js:245; OffenceMapper.js:49",
+      "mode": "all-occurrences",
+      "schemaMinItems": 0,
+      "schemaMinItemsSource": "cpp-platform-core-domain/criminal-court-public-model/src/main/resources/json/schema/global/courtOrder.json courtOrderOffences.minItems = 0"
+    }
+  }
+}

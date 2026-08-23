@@ -1,0 +1,156 @@
+[
+  {
+    "registerDate": "2020-06-01T11:00:00Z",
+    "hearingDate": "2021-02-26T00:00:00Z",
+    "hearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+    "prosecutionAuthorityId": "31af405e-7b60-4dd8-a244-c24c2d3fa595",
+    "prosecutionAuthorityCode": "TFL",
+    "prosecutionAuthorityOuCode": "GAFTL00",
+    "fileName": "InformantRegister_TFL_2020-06-01.csv",
+    "hearingVenue": {
+      "courtSessions": [
+        {
+          "defendants": [
+            {
+              "name": "Fred Smith",
+              "dateOfBirth": "1965-12-27",
+              "address1": "Flat 1",
+              "address2": "1 Old Road",
+              "address3": "London",
+              "address4": "Merton",
+              "postCode": "SW99 1AA",
+              "title": "MR",
+              "firstName": "Fred",
+              "lastName": "Smith",
+              "prosecutionCasesOrApplications": [
+                {
+                  "caseOrApplicationReference": "TFL4359536",
+                  "offences": [
+                    {
+                      "offenceCode": "PS90010",
+                      "orderIndex": 1,
+                      "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+                      "pleaValue": "NOT_GUILTY",
+                      "offenceResults": [
+                        {
+                          "cjsResultCode": "1115",
+                          "resultText": "Suspended sentence order - imprisonment\nTotal custodial period 5 Months\nSuspended period 2 Years\nProbation team to be notified organisation name Wales Division NPS\nProbation team to be notified email address 1 walesnps.court@justice.gov.uk\nImprisonment Period 5 Months\nBail remand days to count (tagged days) 0\nNotification of electronic monitoring order (requirement) First notification of electronic monitoring:Yes\nElectronic monitoring contractor organisation name:Electronic Monitoring Contractor\nElectronic monitoring contractor email address 1:LPadmin@ems.co.uk.cjsm.net",
+                          "resultData": {
+                            "durationValue": "5",
+                            "durationUnit": "M",
+                            "durationStartDate": "2019-02-26T00:00:00Z",
+                            "durationEndDate": "2021-07-26T00:00:00Z",
+                            "secondaryDurationValue": "2",
+                            "secondaryDurationUnit": "Y"
+                          }
+                        }
+                      ],
+                      "originatingCaseUrn": "TFL4359536"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Fred Smith",
+              "dateOfBirth": "1965-12-27",
+              "address1": "Flat 1",
+              "address2": "1 Old Road",
+              "address3": "London",
+              "address4": "Merton",
+              "postCode": "SW99 1AA",
+              "title": "MR",
+              "firstName": "Fred",
+              "lastName": "Smith",
+              "prosecutionCasesOrApplications": [
+                {
+                  "caseOrApplicationReference": "TFL4359536",
+                  "offences": [
+                    {
+                      "offenceCode": "PS90010",
+                      "orderIndex": 1,
+                      "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+                      "pleaValue": "GUILTY",
+                      "offenceResults": [
+                        {
+                          "cjsResultCode": "1115",
+                          "resultText": "Suspended sentence order - imprisonment\nTotal custodial period 5 Months\nSuspended period 2 Years\nProbation team to be notified organisation name Wales Division NPS\nProbation team to be notified email address 1 walesnps.court@justice.gov.uk\nImprisonment Period 5 Months\nBail remand days to count (tagged days) 0\nNotification of electronic monitoring order (requirement) First notification of electronic monitoring:Yes\nElectronic monitoring contractor organisation name:Electronic Monitoring Contractor\nElectronic monitoring contractor email address 1:LPadmin@ems.co.uk.cjsm.net",
+                          "resultData": {
+                            "durationValue": "5",
+                            "durationUnit": "M",
+                            "durationStartDate": "2019-02-26T00:00:00Z",
+                            "durationEndDate": "2021-07-26T00:00:00Z",
+                            "secondaryDurationValue": "2",
+                            "secondaryDurationUnit": "Y"
+                          }
+                        }
+                      ],
+                      "originatingCaseUrn": "TFL4359536"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "registerDate": "2020-06-01T11:00:00Z",
+    "hearingDate": "2021-02-26T00:00:00Z",
+    "hearingId": "1828f356-f746-4f2d-932b-79ef2df95c80",
+    "prosecutionAuthorityId": "9d3ad709-cb0c-4711-8ad5-f9e60d6b0530",
+    "prosecutionAuthorityCode": "TVL",
+    "prosecutionAuthorityOuCode": "GAEAA01",
+    "fileName": "InformantRegister_TVL_2020-06-01.csv",
+    "hearingVenue": {
+      "courtSessions": [
+        {
+          "defendants": [
+            {
+              "name": "Fred Smith",
+              "dateOfBirth": "1965-12-27",
+              "address1": "Flat 1",
+              "address2": "1 Old Road",
+              "address3": "London",
+              "address4": "Merton",
+              "postCode": "SW99 1AA",
+              "title": "MR",
+              "firstName": "Fred",
+              "lastName": "Smith",
+              "prosecutionCasesOrApplications": [
+                {
+                  "caseOrApplicationReference": "TVL298320922",
+                  "offences": [
+                    {
+                      "offenceCode": "PS90010",
+                      "orderIndex": 1,
+                      "offenceTitle": "Public service vehicle - passenger use altered / defaced   ticket",
+                      "pleaValue": "GUILTY",
+                      "offenceResults": [
+                        {
+                          "cjsResultCode": "1115",
+                          "resultText": "Suspended sentence order - imprisonment\nTotal custodial period 5 Months\nSuspended period 2 Years\nProbation team to be notified organisation name Wales Division NPS\nProbation team to be notified email address 1 walesnps.court@justice.gov.uk\nImprisonment Period 5 Months\nBail remand days to count (tagged days) 0\nNotification of electronic monitoring order (requirement) First notification of electronic monitoring:Yes\nElectronic monitoring contractor organisation name:Electronic Monitoring Contractor\nElectronic monitoring contractor email address 1:LPadmin@ems.co.uk.cjsm.net",
+                          "resultData": {
+                            "durationValue": "5",
+                            "durationUnit": "M",
+                            "durationStartDate": "2019-02-26T00:00:00Z",
+                            "durationEndDate": "2021-07-26T00:00:00Z",
+                            "secondaryDurationValue": "2",
+                            "secondaryDurationUnit": "Y"
+                          }
+                        }
+                      ],
+                      "originatingCaseUrn": "TVL298320922"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

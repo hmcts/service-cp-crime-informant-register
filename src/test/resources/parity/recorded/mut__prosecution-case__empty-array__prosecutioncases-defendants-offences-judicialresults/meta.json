@@ -1,0 +1,81 @@
+{
+  "caseId": "mut__prosecution-case__empty-array__prosecutioncases-defendants-offences-judicialresults",
+  "recordedAt": null,
+  "oracle": {
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js, as the Durable Task extension serialises them; OutboundInformantRegister therefore receives the ORCHESTRATOR's hearing, not the copy SetInformantRegister mutated",
+    "runner": "oracle/run-transform.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "recorded/provenance.json"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 2,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "refdataCallCount": 1,
+    "refdataCalls": [
+      {
+        "verb": "GET",
+        "url": "http://reference-data.oracle.invalid/referencedata-query-api/query/api/rest/referencedata/now-subscriptions?on=2020-06-01",
+        "on": "2020-06-01",
+        "headers": {
+          "CJSCPPUID": "00000000-0000-0000-0000-000000000000",
+          "Accept": "application/vnd.referencedata.query.get-now-subscriptions+json"
+        },
+        "attempt": 1,
+        "answered": "resolve status=200"
+      }
+    ]
+  },
+  "deterministic": true,
+  "clockDependent": true,
+  "clockProbe": {
+    "alternateClockIso": "2026-12-04T23:40:00.000Z",
+    "warning": "This case's output is a function of WHEN it runs, not only of its inputs. moment-timezone reads an undefined date as \"now\" (DateService.js:37). A Java differential test must pin the same instant, or assert on this case with the clock-dependent fields excluded.",
+    "alternateExpectedFile": "expected-alternate-clock.json"
+  },
+  "digests": {
+    "hearing": "9a9fd38a4aa17f908cf255347e00ce9c4e6e74cd782cf02f6b2ef7541cf0c3ab",
+    "subscriptions": "2dc7d901cacbd4197c5bb2abb0d005e2f003e821e2ccd7edf1892feb9e32766a",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "2d60e514c2bab40869c90c054cec24cb9945e6b6affbfd8ff9c50f32d52993b2"
+  },
+  "contract": {
+    "status": "SCHEMA_INVALID",
+    "basis": "cpp-platform-core-domain/criminal-court-public-model/src/main/resources/json/schema/global/offence.json judicialResults.minItems = 1; an empty array violates it",
+    "note": "The producer cannot emit this. The recording is what the Node app DOES with the input, and is evidence about robustness; it is NOT a parity obligation. The Java port's behaviour here is a design decision — see doc/DEVIATIONS.md and the message-contract gate in .claude/rules/workflow.md."
+  },
+  "evidence": "CONSTRUCTED — a real fixture's array is rewritten by this harness",
+  "provenance": {
+    "kind": "mutation",
+    "baseCase": "prosecution-case",
+    "baseFixture": "fixtures/hearings/hearing-results-from-prosecution-case.json",
+    "baseFixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/SetInformantRegister/test/hearing-results-from-prosecution-case.json",
+    "subscriptionsInput": "fixtures/subscriptions/now-subscriptions-ir-sample.json",
+    "subscriptionsOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions/NowsVariantsSubscriptions/test/subscriptions.json (first 5 informant-register entries, verbatim)",
+    "sharedTimeSource": "SetInformantRegister/test/index.test.js:12",
+    "operator": "empty-array",
+    "operatorVariant": "prosecutioncases-defendants-offences-judicialresults",
+    "note": "Two prosecution authorities (TFL, TVL), no courtCentre fields, hearingDays empty.",
+    "operatorScope": "hearing",
+    "operatorDescription": "Replaces one array with [].",
+    "operatorRationale": "The transform decides \"produce a document / produce nothing\" on array length in five places (SetInformantRegister/index.js:98, RecipientMapper.js:36, ResultMapper.js:16, OffenceMapper.js:37, CourtSessionMapper.js:26). Empty is the boundary each of those sits on, and several of them return `undefined` rather than `[]` — a distinction the outbound JSON preserves by dropping the key. MOST TARGETS ARE SCHEMA_INVALID: only courtApplications, courtApplicationCases, courtApplicationCases[].offences and courtOrderOffences declare minItems 0; every other array in the catalogue declares minItems 1, so emptying it is a contract violation the producer cannot commit. Each variant records which it is.",
+    "operatorDetail": {
+      "field": "prosecutionCases[*].defendants[*].offences[*].judicialResults",
+      "occurrences": 3,
+      "reader": "DefendantContextBaseService.js:105",
+      "mode": "all-occurrences",
+      "schemaMinItems": 1,
+      "schemaMinItemsSource": "cpp-platform-core-domain/criminal-court-public-model/src/main/resources/json/schema/global/offence.json judicialResults.minItems"
+    }
+  }
+}

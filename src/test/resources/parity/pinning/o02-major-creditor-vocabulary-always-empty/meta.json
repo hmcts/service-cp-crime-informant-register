@@ -1,0 +1,77 @@
+{
+  "caseId": "o02-major-creditor-vocabulary-always-empty",
+  "defect": "sanctioned oddity: \"the vocabulary call is the 2-arg form (major-creditor lists always empty)\"",
+  "title": "A subscription rule that requires a prosecutor major creditor can never match in this flow",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 2,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "hearing: prosecutionCases[0].prosecutionCaseIdentifier.majorCreditorCode set to \"CDE04\".",
+      "subscriptions: four copies of the real nowSubscriptions[0] with fresh identity, informantCode \"CDE04\" and applySubscriptionRules flipped to true (false in all 40 real informant-register entries — CONSTRUCTED, see oracle/README.md §6 gap 3).",
+      "all four: subscriptionVocabulary given anyAppearance, anyCourtHearing, adultOrYouthDefendant, ignoreCustody and ignoreResults so that the attendance, court-house, defendant, custody and custodial-result gates (SubscriptionsService.js:130-172) all pass and cannot confound the result. Verified empirically: with the captured all-false vocabulary NOTHING matches, because checkIfAttendanceTypeMatch (:240) fails first.",
+      "[0] no major-creditor flag — the control. [1] prosecutorMajorCreditor true. [2] nonProsecutorMajorCreditor true. [3] anyMajorCreditor true."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "336ffa95eaeb8ed8bf44bc8f5e70dae3932cfbcf4c7e66cc1d88c88ea7972453",
+    "subscriptions": "b678e06437da96a05f33d3d91993a3b4467021f0689128ea42129bb3bfd3d69e",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "77564f461307a24274531f30f12099acf509705e6f574d48abb6faa3a8bc091d"
+  },
+  "nodeEvidence": [
+    {
+      "file": "SetInformantRegister/index.js",
+      "lines": "149",
+      "what": "`new VocabularyService(this.hearingObj, defendantContextBase).getVocabularyInfo()` — TWO arguments."
+    },
+    {
+      "file": "NowsHelper/service/VocabularyService.js",
+      "lines": "137-142",
+      "what": "the constructor takes FOUR: (hearingObj, defendantContextBase, majorCreditorMap, complianceEnforcementList). The last two are undefined here. Compare SetNowVariants/index.js:184, which passes all four."
+    },
+    {
+      "file": "NowsHelper/service/VocabularyService.js",
+      "lines": "332-334",
+      "what": "`if (!this.complianceEnforcementList) { return [] }` at the top of buildApplicableMajorCreditorList — so both lists are unconditionally empty for this flow."
+    },
+    {
+      "file": "NowsHelper/service/VocabularyService.js",
+      "lines": "169-170, 189-190",
+      "what": "those empty arrays become vocabulary.prosecutorMajorCreditor and vocabulary.nonProsecutorMajorCreditor."
+    },
+    {
+      "file": "NowsHelper/service/SubscriptionsService.js",
+      "lines": "280-285",
+      "what": "`isMajorCreditorProsecutor` returns false immediately when the list is empty (`vocabulary.prosecutorMajorCreditor.length > 0` fails), so checkIfMajorCreditorTypeMatch (:258) falls through to its final `return subscriptionVocabulary.anyMajorCreditor && ...` and, with anyMajorCreditor unset, rejects the subscription."
+    }
+  ],
+  "assertion": "Four subscriptions are supplied, all matching TFL on informantCode \"CDE04\", all with applySubscriptionRules TRUE, and all sharing an otherwise permissive subscriptionVocabulary (anyAppearance, anyCourtHearing, adultOrYouthDefendant, ignoreCustody, ignoreResults) so that only the major-creditor gate can decide the outcome. They differ in exactly one flag each. Assert EXACTLY, on the TFL document: `recipients` has length 2 and contains, in this order, \"permissive-control\" and \"requires-any-major-creditor\"; and does NOT contain \"requires-prosecutor-major-creditor\" or \"requires-nonprosecutor-major-creditor\". Two separate things are pinned and both must be asserted. (1) A subscription that asks for a prosecutor or non-prosecutor major creditor can NEVER match in this flow, whatever the hearing contains — SetInformantRegister/index.js:149 passes two arguments, so VocabularyService.js:333 returns [] before it looks at any data. (2) A subscription that asks for ANY major creditor DOES match, on the very same empty lists, because SubscriptionsService.js:275-276 tests them with `!= null` and an empty array is not null. Same emptiness, opposite answers. That inconsistency is the behaviour, and a Java port that makes the three flags behave consistently — in either direction — changes the recipient list. THE TRAP: a Java VocabularyService will naturally be written with all four of its inputs available, and the moment it populates prosecutorMajorCreditor from the hearing, \"requires-prosecutor-major-creditor\" starts matching and someone who receives nothing today starts receiving the register. Nothing in the hearing payload looks different; only the recipient list changes, which is exactly the kind of change nobody notices. design_rules.md names the 2-arg call as intended behaviour here; needing the major-creditor lists is a DEVIATIONS.md entry with a named reviewer, and this test changes in that same commit. CONSTRUCTED, NOT CAPTURED: applySubscriptionRules is false on all 40 real informant-register subscriptions (oracle/README.md §6 gap 3), so this whole vocabulary gate is dead code as captured. Treat the four subscriptions as probes of reachable code, not as evidence about production data."
+}

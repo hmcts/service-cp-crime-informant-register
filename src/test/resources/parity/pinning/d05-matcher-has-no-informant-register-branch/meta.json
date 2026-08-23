@@ -1,0 +1,70 @@
+{
+  "caseId": "d05-matcher-has-no-informant-register-branch",
+  "defect": "D5",
+  "title": "Informant-register subscriptions match through the NOW / EDT / prison-court-register branches, never an IR branch",
+  "oracle": {
+    "runner": "oracle/run-transform.js",
+    "entryPoint": "SetInformantRegister -> InformantRegisterSubscriptions -> OutboundInformantRegister",
+    "orchestrator": "InformantRegisterOrchestrator/index.js:21-49",
+    "activityBoundary": "every callActivity argument and return value crosses oracle/lib/boundary.js",
+    "clockPinIso": "2026-08-21T09:15:00.000Z",
+    "exitCode": 0,
+    "clockProbeIso": "2026-12-04T23:40:00.000Z",
+    "clockDependent": false,
+    "deterministic": true,
+    "determinismCheck": "the case was run twice at clockPinIso and the two document arrays compared"
+  },
+  "sourcePinning": {
+    "nodeAppCommit": "a8d3c00b92c3d4cc5da5a555699a63d30adcf8db",
+    "nodeAppWorkingTreeClean": true,
+    "oracleDigest": "5f39b242bcbf9845893414c5af0d61d5c60cf142a8584af0387cc04e12f844b8",
+    "nodeVersion": "v24.18.1",
+    "full": "pinning/manifest.json -> sourcePinning"
+  },
+  "observed": {
+    "outcome": "documents",
+    "stage": "complete",
+    "documentCount": 2,
+    "subscriptionsReturnedUndefined": false,
+    "swallowedErrors": [],
+    "uncaught": null
+  },
+  "provenance": {
+    "kind": "oddity-pin",
+    "fixtureOrigin": "cpp-context-azure-legalaidagency/azure-functions/durable-functions",
+    "edits": [
+      "hearing: prosecutionCases[0].prosecutionCaseIdentifier.majorCreditorCode set to \"CDE04\".",
+      "subscriptions: three copies of the real nowSubscriptions[0], each given informantCode \"ZZZ99\" (deliberately matching nothing) and a fresh identity; the second additionally sets isNowSubscription true, the third isPrisonCourtRegisterSubscription true. isInformantRegisterSubscription stays true on all three, as in the captured data."
+    ]
+  },
+  "digests": {
+    "convention": "sha256 of the written file bytes — `sha256sum <file>` reproduces each value exactly",
+    "hearing": "336ffa95eaeb8ed8bf44bc8f5e70dae3932cfbcf4c7e66cc1d88c88ea7972453",
+    "subscriptions": "bbbc106a306588be0da1c599152d0069a05995f014e10c04a4d246efaf97a93a",
+    "params": "afc46830b1e0e0d497db28a5ddba13de8d7860c6cc38d929900f6d2842834e8d",
+    "expected": "0a20470d022bb85f10dbe1b1abe8ab921dfb907ef2425a418f99071c53d2b3ca"
+  },
+  "nodeEvidence": [
+    {
+      "file": "NowsHelper/service/SubscriptionsService.js",
+      "lines": "14-45",
+      "what": "getSubscriptions has exactly four branches: matchCourtHouse (:19), matchProsecutor (:24), `subscription.isNowSubscription || subscription.isEDTSubscription` (:29), and `subscription.isPrisonCourtRegisterSubscription` (:39). There is no `isInformantRegisterSubscription` branch. The flag is used only as a pre-filter at InformantRegisterSubscriptions/index.js:28."
+    },
+    {
+      "file": "NowsHelper/service/SubscriptionsService.js",
+      "lines": "56-59",
+      "what": "`matchCpsProsecuted` is declared and never called — a whole-repo grep for the identifier outside test files returns only this definition. Dead code."
+    },
+    {
+      "file": "NowsHelper/service/SubscriptionsService.js",
+      "lines": "114, 116, 208-209",
+      "what": "``function matchVocabularyRules` (:114) opens with `if (subscription.applySubscriptionRules)` (:116) and, when that is falsy, skips the entire gate and reaches `return true` (:208-209). A NOW-flagged subscription with applySubscriptionRules false — which is every real informant-register subscription — matches unconditionally."
+    },
+    {
+      "file": "InformantRegisterSubscriptions/index.js",
+      "lines": "28",
+      "what": "the only use of isInformantRegisterSubscription in this flow: a filter, applied before the matcher ever sees the list."
+    }
+  ],
+  "assertion": "Three subscriptions are supplied, ALL with isInformantRegisterSubscription true and NONE with an informantCode or selectedCourtHouses that matches anything in the hearing (all three carry informantCode \"ZZZ99\"; the hearing gives TFL majorCreditorCode \"CDE04\" and TVL none at all). Assert EXACTLY: BOTH documents — TFL and TVL — have a `recipients` array of length 2 containing, in this order, \"matched-via-now-branch\" (isNowSubscription true) and \"matched-via-prison-court-register-branch\" (isPrisonCourtRegisterSubscription true); and NEITHER contains \"not-matched-informant-register-only\" (isInformantRegisterSubscription true and nothing else). Assert on BOTH documents, not just TFL: TVL has no major-creditor code at all, so the fact that it still collects both recipients proves these two branches never consult the authority. Two things are pinned. (1) Being an informant-register subscription is, by itself, not a reason to be matched; being a NOW or prison-court-register subscription is. (2) Those two branches are authority-blind, so one such subscription fans the register out to every authority in the hearing. A Java SubscriptionMatcher written from the field names — \"this is the informant register flow, so match isInformantRegisterSubscription\" — gets the opposite answer on all three subscriptions and MUST fail this test. D5 is priority-2: changing it needs the same SIT reference-data verification as D4 (design doc §13 Q8) plus a DEVIATIONS.md entry. Separately, and NOT assertable from any oracle case: matchCpsProsecuted (SubscriptionsService.js:56-59) is unreachable dead code. Do not port it. If a Java port contains a live cpsProsecuted matching branch, that is an unregistered behaviour change even though no golden case can catch it — cover it with a static check or a reviewer note, not with a test over this corpus."
+}
