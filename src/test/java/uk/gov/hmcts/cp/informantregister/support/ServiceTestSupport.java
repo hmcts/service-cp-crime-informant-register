@@ -132,6 +132,9 @@ public final class ServiceTestSupport {
         // mention, and would turn "the cache container was slow to start" into a settlement failure.
         // The payload adapter has its own suites, which use a real server and a real HTTP stub.
         properties.put("informantregister.payload.mode", "STUB");
+        // And the refusing now-subscriptions source, for the same reason: no suite here produces an
+        // authority, so nothing is ever addressed and there is no reference-data server to stand up.
+        properties.put("informantregister.referencedata.mode", "STUB");
         // The deployed interval is ten seconds. Two makes a resume observable without making the
         // probe itself the thing under test.
         properties.put("informantregister.store.probe-interval", "2s");
@@ -153,6 +156,7 @@ public final class ServiceTestSupport {
      */
     public static void stubPayloadSource(final DynamicPropertyRegistry registry) {
         registry.add("informantregister.payload.mode", () -> "STUB");
+        registry.add("informantregister.referencedata.mode", () -> "STUB");
     }
 
     /**

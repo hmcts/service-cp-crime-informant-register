@@ -48,10 +48,22 @@ class ConfigurationValidationTest {
     private static final String IDENTITY_PROPERTY =
             "informantregister.results.system-user-id=9f61bdbb-6f1a-4c0f-9a3d-6b8f0f1c2a44";
 
+    /**
+     * The endpoint and identity the live now-subscriptions source needs. Carried by every case here
+     * that is not about them, for the same reason {@link #IDENTITY_PROPERTY} is: the live source is
+     * the default, and startup refuses one that cannot ask reference data anything.
+     */
+    private static final String REFDATA_ENDPOINT_PROPERTY =
+            "informantregister.referencedata.base-url=http://localhost:8080";
+
+    private static final String REFDATA_IDENTITY_PROPERTY =
+            "informantregister.referencedata.system-user-id=2c7b1e64-0f4a-4f0e-9b2c-8d1a6f3e5c07";
+
     private final ApplicationContextRunner runner =
             new ApplicationContextRunner()
                     .withUserConfiguration(PropertiesTestConfiguration.class)
-                    .withPropertyValues(IDENTITY_PROPERTY);
+                    .withPropertyValues(IDENTITY_PROPERTY, REFDATA_ENDPOINT_PROPERTY,
+                            REFDATA_IDENTITY_PROPERTY);
 
     @Configuration(proxyBeanMethods = false)
     @EnableConfigurationProperties(InformantRegisterProperties.class)
@@ -325,6 +337,109 @@ class ConfigurationValidationTest {
     }
 
     @Nested
+    @DisplayName("the live now-subscriptions source must be able to ask reference data")
+    class SubscriptionsReachability {
+
+        /**
+         * The hole the payload story left open on its own live mode, closed here for this one.
+         * Without an endpoint the client has nowhere to send the query, so every hearing that
+         * produced a register is abandoned, redelivered and finally parked — by a pod whose
+         * readiness, liveness and queue metrics all say the deployment succeeded.
+         */
+        @Test
+        void live_mode_without_an_endpoint_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.referencedata.base-url=").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.referencedata.base-url")
+                                .hasMessageContaining("informantregister.referencedata.mode");
+                    });
+        }
+
+        /**
+         * {@code CJSCPPUID} is part of the reference-data query's own contract
+         * ({@code ReferenceDataService.js:44}) and its access-control rules authorise on it, so an
+         * anonymous query is a refused query — every time, for ever.
+         */
+        @Test
+        void live_mode_without_an_identity_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.referencedata.system-user-id=").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining(
+                                        "informantregister.referencedata.system-user-id")
+                                .hasMessageContaining("informantregister.referencedata.mode");
+                    });
+        }
+
+        @Test
+        void live_mode_with_an_endpoint_and_an_identity_should_start() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.referencedata.mode=LIVE")
+                    .run(context -> assertThat(context).hasNotFailed());
+        }
+
+        /** Both are the live source's requirement and nobody else's; the stub asks nobody. */
+        @Test
+        void stub_mode_without_an_endpoint_or_an_identity_should_start() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.referencedata.mode=STUB",
+                    "informantregister.referencedata.base-url=",
+                    "informantregister.referencedata.system-user-id=")
+                    .run(context -> assertThat(context).hasNotFailed());
+        }
+
+        /**
+         * Constitution Principle V, the same rule the payload stub is held to. The refusing stub
+         * fails loudly rather than quietly, but a deployed pod running it can never address a
+         * register at all: every hearing that produces one is parked, for ever.
+         */
+        @Test
+        void stub_mode_on_the_deployed_credential_source_should_fail_startup() {
+            runner.withPropertyValues(NAMESPACE_PROPERTY,
+                    "informantregister.referencedata.mode=STUB").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.referencedata.mode")
+                                .hasMessageContaining("informantregister.servicebus.namespace");
+                    });
+        }
+
+        @Test
+        void a_source_with_no_attempts_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.referencedata.max-attempts=0").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.referencedata.max-attempts");
+                    });
+        }
+
+        @Test
+        void a_negative_wait_between_attempts_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.referencedata.retry-interval=-1s").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining(
+                                        "informantregister.referencedata.retry-interval");
+                    });
+        }
+
+        @Test
+        void a_timeout_that_never_expires_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.referencedata.read-timeout=0s").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.referencedata.read-timeout");
+                    });
+        }
+    }
+
+    @Nested
     @DisplayName("the payload settings must describe a source that can answer")
     class PayloadReachability {
 
@@ -587,7 +702,8 @@ class ConfigurationValidationTest {
          * way of a test that is about the binding of a value.
          */
         private final ApplicationContextRunner shippedOnTheStub = shipped
-                .withPropertyValues("informantregister.payload.mode=STUB");
+                .withPropertyValues("informantregister.payload.mode=STUB",
+                        "informantregister.referencedata.mode=STUB");
 
         @Test
         void the_identity_should_arrive_from_the_environment_variable_the_file_documents() {
@@ -608,6 +724,49 @@ class ConfigurationValidationTest {
                         assertThat(context.getBean(InformantRegisterProperties.class)
                                 .results().baseUrl())
                                 .isEqualTo("http://results.internal:8080");
+                    });
+        }
+
+        @Test
+        void the_reference_data_endpoint_should_arrive_from_the_variable_the_file_documents() {
+            shippedOnTheStub
+                    .withSystemProperties("REFERENCEDATA_BASE_URL=http://referencedata.internal:8080")
+                    .run(context -> {
+                        assertThat(context).hasNotFailed();
+                        assertThat(context.getBean(InformantRegisterProperties.class)
+                                .referencedata().baseUrl())
+                                .isEqualTo("http://referencedata.internal:8080");
+                    });
+        }
+
+        /**
+         * One identity, because the function app has one: {@code input.cjscppuid} authorises the
+         * payload read and the now-subscriptions read alike ({@code ReferenceDataService.js:44}).
+         * An environment that mounts the Results identity is therefore not asked for a second one,
+         * which is what keeps this change out of the deployment's way.
+         */
+        @Test
+        void the_reference_data_identity_should_fall_back_to_the_one_the_results_calls_use() {
+            shippedOnTheStub
+                    .withSystemProperties("RESULTS_SYSTEM_USER_ID=b6c8b0a4-1f2e-4a3b-9c4d-5e6f70819234")
+                    .run(context -> {
+                        assertThat(context).hasNotFailed();
+                        assertThat(context.getBean(InformantRegisterProperties.class)
+                                .referencedata().systemUserId())
+                                .isEqualTo("b6c8b0a4-1f2e-4a3b-9c4d-5e6f70819234");
+                    });
+        }
+
+        @Test
+        void the_reference_data_identity_should_be_settable_on_its_own() {
+            shippedOnTheStub.withSystemProperties(
+                    "RESULTS_SYSTEM_USER_ID=b6c8b0a4-1f2e-4a3b-9c4d-5e6f70819234",
+                    "REFERENCEDATA_SYSTEM_USER_ID=2c7b1e64-0f4a-4f0e-9b2c-8d1a6f3e5c07")
+                    .run(context -> {
+                        assertThat(context).hasNotFailed();
+                        assertThat(context.getBean(InformantRegisterProperties.class)
+                                .referencedata().systemUserId())
+                                .isEqualTo("2c7b1e64-0f4a-4f0e-9b2c-8d1a6f3e5c07");
                     });
         }
 

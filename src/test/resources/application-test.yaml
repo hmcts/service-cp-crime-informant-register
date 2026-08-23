@@ -21,6 +21,10 @@ informantregister:
     # can never fetch anything — so the stub is selected explicitly. Startup refuses the stub on the
     # deployed credential source, and this profile carries the local one above.
     mode: STUB
+  referencedata:
+    # For the same reason: nothing in this profile addresses a register, so there is no reference
+    # data to reach and no identity mounted to reach it with. LIVE would correctly refuse to start.
+    mode: STUB
 
 spring:
   autoconfigure:

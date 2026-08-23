@@ -11,8 +11,8 @@ import org.springframework.stereotype.Component;
  * <p>Everything checked here fails quietly in production and loudly at startup, so startup is where
  * it is made to fail: a run that can outlive its claim, a broker lock that can expire mid-run, an
  * ambiguous credential source, a payload source that cannot fetch anything, a payload fetch whose
- * own worst case outlasts the run it happens inside, and a submission policy that cannot make the
- * call it exists to make.
+ * own worst case outlasts the run it happens inside, a now-subscriptions source that cannot reach
+ * reference data, and a submission policy that cannot make the call it exists to make.
  *
  * <p>The payload rules are the ones a healthy-looking pod hides. A live source with no identity, a
  * fallback with no attempts and a cache with no address all produce a service that consumes
@@ -56,6 +56,12 @@ public class PropertiesValidator implements InitializingBean {
     private static final String FALLBACK_MAX_ATTEMPTS = FALLBACK + ".max-attempts";
     private static final String RETRY_INTERVAL = FALLBACK + ".retry-interval";
     private static final String REDIS = "informantregister.payload.redis";
+    private static final String REFDATA = "informantregister.referencedata";
+    private static final String SUBSCRIPTIONS_MODE = REFDATA + ".mode";
+    private static final String REFDATA_BASE_URL = REFDATA + ".base-url";
+    private static final String REFDATA_SYSTEM_USER_ID = REFDATA + ".system-user-id";
+    private static final String REFDATA_MAX_ATTEMPTS = REFDATA + ".max-attempts";
+    private static final String REFDATA_RETRY_INTERVAL = REFDATA + ".retry-interval";
     private static final String RESULTS_MAX_ATTEMPTS = "informantregister.results.max-attempts";
     private static final String INITIAL_BACKOFF = "informantregister.results.initial-backoff";
     private static final String MAX_BACKOFF = "informantregister.results.max-backoff";
@@ -86,7 +92,89 @@ public class PropertiesValidator implements InitializingBean {
         validateLockOutlivesTheRun(properties);
         validateExactlyOneCredentialSource(properties);
         validateThePayloadSourceCanFetch(properties);
+        validateTheSubscriptionsSourceCanFetch(properties);
         validateTheRetryPolicyCanPost(properties);
+    }
+
+    /**
+     * The now-subscriptions source must be one that can actually reach reference data.
+     *
+     * <p>The same class of hole the payload rules close, on the port that decides who a register is
+     * addressed to. A live source with no endpoint or no identity is a pod that abandons, redelivers
+     * and finally parks every hearing that produced a register, while readiness, liveness and the
+     * queue's own metrics all say the deployment succeeded — and unlike the payload case, nothing
+     * downstream ever gets far enough to notice.
+     *
+     * <p>Each rule is asked of the source actually selected. The endpoint, the identity and the retry
+     * settings belong to the live adapter and {@code STUB} builds none of them
+     * ({@link LiveSubscriptionsConfig}, {@link StubSubscriptionsConfig}), so holding a stub run to
+     * settings nothing will read would fail a local run configured exactly as it means to be.
+     */
+    private static void validateTheSubscriptionsSourceCanFetch(
+            final InformantRegisterProperties properties) {
+
+        final InformantRegisterProperties.Referencedata referencedata = properties.referencedata();
+        if (referencedata.mode() == SubscriptionsSourceMode.STUB) {
+            validateTheRefusingStubIsNotDeployed(properties);
+        } else {
+            validateTheLiveSourceCanAskReferenceData(referencedata);
+            validateTheSubscriptionsReadIsAttempted(referencedata);
+        }
+    }
+
+    /**
+     * Constitution Principle V, the same rule {@link #validateTheStubIsNotDeployed} applies to the
+     * payload stub. This one fails loudly rather than quietly — a refusal is recorded and the
+     * delivery handed back — but a deployed pod running it can never address a register at all, so
+     * every hearing that produces one is parked for ever.
+     */
+    private static void validateTheRefusingStubIsNotDeployed(
+            final InformantRegisterProperties properties) {
+        if (hasText(properties.servicebus().namespace())) {
+            throw new IllegalStateException(
+                    SUBSCRIPTIONS_MODE + " is STUB while " + NAMESPACE + " is set, which is a"
+                            + " deployed environment — the stub asks reference data nothing, so every"
+                            + " hearing that produced a register would be parked unaddressed");
+        }
+    }
+
+    /**
+     * A query needs somewhere to go and somebody to be from.
+     *
+     * <p>{@code CJSCPPUID} is part of the reference-data query's own contract and its access-control
+     * rules authorise on it, so an anonymous query is a refused query — every time, for ever.
+     */
+    private static void validateTheLiveSourceCanAskReferenceData(
+            final InformantRegisterProperties.Referencedata referencedata) {
+        if (!hasText(referencedata.baseUrl())) {
+            throw new IllegalStateException(
+                    REFDATA_BASE_URL + " must name the reference-data context when "
+                            + SUBSCRIPTIONS_MODE + " is LIVE, because the now-subscriptions query has"
+                            + " nowhere to go without it");
+        }
+        if (!hasText(referencedata.systemUserId())) {
+            throw new IllegalStateException(
+                    REFDATA_SYSTEM_USER_ID + " must be set when " + SUBSCRIPTIONS_MODE + " is LIVE,"
+                            + " because reference data authorises the now-subscriptions query on"
+                            + " CJSCPPUID and refuses an anonymous one");
+        }
+    }
+
+    private static void validateTheSubscriptionsReadIsAttempted(
+            final InformantRegisterProperties.Referencedata referencedata) {
+        if (referencedata.maxAttempts() < MINIMUM_ATTEMPTS) {
+            throw new IllegalStateException(
+                    REFDATA_MAX_ATTEMPTS + " (" + referencedata.maxAttempts() + ") must be at least "
+                            + MINIMUM_ATTEMPTS + " — at zero the query is never made and every"
+                            + " hearing that produced a register is parked having asked nobody");
+        }
+        if (referencedata.retryInterval().isNegative()) {
+            throw new IllegalStateException(
+                    REFDATA_RETRY_INTERVAL + " (" + referencedata.retryInterval()
+                            + ") must not be negative");
+        }
+        requirePositive(referencedata.connectTimeout(), REFDATA + ".connect-timeout");
+        requirePositive(referencedata.readTimeout(), REFDATA + ".read-timeout");
     }
 
     private static void validateRunFinishesBeforeTheClaimExpires(

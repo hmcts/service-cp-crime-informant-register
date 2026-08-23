@@ -7,7 +7,6 @@ import org.springframework.context.annotation.Profile;
 import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.adapter.results.ResultsCommandGateway;
 import uk.gov.hmcts.cp.informantregister.adapter.results.ResultsRegisterSubmissionClient;
-import uk.gov.hmcts.cp.informantregister.adapter.stub.RefusingNowSubscriptionsSource;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.application.HearingPayloadSource;
 import uk.gov.hmcts.cp.informantregister.application.IdempotencyGuard;
@@ -28,10 +27,11 @@ import uk.gov.hmcts.cp.informantregister.pipeline.SubscriptionRules;
  *
  * <p>Every bean here is declared as its port type rather than as its own class, so replacing an
  * adapter is a change to one method here and to nothing else. That is the claim the skeleton made,
- * and both ports have now been through it: the payload adapter moved out to
- * {@link LivePayloadConfig} and {@link StubPayloadConfig}, which choose between two implementations,
- * and the submission stub was replaced by the Results adapter — with nothing in
- * {@link DistributionPipeline} changed to allow either.
+ * and every port has now been through it: the payload adapter moved out to
+ * {@link LivePayloadConfig} and {@link StubPayloadConfig}, the subscriptions adapter to
+ * {@link LiveSubscriptionsConfig} and {@link StubSubscriptionsConfig} — each pair choosing between
+ * two implementations — and the submission stub was replaced by the Results adapter, with nothing in
+ * {@link DistributionPipeline} changed to allow any of it.
  *
  * <p>Excluded from the {@code test} profile for the same reason as the processed-log wiring: the
  * pipeline needs the guard, the guard needs a store, and that profile has none.
@@ -87,18 +87,6 @@ public class PipelineConfig {
             final ResultsCommandGateway gateway,
             final ObjectMapper objectMapper) {
         return new ResultsRegisterSubmissionClient(outputs, gateway, objectMapper);
-    }
-
-    /**
-     * Where the register's recipients come from.
-     *
-     * <p>The reference-data adapter is a later story, so the port is served by the one answer that
-     * cannot lose a register: a refusal. See {@link RefusingNowSubscriptionsSource} for why an empty
-     * answer would be the dangerous stub here and a refusal is the safe one.
-     */
-    @Bean
-    public NowSubscriptionsSource nowSubscriptionsSource() {
-        return new RefusingNowSubscriptionsSource();
     }
 
     /**

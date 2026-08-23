@@ -304,7 +304,10 @@ class TelemetryPrivacyTest {
                                 Duration.ofSeconds(5), Duration.ofSeconds(30))),
                 new InformantRegisterProperties.Results(
                         "http://localhost:8080", null, null, 4, Duration.ofMillis(500),
-                        Duration.ofSeconds(20), Duration.ofSeconds(5), Duration.ofSeconds(30)));
+                        Duration.ofSeconds(20), Duration.ofSeconds(5), Duration.ofSeconds(30)),
+                new InformantRegisterProperties.Referencedata(
+                        SubscriptionsSourceMode.STUB, "http://localhost:8080", null, null, 3,
+                        Duration.ofSeconds(1), Duration.ofSeconds(5), Duration.ofSeconds(30)));
     }
 
     // --- the configuration that makes correlation reach the index ---------------------------------
