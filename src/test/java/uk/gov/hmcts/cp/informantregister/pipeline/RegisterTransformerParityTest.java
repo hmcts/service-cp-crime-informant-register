@@ -18,6 +18,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.application.NowSubscriptionsSource;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
+import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDocument;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.ReferenceDataUnavailableException;
@@ -249,7 +250,8 @@ class RegisterTransformerParityTest {
                 new AggregationMapper(dates),
                 sourceFor(parityCase, answer));
         try {
-            return new Outcome(chain.transform(parityCase.hearing(), parityCase.sharedTime()), null);
+            return new Outcome(chain.transform(
+                    parityCase.hearing(), parityCase.sharedTime(), CallerIdentity.SYSTEM), null);
         } catch (TransformationFailedException | ReferenceDataUnavailableException classified) {
             return new Outcome(null, classified);
         }
@@ -271,7 +273,7 @@ class RegisterTransformerParityTest {
             final ParityCase parityCase, final JsonNode answer) {
 
         if (parityCase.refdata() == ParityCase.RefdataAnswer.REJECT) {
-            return on -> {
+            return (on, identity) -> {
                 throw new ReferenceDataUnavailableException(ReasonCode.REFERENCE_DATA_UNAVAILABLE);
             };
         }
@@ -283,7 +285,7 @@ class RegisterTransformerParityTest {
             implements NowSubscriptionsSource {
 
         @Override
-        public JsonNode fetch(final LocalDate on) {
+        public JsonNode fetch(final LocalDate on, final CallerIdentity identity) {
             final String recorded = parityCase.recordedRefdataQueryDate();
             if (recorded != null) {
                 assertThat(on)

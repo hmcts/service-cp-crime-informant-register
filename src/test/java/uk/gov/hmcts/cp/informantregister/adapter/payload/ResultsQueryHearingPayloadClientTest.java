@@ -54,6 +54,9 @@ class ResultsQueryHearingPayloadClientTest {
             "/results-query-api/query/api/rest/results/hearingDetails/internal/" + HEARING_ID;
     private static final String SYSTEM_USER_ID = "9f61bdbb-6f1a-4c0f-9a3d-6b8f0f1c2a44";
 
+    /** The user a message names, distinct from the configured identity so the two cannot be confused. */
+    private static final String SHARING_USER = "0b7a5c2e-4d19-4a6b-8c30-9e1f5d7b2a48";
+
     /** Stands in for the defendant detail a truncated response would have the parser quote back. */
     private static final String DEFENDANT_MARKER = "DEFENDANTMARKERZQX7";
     private static final String PAYLOAD = """
@@ -110,6 +113,19 @@ class ResultsQueryHearingPayloadClientTest {
                 "Hearing_Resulted");
     }
 
+    /** The same request, published by a producer that named the user who shared the results. */
+    private static DistributionCommand commandNaming(final String userId) {
+        final DistributionCommand base = command();
+        return new DistributionCommand(
+                base.source(),
+                base.requestId(),
+                base.hearingId(),
+                base.hearingDay(),
+                base.sharedTime(),
+                base.eventType(),
+                Optional.of(UUID.fromString(userId)));
+    }
+
     private static void respondWith(final int status, final String body) {
         server.stubFor(get(urlEqualTo(PATH))
                 .willReturn(aResponse().withStatus(status)
@@ -148,6 +164,40 @@ class ResultsQueryHearingPayloadClientTest {
 
             server.verify(getRequestedFor(urlEqualTo(PATH))
                     .withHeader("CJSCPPUID", equalTo(SYSTEM_USER_ID)));
+        }
+
+        @Test
+        void fetch_should_read_as_the_user_the_message_names() {
+            // The legacy reads the payload as `cjscppuid`, which the trigger copied from the
+            // envelope's userId (HearingResultedCacheQuery/index.js:40,
+            // InformantRegisterOrchestrator/index.js:13). A message naming a user is read as that
+            // user, not as the service.
+            respondWith(200, PAYLOAD);
+
+            client.fetch(commandNaming(SHARING_USER));
+
+            server.verify(getRequestedFor(urlEqualTo(PATH))
+                    .withHeader("CJSCPPUID", equalTo(SHARING_USER)));
+        }
+
+        @Test
+        void fetch_should_read_as_the_configured_identity_when_the_message_names_nobody() {
+            respondWith(200, PAYLOAD);
+
+            client.fetch(command());
+
+            server.verify(getRequestedFor(urlEqualTo(PATH))
+                    .withHeader("CJSCPPUID", equalTo(SYSTEM_USER_ID)));
+        }
+
+        @Test
+        void fetch_should_keep_the_identity_out_of_the_path_it_calls() {
+            respondWith(200, PAYLOAD);
+
+            client.fetch(commandNaming(SHARING_USER));
+
+            assertThat(server.findAll(getRequestedFor(urlEqualTo(PATH))).get(0).getUrl())
+                    .doesNotContain(SHARING_USER);
         }
     }
 
@@ -369,6 +419,20 @@ class ResultsQueryHearingPayloadClientTest {
 
             assertThat(clientFor(null).fetch(command())).isEmpty();
             server.verify(0, getRequestedFor(urlEqualTo(PATH)));
+        }
+
+        /**
+         * The guard is on the identity the call would actually be made with, not on the setting. A
+         * message that names its own user has one whether or not the fallback is configured, and
+         * refusing to read for a hearing that could have been read would lose it.
+         */
+        @Test
+        void fetch_should_still_call_the_query_side_when_the_message_names_a_user() {
+            respondWith(200, PAYLOAD);
+
+            assertThat(clientFor(null).fetch(commandNaming(SHARING_USER))).isPresent();
+            server.verify(getRequestedFor(urlEqualTo(PATH))
+                    .withHeader("CJSCPPUID", equalTo(SHARING_USER)));
         }
     }
 }

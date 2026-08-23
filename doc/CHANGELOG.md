@@ -7,6 +7,62 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
+- 2026-08-23 — **Downstream calls are attributed to the user who shared the results again.** The
+  legacy threads the hearing-resulted envelope's `userId` into the orchestration as `cjscppuid`
+  (`InformantRegisterEventGridTrigger/index.js:15`) and gives that one value to all three of a run's
+  outward calls (`InformantRegisterOrchestrator/index.js:13,31,46`): the payload read, the
+  now-subscriptions read (`ReferenceDataService.js:44`) and the `add-informant-register` POST
+  (`ProcessOutboundInformantRegister/index.js:21`). The thin queue message dropped it, so the port
+  had been calling under its own name. It no longer does.
+  - **Contract.** `userId` is added to `distribution-command.schema.json` as an **optional**
+    `uuid`; `additionalProperties` stays `false` and the required set is unchanged. Optional
+    because a replay that does not carry the original body names no user — one rebuilt by hand, or
+    one re-sent deliberately without the field — and transition-window producers send none; a
+    required field would dead-letter both. A `userId` that *is* present
+    must be a canonical UUID: anything else, an explicit `null` included, is a contract violation
+    and dead-letters with a bounded reason that never quotes the value.
+  - **Threading.** `CallerIdentity` is resolved once per run from the command and handed to the
+    transformation and to every submission; the payload adapter reads it from the same command.
+    Each client falls back to its own configured system identity
+    (`informantregister.results.system-user-id`,
+    `informantregister.referencedata.system-user-id`) when the message names nobody, so an
+    environment that mounts one identity is still not asked for a second.
+  - **Not logged, not fingerprinted.** The identity leaves the service in `CJSCPPUID` and nowhere
+    else — no path, query, body or log line — and it is deliberately absent from
+    `RequestFingerprint`, so a replay of an attributed request is the same unit of work rather than
+    an idempotency collision.
+  - **Rollout order.** The consumer ships first: a closed contract rejects an unknown field, so
+    `cpp-context-results` must not send `userId` until this version is live in the target
+    environment.
+  - Restoring legacy behaviour needs no deviation entry; the one residue does. Deviations register
+    **#16**: a message that names *no* user runs under the system identity, where the legacy passed
+    the envelope's `userId` through whatever it was.
+  - Agreed by the owner of both sides — publisher and consumer are the same team —
+    **project-owner decision, 2026-08-23**.
+  - **Post-review hardening.** Two assertions the change had been relying on prose for. A body whose
+    optional `userId` is present but not a canonical uuid now joins the dead-letter corpus in
+    `ContractValidationDeadLetterIT`, so "optional field, non-optional shape" is proven end to end
+    on a real broker rather than at the parser alone. And `TelemetryPrivacyTest` now drives a run
+    that names a user and asserts that identity appears in no captured line at any level —
+    `CallerIdentity` said of itself that it is never logged, and that was a comment until now. The
+    publisher side gained the matching guarantee: `RESULTS` parses the envelope's metadata `userId`
+    before publishing, so a malformed value fails there, the way the Event Grid leg already fails
+    it, instead of being published as a message that could only dead-letter here.
+  - **A replay keeps the user it carries** — project-owner decision, 2026-08-23, "implement option
+    1". The replay procedure already requires the dead-lettered body to be re-sent verbatim under a
+    fresh `messageId`, and attribution is read from the message and nowhere else, so a replay that
+    follows it runs as the original sharing user with nothing persisted and nothing for an operator
+    to remember. Verbatim is a documented requirement on the replay, not something this service can
+    check: a replay that does not carry the original body simply names no user and runs as the
+    system. Persisting the user in the processed log to attribute a replay (option
+    2) was rejected: it stores PII the service has no other need for. Deviation **#16** is narrowed
+    to what is actually left — a message carrying no user at all, which is a transition-window
+    message, a replay hand-built without the original body, or the deliberate escape hatch of
+    re-sending *without* `userId` when the original user has been deactivated and their identity
+    would now be refused. The replay procedure in `doc/API_CONTRACTS.md` and `doc/TECHNICAL_DESIGN.md`
+    now says so, because "verbatim" became load-bearing the moment the body carried an identity.
+    Pinned by `FailedReplayIT.ReplayAttribution`, which parks a request through all five deliveries
+    and replays it both ways against the real store.
 - 2026-08-23 — **`hearingStartTime` now says which hour of the day it means.** The one sanctioned
   departure from bug-for-bug parity in the transformation, taken as a project-owner decision:
   "for time lets use visually correct and semantically correct value - 14:30:00+01:00".

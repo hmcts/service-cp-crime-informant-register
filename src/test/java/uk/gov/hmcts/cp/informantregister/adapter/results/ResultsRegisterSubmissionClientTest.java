@@ -16,6 +16,7 @@ import java.security.MessageDigest;
 import java.time.ZonedDateTime;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -28,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
 import uk.gov.hmcts.cp.informantregister.domain.AuthoritySubmission;
+import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.FailureClassification;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDefendant;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDocument;
@@ -73,6 +75,10 @@ class ResultsRegisterSubmissionClientTest {
     private static final String AUTHORITY = "3f4a2b1c-5d6e-4f70-8912-a3b4c5d6e7f8";
     private static final String DEFENDANT_NAME = "SMITH, John";
 
+    /** The run's caller, carried on the submission and handed to the transport unchanged. */
+    private static final CallerIdentity IDENTITY = new CallerIdentity(
+            Optional.of(UUID.fromString("0b7a5c2e-4d19-4a6b-8c30-9e1f5d7b2a48")));
+
     @Mock
     private ProcessedOutputRepository outputs;
 
@@ -86,7 +92,7 @@ class ResultsRegisterSubmissionClientTest {
     }
 
     private AuthoritySubmission submission() {
-        return new AuthoritySubmission(SOURCE, requestId, AUTHORITY, document());
+        return new AuthoritySubmission(SOURCE, requestId, AUTHORITY, document(), IDENTITY);
     }
 
     @Nested
@@ -103,7 +109,7 @@ class ResultsRegisterSubmissionClientTest {
 
             final InOrder order = inOrder(outputs, gateway);
             order.verify(outputs).claimPending(any(), eq(SOURCE), eq(requestId), eq(AUTHORITY), anyString());
-            order.verify(gateway).post(any(byte[].class));
+            order.verify(gateway).post(any(byte[].class), any(CallerIdentity.class));
             order.verify(outputs).recordPosted(SOURCE, requestId, AUTHORITY);
             order.verifyNoMoreInteractions();
         }
@@ -117,9 +123,42 @@ class ResultsRegisterSubmissionClientTest {
 
             client().submit(submission());
 
-            verify(gateway).post(sent.capture());
+            verify(gateway).post(sent.capture(), any());
             assertThat(new String(sent.getValue(), StandardCharsets.UTF_8))
                     .isEqualTo(MAPPER.writeValueAsString(document()));
+        }
+
+        @Test
+        void the_caller_posted_as_should_be_the_one_the_submission_carries() {
+            // The adapter resolves no identity of its own. The run decided who it is made as, once,
+            // and this leg passes it through — which is what makes every authority of a run go out
+            // under the same caller, as `ProcessOutboundInformantRegister/index.js:21` does.
+            when(outputs.claimPending(any(), anyString(), any(), anyString(), anyString()))
+                    .thenReturn(true);
+            when(outputs.recordPosted(SOURCE, requestId, AUTHORITY)).thenReturn(true);
+            final ArgumentCaptor<CallerIdentity> caller =
+                    ArgumentCaptor.forClass(CallerIdentity.class);
+
+            client().submit(submission());
+
+            verify(gateway).post(any(), caller.capture());
+            assertThat(caller.getValue()).isEqualTo(IDENTITY);
+        }
+
+        @Test
+        void the_identity_should_never_reach_a_log_line() {
+            // A user identifier at info level is the no-PII gate's business, and this leg logs one
+            // line per authority on the happy path.
+            when(outputs.claimPending(any(), anyString(), any(), anyString(), anyString()))
+                    .thenReturn(true);
+            when(outputs.recordPosted(SOURCE, requestId, AUTHORITY)).thenReturn(true);
+
+            try (CapturedLog log = CapturedLog.of(ResultsRegisterSubmissionClient.class)) {
+                client().submit(submission());
+
+                assertThat(log.renderings())
+                        .noneMatch(line -> line.contains(IDENTITY.userId().orElseThrow().toString()));
+            }
         }
 
         @Test
@@ -133,7 +172,7 @@ class ResultsRegisterSubmissionClientTest {
             client().submit(submission());
 
             verify(outputs).claimPending(any(), anyString(), any(), anyString(), digest.capture());
-            verify(gateway).post(sent.capture());
+            verify(gateway).post(sent.capture(), any());
             assertThat(digest.getValue()).isEqualTo(sha256(sent.getValue()));
         }
     }
@@ -149,7 +188,7 @@ class ResultsRegisterSubmissionClientTest {
 
             client().submit(submission());
 
-            verify(gateway, never()).post(any());
+            verify(gateway, never()).post(any(), any());
             verify(outputs, never()).recordPosted(anyString(), any(), anyString());
             verify(outputs, never()).recordFailed(anyString(), any(), anyString());
         }
@@ -166,7 +205,7 @@ class ResultsRegisterSubmissionClientTest {
             when(outputs.recordFailed(SOURCE, requestId, AUTHORITY)).thenReturn(true);
             doThrow(new SubmissionFailedException(
                     FailureClassification.TRANSIENT, ReasonCode.PIPELINE_TRANSIENT_FAILURE))
-                    .when(gateway).post(any());
+                    .when(gateway).post(any(), any());
 
             assertThatThrownBy(() -> client().submit(submission()))
                     .isInstanceOf(SubmissionFailedException.class)
@@ -174,7 +213,7 @@ class ResultsRegisterSubmissionClientTest {
                     .isEqualTo(FailureClassification.TRANSIENT);
 
             final InOrder order = inOrder(gateway, outputs);
-            order.verify(gateway).post(any());
+            order.verify(gateway).post(any(), any());
             order.verify(outputs).recordFailed(SOURCE, requestId, AUTHORITY);
             verify(outputs, never()).recordPosted(anyString(), any(), anyString());
         }
@@ -186,7 +225,7 @@ class ResultsRegisterSubmissionClientTest {
             when(outputs.recordFailed(SOURCE, requestId, AUTHORITY)).thenReturn(true);
             doThrow(new SubmissionFailedException(
                     FailureClassification.NON_TRANSIENT, ReasonCode.SUBMISSION_REJECTED))
-                    .when(gateway).post(any());
+                    .when(gateway).post(any(), any());
 
             assertThatThrownBy(() -> client().submit(submission()))
                     .isInstanceOf(SubmissionFailedException.class)
@@ -231,7 +270,7 @@ class ResultsRegisterSubmissionClientTest {
             when(outputs.recordFailed(SOURCE, requestId, AUTHORITY)).thenReturn(false);
             doThrow(new SubmissionFailedException(
                     FailureClassification.NON_TRANSIENT, ReasonCode.SUBMISSION_REJECTED))
-                    .when(gateway).post(any());
+                    .when(gateway).post(any(), any());
 
             try (CapturedLog log = CapturedLog.of(ResultsRegisterSubmissionClient.class)) {
                 assertThatThrownBy(() -> client().submit(submission()))

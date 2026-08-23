@@ -2,6 +2,7 @@ package uk.gov.hmcts.cp.informantregister.application;
 
 import java.time.LocalDate;
 import tools.jackson.databind.JsonNode;
+import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.ReferenceDataUnavailableException;
 
 /**
@@ -51,10 +52,20 @@ public interface NowSubscriptionsSource {
     /**
      * Fetches the now-subscriptions body for a given day.
      *
-     * @param on the day the query is dated with — {@code ReferenceDataService.js:38} derives it from
-     *           the register date as {@code new Date(registerDate).toISOString().slice(0, 10)}
+     * <p>The identity travels with the call because reference data authorises on it and the legacy
+     * makes this call as the user who shared the results
+     * ({@code ReferenceDataService.js:44}, whose {@code input.cjscppuid} is the orchestration input
+     * threaded from the trigger). It is the run's identity, not the adapter's, so it is a parameter
+     * rather than something the adapter holds — an adapter that resolved it for itself could make
+     * this call as one user and the POST as another.
+     *
+     * @param on       the day the query is dated with — {@code ReferenceDataService.js:38} derives it
+     *                 from the register date as
+     *                 {@code new Date(registerDate).toISOString().slice(0, 10)}
+     * @param identity who the read is made as; the adapter falls back to its configured system
+     *                 identity when the run names no user
      * @return the now-subscriptions body, or {@code null} when reference data answered with none
      * @throws ReferenceDataUnavailableException if reference data could not be asked
      */
-    JsonNode fetch(LocalDate on);
+    JsonNode fetch(LocalDate on, CallerIdentity identity);
 }

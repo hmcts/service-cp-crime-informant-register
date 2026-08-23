@@ -46,7 +46,7 @@ import static org.awaitility.Awaitility.await;
  * the message eventually reaches the dead-letter queue under the <em>broker's</em> reason rather than
  * this service's, with nothing recorded about what was actually wrong with it.
  *
- * <p>Four bodies, one per failure class the closed contract recognises. Each is asserted on four
+ * <p>Five bodies, one per failure class the closed contract recognises. Each is asserted on four
  * counts:
  *
  * <ul>
@@ -133,6 +133,7 @@ class ContractValidationDeadLetterIT {
         final UUID missingField = UUID.randomUUID();
         final UUID unknownField = UUID.randomUUID();
         final UUID badEnum = UUID.randomUUID();
+        final UUID badOptional = UUID.randomUUID();
         return Stream.of(
                 new Invalid("a body that is not JSON at all", "not json at all", null),
                 new Invalid("a body missing a required field", """
@@ -164,7 +165,24 @@ class ContractValidationDeadLetterIT {
                           "sharedTime": "2026-08-21T08:00:00Z",
                           "eventType": "SJP_Resulted"
                         }
-                        """.formatted(badEnum, UUID.randomUUID()), badEnum));
+                        """.formatted(badEnum, UUID.randomUUID()), badEnum),
+                // Optional means the property may be absent, and nothing more. A userId that IS
+                // there is held to the shape the schema types it as, because the value becomes the
+                // CJSCPPUID every downstream call for this message is made under: accepted here, it
+                // would be refused at Results instead, one hearing at a time, with nothing saying
+                // why. Parked under the same reason as any other contract violation - the field is
+                // optional, its shape is not.
+                new Invalid("a body whose optional userId is present but not a canonical uuid", """
+                        {
+                          "source": "RESULTS",
+                          "requestId": "%s",
+                          "hearingId": "%s",
+                          "hearingDay": "2026-08-21",
+                          "sharedTime": "2026-08-21T08:00:00Z",
+                          "eventType": "Hearing_Resulted",
+                          "userId": "not-a-uuid"
+                        }
+                        """.formatted(badOptional, UUID.randomUUID()), badOptional));
     }
 
     // --- helpers ---------------------------------------------------------------------------

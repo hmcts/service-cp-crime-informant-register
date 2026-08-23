@@ -13,6 +13,7 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.application.NowSubscriptionsSource;
+import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.ReferenceDataUnavailableException;
 
@@ -128,11 +129,14 @@ public class ReferenceDataNowSubscriptionsClient implements NowSubscriptionsSour
      * a failure — that substitution is the defect entry 14 records.
      */
     @Override
-    public JsonNode fetch(final LocalDate on) {
+    public JsonNode fetch(final LocalDate on, final CallerIdentity identity) {
+        // Resolved once, outside the retry loop: every attempt at this read is made as the same
+        // caller, exactly as the legacy's one `input.cjscppuid` is.
+        final String caller = identity.orSystem(systemUserId);
         for (int attemptsLeft = maxAttempts; attemptsLeft > 0; attemptsLeft--) {
             final boolean lastAttempt = attemptsLeft <= LAST_ATTEMPT;
             try {
-                return content(get(on));
+                return content(get(on, caller));
             } catch (RestClientResponseException answered) {
                 final int status = answered.getStatusCode().value();
                 if (lastAttempt || status <= LEGACY_RETRY_CUT_OFF) {
@@ -161,6 +165,13 @@ public class ReferenceDataNowSubscriptionsClient implements NowSubscriptionsSour
     /**
      * Issues the read. Kept apart so the retry loop above reads as the rule it ports.
      *
+     * <p>The identity sent is the run's caller: the user who shared the results where the message
+     * named one, and this client's configured system identity otherwise. That is the legacy's own
+     * rule — {@code ReferenceDataService.js:44} sends {@code input.cjscppuid}, which the trigger
+     * copied from the envelope's {@code userId} — and it is resolved by the caller of this class
+     * once per run, so this read and the {@code add-informant-register} POST cannot disagree about
+     * who made them.
+     *
      * <p>The two contract headers are <em>set</em>, and set after the configured extras, so a mesh
      * header configured under the name {@code Accept} or {@code CJSCPPUID} replaces them rather than
      * joining them. Appending would send two values of one header, which is a 406 from a service
@@ -175,13 +186,13 @@ public class ReferenceDataNowSubscriptionsClient implements NowSubscriptionsSour
      * A register addressed to nobody on the strength of a status nobody read is precisely the silent
      * loss {@code doc/DEVIATIONS.md} entry 14 exists to end.
      */
-    private String get(final LocalDate on) {
+    private String get(final LocalDate on, final String caller) {
         return restClient.get()
                 .uri(uri -> uri.path(PATH).queryParam(ON, on).build())
                 .headers(headers -> {
                     extraHeaders.forEach(headers::add);
                     headers.set(HttpHeaders.ACCEPT, ACCEPT);
-                    headers.set(IDENTITY_HEADER, systemUserId);
+                    headers.set(IDENTITY_HEADER, caller);
                 })
                 .retrieve()
                 .onStatus(status -> !status.is2xxSuccessful(), (request, response) -> {

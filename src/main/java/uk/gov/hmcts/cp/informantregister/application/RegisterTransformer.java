@@ -2,6 +2,7 @@ package uk.gov.hmcts.cp.informantregister.application;
 
 import java.util.List;
 import tools.jackson.databind.JsonNode;
+import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDocument;
 import uk.gov.hmcts.cp.informantregister.domain.ReferenceDataUnavailableException;
 import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
@@ -29,6 +30,9 @@ public interface RegisterTransformer {
      * @param hearing    the canonical hearing tree, read and never written
      * @param sharedTime the instant the hearing results were shared, as the wire carried it; may be
      *                   {@code null}, which the legacy resolves against the wall clock
+     * @param identity   who the run is made as, carried through to the one call the transformation
+     *                   makes outwards — the now-subscriptions read, which the legacy makes as the
+     *                   sharing user ({@code ReferenceDataService.js:44})
      * @return one document per authority, in the order the legacy produces them; empty when the
      *         hearing has no register in it
      * @throws TransformationFailedException      where the legacy raises an error it then swallows —
@@ -37,5 +41,6 @@ public interface RegisterTransformer {
      * @throws ReferenceDataUnavailableException  when the subscriptions the register is addressed
      *                                            with cannot be obtained — transient
      */
-    List<InformantRegisterDocument> transform(JsonNode hearing, String sharedTime);
+    List<InformantRegisterDocument> transform(
+            JsonNode hearing, String sharedTime, CallerIdentity identity);
 }

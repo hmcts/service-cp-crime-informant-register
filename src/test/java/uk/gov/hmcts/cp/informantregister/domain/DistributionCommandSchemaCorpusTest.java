@@ -58,6 +58,17 @@ class DistributionCommandSchemaCorpusTest {
 
     private static final String CANONICAL_REQUEST_ID = "\"3f4a2b1c-5d6e-4f70-8912-a3b4c5d6e7f8\"";
     private static final String CANONICAL_HEARING_ID = "\"11111111-2222-4333-8444-555555555555\"";
+    private static final String CANONICAL_USER_ID = "\"0b7a5c2e-4d19-4a6b-8c30-9e1f5d7b2a48\"";
+
+    /**
+     * The one declared property the contract does not require.
+     *
+     * <p>Named once, here, so every assertion below that has to treat it differently says why in the
+     * same terms: a message may legitimately carry no user — a replay that does not carry the
+     * original body names none, and neither does a producer build from before the field existed — so
+     * absent is valid and the service falls back to its configured system identity.
+     */
+    private static final String OPTIONAL_FIELD = "userId";
 
     // --- fixture plumbing ------------------------------------------------------------------
 
@@ -199,6 +210,29 @@ class DistributionCommandSchemaCorpusTest {
                 accepted("lower-case zulu designator",
                         bodyWith("sharedTime", "\"2026-08-20T09:00:00z\"")),
                 accepted("leap day in a leap year", bodyWith("hearingDay", "\"2024-02-29\"")),
+
+                // --- accepted: the optional user, present and absent ---------------------
+                // The canonical body above is already the absent case, which is what the transition
+                // window and every replayed message look like. Both shapes are contract-valid, and a
+                // producer that starts sending the field must not need this consumer redeployed.
+                accepted("body carrying the sharing user", bodyWith(OPTIONAL_FIELD, CANONICAL_USER_ID)),
+                accepted("body carrying an uppercase-hex user",
+                        bodyWith(OPTIONAL_FIELD, CANONICAL_USER_ID.toUpperCase(java.util.Locale.ROOT))),
+
+                // --- rejected: a user that could not be an identity ----------------------
+                // Optional means "may be absent", never "may be anything". A value that is not an
+                // identity must not be sent as one, so it dead-letters like any other violation.
+                rejected("user that is not a UUID", bodyWith(OPTIONAL_FIELD, "\"not-a-uuid\"")),
+                rejected("braced user", bodyWith(OPTIONAL_FIELD,
+                        "\"{0b7a5c2e-4d19-4a6b-8c30-9e1f5d7b2a48}\"")),
+                rejected("unhyphenated user",
+                        bodyWith(OPTIONAL_FIELD, "\"0b7a5c2e4d194a6b8c309e1f5d7b2a48\"")),
+                rejected("empty user", bodyWith(OPTIONAL_FIELD, "\"\"")),
+                // An explicit null is not the same as saying nothing: the property is present and
+                // typed `string`, so the schema refuses it and so must the parser. Absence is the
+                // only way to say "no user".
+                rejected("null user", bodyWith(OPTIONAL_FIELD, "null")),
+                rejected("user as a number", bodyWith(OPTIONAL_FIELD, "42")),
 
                 // --- rejected: dates that do not exist ----------------------------------
                 rejected("day beyond the month's length", bodyWith("hearingDay", "\"2026-02-30\"")),
@@ -393,8 +427,14 @@ class DistributionCommandSchemaCorpusTest {
         assertAgreement(bodyWithout(field), false);
     }
 
-    private static final List<String> AGREED_FIELDS = List.of(
+    /** The six the contract requires of every message. */
+    private static final List<String> REQUIRED_FIELDS = List.of(
             "source", "requestId", "hearingId", "hearingDay", "sharedTime", "eventType");
+
+    /** The seven the contract declares: the six required, plus the optional sharing user. */
+    private static final List<String> AGREED_FIELDS = List.of(
+            "source", "requestId", "hearingId", "hearingDay", "sharedTime", "eventType",
+            OPTIONAL_FIELD);
 
     private static List<String> declaredPropertyNames() {
         return List.copyOf(SCHEMA_DOCUMENT.get("properties").propertyNames());
@@ -405,16 +445,16 @@ class DistributionCommandSchemaCorpusTest {
     }
 
     @Test
-    @DisplayName("the schema declares exactly the six agreed fields as required")
+    @DisplayName("the schema requires exactly the six agreed fields")
     void the_schema_should_require_the_six_agreed_fields() {
-        assertThat(requiredFieldNames()).containsExactlyInAnyOrder(AGREED_FIELDS.toArray(new String[0]));
+        assertThat(requiredFieldNames()).containsExactlyInAnyOrder(REQUIRED_FIELDS.toArray(new String[0]));
     }
 
     @Test
-    @DisplayName("the schema declares exactly the six agreed fields, and no seventh")
-    void the_schema_should_declare_no_property_beyond_the_six() {
-        // Without this, a seventh property added to the schema as optional would sail through: the
-        // required-field assertions would not notice it, and the corpus only knows the unknown-field
+    @DisplayName("the schema declares exactly the agreed fields, and no eighth")
+    void the_schema_should_declare_no_property_beyond_the_agreed_set() {
+        // Without this, a property added to the schema would sail through: the required-field
+        // assertions would not notice an optional one, and the corpus only knows the unknown-field
         // names it was written with. The parser would reject a body carrying it while the schema
         // accepted one — a silent divergence, which is the exact failure this suite exists to stop.
         assertThat(declaredPropertyNames()).containsExactlyInAnyOrder(AGREED_FIELDS.toArray(new String[0]));
@@ -422,11 +462,33 @@ class DistributionCommandSchemaCorpusTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("declaredProperties")
-    @DisplayName("every property the schema declares is also required by it")
+    @DisplayName("every property the schema declares is required by it, bar the one agreed optional")
     void a_declared_property_should_also_be_required(final String field) {
+        // The exemption is a list of one and is written down as such. An optional property is a
+        // property the parser could reject while the schema accepted it, so each one has to be
+        // taught to the parser deliberately — which is what the absence cases below assert.
+        if (!OPTIONAL_FIELD.equals(field)) {
+            assertThat(requiredFieldNames())
+                    .as("an optional property is a property the parser would reject and the schema "
+                            + "accept, unless it is the agreed optional one")
+                    .contains(field);
+        }
+    }
+
+    @Test
+    @DisplayName("the one optional property is the agreed one, and it really is optional")
+    void the_optional_property_should_be_the_agreed_one_and_should_be_accepted_either_way() {
+        assertThat(declaredPropertyNames())
+                .as("the optional property must actually be declared, or nothing below tests it")
+                .contains(OPTIONAL_FIELD);
         assertThat(requiredFieldNames())
-                .as("an optional property is a property the parser would reject and the schema accept")
-                .contains(field);
+                .as("the sharing user is optional: a replay without the original body and a "
+                        + "transition-window producer carry none, and a required field would "
+                        + "dead-letter both")
+                .doesNotContain(OPTIONAL_FIELD);
+
+        assertAgreement(bodyWithout(OPTIONAL_FIELD), true);
+        assertAgreement(bodyWith(OPTIONAL_FIELD, CANONICAL_USER_ID), true);
     }
 
     @ParameterizedTest(name = "{0}")
@@ -435,8 +497,10 @@ class DistributionCommandSchemaCorpusTest {
     void a_declared_property_holding_a_wrong_typed_value_should_be_rejected_by_both(final String field) {
         // Drives each declared property through both validators by name rather than by a
         // hand-written list, so a property added to the schema is exercised the moment it appears.
+        // A wrong-typed value is refused whatever the property; an absent one is refused only where
+        // the contract requires the property.
         assertAgreement(bodyWith(field, "{}"), false);
-        assertAgreement(bodyWithout(field), false);
+        assertAgreement(bodyWithout(field), !REQUIRED_FIELDS.contains(field));
     }
 
     @Test

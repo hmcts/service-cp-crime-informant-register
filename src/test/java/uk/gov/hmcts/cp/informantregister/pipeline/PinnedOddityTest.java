@@ -14,6 +14,7 @@ import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.application.NowSubscriptionsSource;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
 import uk.gov.hmcts.cp.informantregister.domain.FailureClassification;
+import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDocument;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.ReferenceDataUnavailableException;
@@ -70,7 +71,8 @@ class PinnedOddityTest {
     }
 
     private static List<InformantRegisterDocument> documents(final ParityCase parityCase) {
-        return chain(parityCase).transform(parityCase.hearing(), parityCase.sharedTime());
+        return chain(parityCase).transform(
+                parityCase.hearing(), parityCase.sharedTime(), CallerIdentity.SYSTEM);
     }
 
     /** The documents as they go on the wire, so key-absence can be asserted. */
@@ -83,7 +85,7 @@ class PinnedOddityTest {
         final HearingDates dates = new HearingDates(clock);
         final NowSubscriptionsSource source = parityCase.refdata() == ParityCase.RefdataAnswer.REJECT
                 ? PinnedOddityTest::refuse
-                : on -> parityCase.subscriptions();
+                : (on, identity) -> parityCase.subscriptions();
         return new RegisterTransformationChain(
                 new RegisterBuilder(dates),
                 new SubscriptionMatcher(new SubscriptionRules()),
@@ -91,7 +93,7 @@ class PinnedOddityTest {
                 source);
     }
 
-    private static JsonNode refuse(final LocalDate on) {
+    private static JsonNode refuse(final LocalDate on, final CallerIdentity identity) {
         throw new ReferenceDataUnavailableException(ReasonCode.REFERENCE_DATA_UNAVAILABLE);
     }
 

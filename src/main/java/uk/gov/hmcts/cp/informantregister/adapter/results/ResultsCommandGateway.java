@@ -14,6 +14,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import uk.gov.hmcts.cp.informantregister.config.InformantRegisterProperties;
+import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.FailureClassification;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.SubmissionFailedException;
@@ -66,7 +67,10 @@ public class ResultsCommandGateway {
     public static final String ADD_INFORMANT_REGISTER_MEDIA_TYPE =
             "application/vnd.results.add-informant-register+json";
 
-    /** The CPP identity header. Its value is a secret and is never logged. */
+    /**
+     * The CPP identity header. Its value is never logged — it is either a secret or a user
+     * identifier, and neither belongs in a log index.
+     */
     public static final String IDENTITY_HEADER = "CJSCPPUID";
 
     private static final Logger LOG = LoggerFactory.getLogger(ResultsCommandGateway.class);
@@ -134,16 +138,24 @@ public class ResultsCommandGateway {
     /**
      * Posts one {@code add-informant-register} body, retrying only what a retry could fix.
      *
-     * @param body the serialised document, sent byte for byte
+     * <p>The command is attributed to the run's caller — the user who shared the results where the
+     * message named one, and the configured system identity otherwise. That is what the legacy does
+     * ({@code ProcessOutboundInformantRegister/index.js:21} sends {@code this.input.cjscppuid}), and
+     * the identity is resolved once here so that every attempt of every authority in a run posts as
+     * the same caller.
+     *
+     * @param body     the serialised document, sent byte for byte
+     * @param identity who the command is posted as
      * @throws SubmissionFailedException carrying {@code NON_TRANSIENT} when the command was refused,
      *                                   and {@code TRANSIENT} when the attempts ran out with the
      *                                   outcome still unresolved
      */
-    public void post(final byte[] body) {
+    public void post(final byte[] body, final CallerIdentity identity) {
         Duration backoff = initialBackoff;
+        final String caller = identity.orSystem(systemUserId);
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            final Outcome outcome = attempt(body, attempt);
+            final Outcome outcome = attempt(body, caller, attempt);
             if (outcome.accepted()) {
                 return;
             }
@@ -170,7 +182,7 @@ public class ResultsCommandGateway {
      * non-2xx into an exception before the status can be read, and this class's whole job is to tell
      * three kinds of non-2xx apart.
      */
-    private Outcome attempt(final byte[] body, final int attempt) {
+    private Outcome attempt(final byte[] body, final String caller, final int attempt) {
         Outcome outcome;
         try {
             outcome = restClient.post()
@@ -178,9 +190,10 @@ public class ResultsCommandGateway {
                     .contentType(MediaType.parseMediaType(ADD_INFORMANT_REGISTER_MEDIA_TYPE))
                     .headers(headers -> {
                         // Unconditional: the constructor has already refused to build a gateway
-                        // without an identity, so there is no anonymous request to guard against
-                        // here — and a branch would only make one look possible.
-                        headers.add(IDENTITY_HEADER, systemUserId);
+                        // without a configured identity, and the run's own is either a user or that
+                        // fallback, so there is no anonymous request to guard against here — and a
+                        // branch would only make one look possible.
+                        headers.add(IDENTITY_HEADER, caller);
                         extraHeaders.forEach(headers::add);
                     })
                     .body(body)
