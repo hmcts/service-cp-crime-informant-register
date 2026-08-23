@@ -134,6 +134,17 @@ public final class HearingDates {
     }
 
     /**
+     * NOT YET IMPLEMENTED — stands in so the specification of the new rendering compiles and fails
+     * on its assertions rather than on javac.
+     *
+     * @param value an instant, a local date-time, or a bare day; may be {@code null}
+     * @return the legacy rendering, for now
+     */
+    public String localFullTime(final String value) {
+        return localDateTime(value);
+    }
+
+    /**
      * The London wall-clock time of a value first re-read as a {@code DD/MM/YYYY} day.
      *
      * <p>Ports {@code DateService.formatDateAndGetLocalDateTime}, which is two steps and one defect.
