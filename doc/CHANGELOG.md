@@ -34,8 +34,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     `cpp-context-results` must not send `userId` until this version is live in the target
     environment.
   - Restoring legacy behaviour needs no deviation entry; the one residue does. Deviations register
-    **#16**: a *replayed* message runs under the system identity, where a legacy Event Grid retry
-    re-delivered the original envelope and so kept the original user.
+    **#16**: a message that names *no* user runs under the system identity, where the legacy
+    envelope always carried one.
   - Agreed by the owner of both sides — publisher and consumer are the same team —
     **project-owner decision, 2026-08-23**.
   - **Post-review hardening.** Two assertions the change had been relying on prose for. A body whose
@@ -47,6 +47,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     publisher side gained the matching guarantee: `RESULTS` parses the envelope's metadata `userId`
     before publishing, so a malformed value fails there, the way the Event Grid leg already fails
     it, instead of being published as a message that could only dead-letter here.
+  - **A replay keeps the user it carries** — project-owner decision, 2026-08-23, "implement option
+    1". The replay procedure already re-sends the dead-lettered body verbatim under a fresh
+    `messageId`, and attribution is read from the message and nowhere else, so a replayed message
+    that names a `userId` runs as that original sharing user with nothing persisted and nothing for
+    an operator to remember. Persisting the user in the processed log to attribute a replay (option
+    2) was rejected: it stores PII the service has no other need for. Deviation **#16** is narrowed
+    to what is actually left — a message carrying no user at all, which is a transition-window
+    message, a replay hand-built without the original body, or the deliberate escape hatch of
+    re-sending *without* `userId` when the original user has been deactivated and their identity
+    would now be refused. The replay procedure in `doc/API_CONTRACTS.md` and `doc/TECHNICAL_DESIGN.md`
+    now says so, because "verbatim" became load-bearing the moment the body carried an identity.
+    Pinned by `FailedReplayIT.ReplayAttribution`, which parks a request through all five deliveries
+    and replays it both ways against the real store.
 - 2026-08-23 — **`hearingStartTime` now says which hour of the day it means.** The one sanctioned
   departure from bug-for-bug parity in the transformation, taken as a project-owner decision:
   "for time lets use visually correct and semantically correct value - 14:30:00+01:00".

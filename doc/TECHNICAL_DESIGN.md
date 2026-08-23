@@ -180,10 +180,15 @@ settled before the state machine starts and so leaves no row.
   broker duplicate detection **on**, `maxConcurrentCalls` **2** to start (parity with the function
   app's Durable throttle).
 - `messageId` = `"{source}:{requestId}"` for **normal publishing by the producer**. Replay tooling is
-  the exception: a support resubmission carries the **same body** (same `requestId`) but must mint a
-  **fresh `messageId`, distinct from any identity previously used for that request**, so the replay
-  is neither swallowed by the duplicate-detection window nor mistaken for the delivery that
-  exhausted the retries. The processed-log then decides, visibly. A resubmitted request in
+  the exception: a support resubmission re-sends the dead-lettered body **verbatim** (so the same
+  `requestId`) but must mint a **fresh `messageId`, distinct from any identity previously used for
+  that request**, so the replay is neither swallowed by the duplicate-detection window nor mistaken
+  for the delivery that exhausted the retries. Verbatim is load-bearing: the body carries the
+  attribution, so a replayed message that named a `userId` runs as that original sharing user, while
+  one rebuilt without it runs under the system identity. The `userId` field is stripped only as the
+  deliberate escape hatch — a user since deactivated, whose identity would now be refused downstream
+  — and doing so is not an idempotency collision, because `userId` is outside the request
+  fingerprint (`doc/API_CONTRACTS.md`, "Replay rule"; `doc/DEVIATIONS.md` #16). The processed-log then decides, visibly. A resubmitted request in
   `COMPLETED` is acknowledged without reprocessing; one in `FAILED` is **replayable under a fresh
   `messageId`** — the guard transitions it `FAILED` → `RECEIVED` (attempts preserved, audit note) and
   reprocesses it. Replaying a dead-lettered message is the supported recovery route. A redelivery

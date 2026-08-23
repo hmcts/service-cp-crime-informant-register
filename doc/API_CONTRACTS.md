@@ -72,7 +72,9 @@ three independently resolved identities.
 
 **Why optional and not required.** Two legitimate producers of this message have no user to name:
 
-- **support replay tooling**, which mints a message no person triggered; and
+- **support replay tooling**, where the replay is built by hand rather than re-sent verbatim, or is
+  re-sent deliberately without the field because the original user has been deactivated (see the
+  replay rule below — a *verbatim* replay still names the user the original named); and
 - **the transition window** — producer builds from before this field existed. The consumer ships
   first (see the rollout note below), so during that window every message arrives without it.
 
@@ -125,6 +127,23 @@ depend on it:
 - the service uses the **difference in identity** to tell a deliberate resubmission apart from the
   exhausted message coming round again, and admits the `FAILED` → `RECEIVED` replay only on the
   former.
+
+**Re-send the body verbatim.** The resubmission is the dead-lettered body as it stands, byte for
+byte, with the `messageId` the only thing changed. That is not tidiness: **the body carries the
+attribution**. A parked message that named a `userId` replays as that original sharing user, with
+nothing recorded server-side and nothing for the operator to remember — while a replay rebuilt by
+hand without the original body names no user and runs under the configured system identity
+(`doc/DEVIATIONS.md` #16). Rebuilding a body from the processed log therefore loses the attribution
+that re-sending it keeps.
+
+**Strip `userId` only as a deliberate escape hatch.** There is one reason to remove the field: the
+original user has been deactivated and their identity would now be refused downstream, so every call
+of the replayed run would fail on it. Removing the field then makes the run the system's, which is
+the honest reading of who initiated it. Dropping it does not make the message a different request —
+`userId` is outside the request fingerprint, so the replay is the same unit of work and is readmitted
+as one rather than dead-lettered as an idempotency collision. Nothing else in the body may be edited:
+any change to `hearingId`, `hearingDay`, `sharedTime` or `eventType` *is* an idempotency collision,
+by design.
 
 Given a fresh identity, the service's `(source, requestId)` processed-log then decides — visibly, and
 recorded — whether work is repeated:
