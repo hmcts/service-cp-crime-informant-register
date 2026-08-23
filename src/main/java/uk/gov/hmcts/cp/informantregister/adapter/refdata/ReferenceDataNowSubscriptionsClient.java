@@ -51,12 +51,18 @@ import uk.gov.hmcts.cp.informantregister.domain.ReferenceDataUnavailableExceptio
  * Every failure to obtain the body is reported here instead, as a transient
  * {@link ReferenceDataUnavailableException}: {@code doc/DEVIATIONS.md} entry 14.
  *
- * <p>That rule is drawn at the body, not at the status. An answer this client cannot read as JSON is
- * a fetch that produced no now-subscriptions body — a gateway's error page served with a 200 is the
- * everyday case — so it is reported for the same reason a 502 is. An answer it <em>can</em> read is
- * passed through whatever its shape: no body at all, a body with no {@code nowSubscriptions} member,
- * or one carrying no informant-register subscriptions are all legitimate business outcomes the legacy
- * carries on from ({@code index.js:22-33}), and the matching step is what reads the shape.
+ * <p>That rule is drawn at the answer, and it takes two conditions to have obtained one. The status
+ * must be 2xx, which is what the legacy call means by an answer at all: axios rejects every status
+ * outside 200-299 ({@code axios/lib/defaults/index.js:161-162}, {@code axios/lib/core/settle.js
+ * :15-17}), so a 304 or a redirect nobody followed reaches {@code ReferenceDataService.js:50}
+ * exactly as a 502 does. And the body must read as JSON — a gateway's error page served with a 200
+ * is the everyday case — so an unreadable one is reported for the same reason a 502 is.
+ *
+ * <p>An answer that meets both is passed through whatever its <em>shape</em>: no body at all, a body
+ * with no {@code nowSubscriptions} member, or one carrying no informant-register subscriptions are
+ * all legitimate business outcomes the legacy carries on from ({@code index.js:22-33}), and the
+ * matching step is what reads the shape. Refusing those here would invent an outage out of an answer
+ * reference data gave, which is the mirror image of the defect entry 14 records and no better.
  */
 public class ReferenceDataNowSubscriptionsClient implements NowSubscriptionsSource {
 
@@ -152,14 +158,42 @@ public class ReferenceDataNowSubscriptionsClient implements NowSubscriptionsSour
         throw unavailable();
     }
 
-    /** Issues the read. Kept apart so the retry loop above reads as the rule it ports. */
+    /**
+     * Issues the read. Kept apart so the retry loop above reads as the rule it ports.
+     *
+     * <p>The two contract headers are <em>set</em>, and set after the configured extras, so a mesh
+     * header configured under the name {@code Accept} or {@code CJSCPPUID} replaces them rather than
+     * joining them. Appending would send two values of one header, which is a 406 from a service
+     * doing content negotiation and an ambiguous caller to one authorising on identity;
+     * {@code ReferenceDataService.js:42-47} sends exactly one of each and so does this.
+     *
+     * <p>Any status outside 2xx is a failure, because that is what it is to the call being ported:
+     * axios resolves only 200-299 ({@code axios/lib/defaults/index.js:161-162},
+     * {@code axios/lib/core/settle.js:15-17}). Spring's default handling raises on 4xx and 5xx
+     * alone, which would hand a 304 — or a redirect this client did not follow — to {@link #content}
+     * as though reference data had answered, and an empty body there means "nobody is subscribed".
+     * A register addressed to nobody on the strength of a status nobody read is precisely the silent
+     * loss {@code doc/DEVIATIONS.md} entry 14 exists to end.
+     */
     private String get(final LocalDate on) {
-        final RestClient.RequestHeadersSpec<?> request = restClient.get()
+        return restClient.get()
                 .uri(uri -> uri.path(PATH).queryParam(ON, on).build())
-                .header(HttpHeaders.ACCEPT, ACCEPT)
-                .header(IDENTITY_HEADER, systemUserId);
-        extraHeaders.forEach(request::header);
-        return request.retrieve().body(String.class);
+                .headers(headers -> {
+                    extraHeaders.forEach(headers::add);
+                    headers.set(HttpHeaders.ACCEPT, ACCEPT);
+                    headers.set(IDENTITY_HEADER, systemUserId);
+                })
+                .retrieve()
+                .onStatus(status -> !status.is2xxSuccessful(), (request, response) -> {
+                    // The status, and nothing the server wrote: the body is somebody else's text and
+                    // this exception's message is what the caller logs (Principle VII).
+                    throw new RestClientResponseException(
+                            "The now-subscriptions read was answered with "
+                                    + response.getStatusCode(),
+                            response.getStatusCode(), response.getStatusText(),
+                            response.getHeaders(), null, null);
+                })
+                .body(String.class);
     }
 
     /**

@@ -7,12 +7,14 @@ import java.util.Map;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.http.Fault;
 import com.github.tomakehurst.wiremock.stubbing.Scenario;
+import com.github.tomakehurst.wiremock.verification.LoggedRequest;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -58,6 +60,20 @@ class ReferenceDataNowSubscriptionsClientTest {
     private static final String SYSTEM_USER_ID = "9f61bdbb-6f1a-4c0f-9a3d-6b8f0f1c2a44";
 
     /**
+     * The two contract headers, written out rather than read off the class under test.
+     *
+     * <p>Asserting against {@code ReferenceDataNowSubscriptionsClient.ACCEPT} would be asserting
+     * that the class agrees with itself: a typo in the constant would move the expectation with it
+     * and the suite would stay green while every real query came back 406. These are the literals
+     * {@code ReferenceDataService.js:44-45} sends and the RAML declares
+     * ({@code referencedata-query-api.raml:2352-2374}), and the only place they are written twice is
+     * here, on purpose.
+     */
+    private static final String LEGACY_ACCEPT =
+            "application/vnd.referencedata.query.get-now-subscriptions+json";
+    private static final String LEGACY_IDENTITY_HEADER = "CJSCPPUID";
+
+    /**
      * The shape reference data really answers with — the recorded oracle call took
      * {@code {"nowSubscriptions":[…]}} from the same endpoint
      * ({@code parity-pack/recorded/…/meta.json}, {@code observed.refdataCalls}).
@@ -92,10 +108,15 @@ class ReferenceDataNowSubscriptionsClientTest {
 
     private static ReferenceDataNowSubscriptionsClient clientFor(
             final Map<String, String> extraHeaders) {
+        return clientFor(extraHeaders, RestClient.builder().baseUrl(server.baseUrl()).build());
+    }
+
+    private static ReferenceDataNowSubscriptionsClient clientFor(
+            final Map<String, String> extraHeaders, final RestClient restClient) {
         // The legacy interval is a second. Waiting three of them to observe a retry count would make
         // the suite slow without making it say anything more.
         return new ReferenceDataNowSubscriptionsClient(
-                RestClient.builder().baseUrl(server.baseUrl()).build(),
+                restClient,
                 SYSTEM_USER_ID,
                 extraHeaders,
                 MAPPER,
@@ -103,10 +124,23 @@ class ReferenceDataNowSubscriptionsClientTest {
                 Duration.ZERO);
     }
 
+    /**
+     * A client whose socket read gives up after the given milliseconds — the timeout
+     * {@link uk.gov.hmcts.cp.informantregister.config.LiveSubscriptionsConfig} sets from
+     * {@code informantregister.referencedata.read-timeout}, shortened so the suite is not paid for
+     * in real seconds.
+     */
+    private static RestClient timingOutAfter(final int millis) {
+        final SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(5));
+        factory.setReadTimeout(Duration.ofMillis(millis));
+        return RestClient.builder().baseUrl(server.baseUrl()).requestFactory(factory).build();
+    }
+
     private static void respondWith(final int status, final String body) {
         server.stubFor(get(urlEqualTo(PATH))
                 .willReturn(aResponse().withStatus(status)
-                        .withHeader("Content-Type", ReferenceDataNowSubscriptionsClient.ACCEPT)
+                        .withHeader("Content-Type", LEGACY_ACCEPT)
                         .withBody(body)));
     }
 
@@ -133,10 +167,8 @@ class ReferenceDataNowSubscriptionsClientTest {
             client.fetch(ON);
 
             server.verify(getRequestedFor(urlEqualTo(PATH))
-                    .withHeader("Accept",
-                            equalTo(ReferenceDataNowSubscriptionsClient.ACCEPT))
-                    .withHeader(ReferenceDataNowSubscriptionsClient.IDENTITY_HEADER,
-                            equalTo(SYSTEM_USER_ID)));
+                    .withHeader("Accept", equalTo(LEGACY_ACCEPT))
+                    .withHeader(LEGACY_IDENTITY_HEADER, equalTo(SYSTEM_USER_ID)));
         }
 
         @Test
@@ -147,6 +179,25 @@ class ReferenceDataNowSubscriptionsClientTest {
 
             server.verify(getRequestedFor(urlEqualTo(PATH))
                     .withHeader("X-Mesh-Route", equalTo("referencedata")));
+        }
+
+        /**
+         * A configured header under a contract header's own name replaces it rather than joining
+         * it. Two {@code Accept} values is a 406 from a service doing content negotiation, and two
+         * {@code CJSCPPUID} values is an ambiguous caller to one authorising on identity — while
+         * {@code ReferenceDataService.js:42-47} sends exactly one of each.
+         */
+        @Test
+        void fetch_should_send_one_value_of_each_contract_header_whatever_is_configured() {
+            respondWith(200, BODY);
+
+            clientFor(Map.of(LEGACY_IDENTITY_HEADER, "somebody-else",
+                    "Accept", "text/plain")).fetch(ON);
+
+            final LoggedRequest sent = server.findAll(getRequestedFor(urlEqualTo(PATH))).get(0);
+            assertThat(sent.header("Accept").values()).containsExactly(LEGACY_ACCEPT);
+            assertThat(sent.header(LEGACY_IDENTITY_HEADER).values())
+                    .containsExactly(SYSTEM_USER_ID);
         }
     }
 
@@ -255,6 +306,43 @@ class ReferenceDataNowSubscriptionsClientTest {
             // The legacy's inverted policy: 429 is at the cut-off, so it is never retried while a
             // 500 is. Ported deliberately (constitution Principle I) and pinned here.
             respondWith(429, "{}");
+
+            assertThatThrownBy(() -> client.fetch(ON))
+                    .isInstanceOf(ReferenceDataUnavailableException.class);
+
+            server.verify(1, getRequestedFor(urlEqualTo(PATH)));
+        }
+
+        /**
+         * A read that connects and then goes quiet, rather than one that is refused outright. It is
+         * the failure the read timeout exists for and the one a busy reference-data service really
+         * produces; nothing was obtained, so it is reported like any other empty-handed attempt.
+         */
+        @Test
+        void fetch_should_report_a_read_that_times_out_after_spending_its_attempts() {
+            server.stubFor(get(urlEqualTo(PATH))
+                    .willReturn(aResponse().withStatus(200)
+                            .withHeader("Content-Type", LEGACY_ACCEPT)
+                            .withBody(BODY)
+                            .withFixedDelay(2000)));
+
+            assertThatThrownBy(() -> clientFor(Map.of(), timingOutAfter(200)).fetch(ON))
+                    .isInstanceOf(ReferenceDataUnavailableException.class);
+
+            server.verify(3, getRequestedFor(urlEqualTo(PATH)));
+        }
+
+        /**
+         * A status outside 2xx that Spring's default error handling does not raise on. Axios does:
+         * it resolves 200-299 and rejects everything else
+         * ({@code axios/lib/defaults/index.js:161-162}, {@code axios/lib/core/settle.js:15-17}), so
+         * this reaches {@code ReferenceDataService.js:50} exactly as a 502 does. Left unclassified
+         * it would arrive as a body-less success and address the register to nobody — the silent
+         * loss entry 14 exists to end. Not retried, because 304 is below the wrapper's cut-off.
+         */
+        @Test
+        void fetch_should_report_a_not_modified_rather_than_read_it_as_no_subscriptions() {
+            server.stubFor(get(urlEqualTo(PATH)).willReturn(aResponse().withStatus(304)));
 
             assertThatThrownBy(() -> client.fetch(ON))
                     .isInstanceOf(ReferenceDataUnavailableException.class);
