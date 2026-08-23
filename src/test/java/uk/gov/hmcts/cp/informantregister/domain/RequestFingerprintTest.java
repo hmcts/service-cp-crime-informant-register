@@ -134,6 +134,23 @@ class RequestFingerprintTest {
 
             assertThat(fingerprintOf(differentRequestId)).isEqualTo(GOLDEN_FINGERPRINT);
         }
+
+        @Test
+        void the_sharing_user_should_not_change_the_fingerprint() {
+            // The fingerprint answers "is this the same unit of work?", and the user who happened to
+            // share the results is not part of that. It matters most on the recovery path: a support
+            // replay of an attributed request carries no user at all, and a fingerprint that
+            // included one would call that replay an idempotency collision and dead-letter the very
+            // message somebody sent to fix the problem.
+            final String attributed = CANONICAL_BODY.replace(
+                    "\"eventType\": \"Hearing_Resulted\"",
+                    "\"eventType\": \"Hearing_Resulted\",\n  \"userId\": "
+                            + "\"0b7a5c2e-4d19-4a6b-8c30-9e1f5d7b2a48\"");
+
+            assertThat(attributed).isNotEqualTo(CANONICAL_BODY);
+            assertThat(parser.parse(attributed).userId()).isPresent();
+            assertThat(fingerprintOf(attributed)).isEqualTo(GOLDEN_FINGERPRINT);
+        }
     }
 
     @Nested

@@ -38,10 +38,11 @@ public class DistributionCommandParser {
     private static final String HEARING_DAY = "hearingDay";
     private static final String SHARED_TIME = "sharedTime";
     private static final String EVENT_TYPE = "eventType";
+    private static final String USER_ID = "userId";
 
     /** The closed contract, in the order the schema declares it. */
     private static final List<String> DECLARED_FIELDS =
-            List.of(SOURCE, REQUEST_ID, HEARING_ID, HEARING_DAY, SHARED_TIME, EVENT_TYPE);
+            List.of(SOURCE, REQUEST_ID, HEARING_ID, HEARING_DAY, SHARED_TIME, EVENT_TYPE, USER_ID);
 
     private static final Set<String> PERMITTED_SOURCES = Set.of("RESULTS");
     private static final Set<String> PERMITTED_EVENT_TYPES = Set.of("Hearing_Resulted");
@@ -111,6 +112,11 @@ public class DistributionCommandParser {
      * source — so nothing a producer wrote can reach the log index by being called
      * {@code requestId}. Anything absent, of the wrong type or the wrong shape simply is not there,
      * and the line goes out without it.
+     *
+     * <p><strong>{@code userId} is not one of them, and never will be.</strong> It identifies a
+     * person, so it belongs to the no-PII gate rather than to correlation: a support engineer
+     * searches by request, hearing or day, and none of those searches need the user who happened to
+     * share the results. It is carried into the {@code CJSCPPUID} header and nowhere else.
      *
      * @param body the raw message body, valid or not
      * @return the canonical identifiers it yielded, with nulls where it yielded none
@@ -193,7 +199,8 @@ public class DistributionCommandParser {
                 canonicalUuid(root, HEARING_ID),
                 isoDate(root, HEARING_DAY),
                 isoInstant(root, SHARED_TIME),
-                enumeratedValue(root, EVENT_TYPE, PERMITTED_EVENT_TYPES));
+                enumeratedValue(root, EVENT_TYPE, PERMITTED_EVENT_TYPES),
+                optionalCanonicalUuid(root, USER_ID));
     }
 
     private JsonNode readTree(final String body) {
@@ -245,6 +252,37 @@ public class DistributionCommandParser {
             throw new ContractValidationException(ContractViolation.INVALID_ENUM_VALUE, field);
         }
         return text;
+    }
+
+    /**
+     * Reads an optional field as a canonical identifier.
+     *
+     * <p>Optional means the property may be <em>absent</em>, and nothing more than that. A property
+     * that is there is held to the same shape a required identifier is held to, because a value that
+     * cannot be an identity must never be sent as one: it would reach a downstream service as the
+     * caller's {@code CJSCPPUID} and be refused there, one hearing at a time, with nothing here
+     * saying why.
+     *
+     * <p>An explicit {@code null} is a rejection rather than an absence. The schema types the
+     * property {@code string} and applies that whenever the property is present, so accepting a null
+     * would be this parser answering a body the contract refuses — and absence is already the way to
+     * say there is no user.
+     */
+    private static Optional<UUID> optionalCanonicalUuid(final JsonNode root, final String field) {
+        final JsonNode value = root.get(field);
+        final Optional<UUID> parsed;
+        if (value == null) {
+            parsed = Optional.empty();
+        } else if (!value.isString()) {
+            throw new ContractValidationException(ContractViolation.INVALID_FORMAT, field);
+        } else {
+            final String text = value.stringValue();
+            if (!CANONICAL_UUID.matcher(text).matches()) {
+                throw new ContractValidationException(ContractViolation.INVALID_FORMAT, field);
+            }
+            parsed = Optional.of(UUID.fromString(text));
+        }
+        return parsed;
     }
 
     private static UUID canonicalUuid(final JsonNode root, final String field) {

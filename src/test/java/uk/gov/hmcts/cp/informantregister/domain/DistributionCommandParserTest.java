@@ -106,6 +106,115 @@ class DistributionCommandParserTest {
         }
     }
 
+    /**
+     * The sharing user, which a message may carry and may equally leave out.
+     *
+     * <p>Both shapes have to parse, because both are published: the producer names the user who
+     * shared the results, while support replay tooling and every producer build predating the field
+     * name nobody. A present value is held to the identifier shape the schema declares — an
+     * attribution that is not an identity is worse than none, because it reaches a downstream
+     * service as a {@code CJSCPPUID} it will refuse.
+     */
+    @Nested
+    @DisplayName("the optional sharing user")
+    class SharingUser {
+
+        private static final String USER = "0b7a5c2e-4d19-4a6b-8c30-9e1f5d7b2a48";
+
+        private String bodyWithUser(final String rawValue) {
+            return VALID_BODY.replace("\"eventType\": \"Hearing_Resulted\"",
+                    "\"eventType\": \"Hearing_Resulted\",\n  \"userId\": " + rawValue);
+        }
+
+        @Test
+        void parse_a_body_naming_a_user_should_carry_that_user() {
+            final DistributionCommand command = parser.parse(bodyWithUser("\"" + USER + "\""));
+
+            assertThat(command.userId()).contains(UUID.fromString(USER));
+        }
+
+        @Test
+        void parse_a_body_naming_no_user_should_carry_none() {
+            final DistributionCommand command = parser.parse(VALID_BODY);
+
+            assertThat(command.userId()).isEmpty();
+        }
+
+        @Test
+        void parse_an_uppercase_user_should_normalise_it() {
+            final DistributionCommand command = parser.parse(
+                    bodyWithUser("\"" + USER.toUpperCase(java.util.Locale.ROOT) + "\""));
+
+            assertThat(command.userId()).contains(UUID.fromString(USER));
+        }
+
+        @Test
+        void parse_a_user_that_is_not_a_uuid_should_report_an_invalid_format() {
+            assertThatThrownBy(() -> parser.parse(bodyWithUser("\"not-a-uuid\"")))
+                    .isInstanceOf(ContractValidationException.class)
+                    .satisfies(thrown ->
+                            assertThat(violationOf(thrown)).isEqualTo(ContractViolation.INVALID_FORMAT));
+        }
+
+        @Test
+        void parse_a_user_in_a_non_canonical_layout_should_report_an_invalid_format() {
+            // UUID.fromString would accept the abbreviated form; the contract's `uuid` format does
+            // not, and the identity that goes on the wire must be the one the producer sent.
+            assertThatThrownBy(() -> parser.parse(bodyWithUser("\"0b7a5c2e4d194a6b8c309e1f5d7b2a48\"")))
+                    .isInstanceOf(ContractValidationException.class)
+                    .satisfies(thrown ->
+                            assertThat(violationOf(thrown)).isEqualTo(ContractViolation.INVALID_FORMAT));
+        }
+
+        @Test
+        void parse_an_explicitly_null_user_should_report_an_invalid_format() {
+            // Absence is how a message says there is no user. An explicit null is a present property
+            // of the wrong type, which the schema refuses, so the parser refuses it too rather than
+            // quietly reading it as "no user".
+            assertThatThrownBy(() -> parser.parse(bodyWithUser("null")))
+                    .isInstanceOf(ContractValidationException.class)
+                    .satisfies(thrown ->
+                            assertThat(violationOf(thrown)).isEqualTo(ContractViolation.INVALID_FORMAT));
+        }
+
+        @Test
+        void parse_a_blank_user_should_report_an_invalid_format() {
+            assertThatThrownBy(() -> parser.parse(bodyWithUser("\"\"")))
+                    .isInstanceOf(ContractValidationException.class)
+                    .satisfies(thrown ->
+                            assertThat(violationOf(thrown)).isEqualTo(ContractViolation.INVALID_FORMAT));
+        }
+
+        @Test
+        void parse_a_user_that_is_not_a_string_should_report_an_invalid_format() {
+            assertThatThrownBy(() -> parser.parse(bodyWithUser("42")))
+                    .isInstanceOf(ContractValidationException.class)
+                    .satisfies(thrown ->
+                            assertThat(violationOf(thrown)).isEqualTo(ContractViolation.INVALID_FORMAT));
+        }
+
+        @Test
+        void parse_a_rejected_user_should_never_quote_the_value_back() {
+            // The value identifies a person. It must not reach a dead-letter description or a log
+            // index on its way to being refused — only the field's name, which the contract owns.
+            assertThatThrownBy(() -> parser.parse(bodyWithUser("\"" + USER + "-not-a-uuid\"")))
+                    .isInstanceOf(ContractValidationException.class)
+                    .satisfies(thrown -> assertThat(chainText(thrown))
+                            .as("no rejection may carry the identity it refused")
+                            .noneMatch(text -> text.contains(USER)));
+        }
+
+        @Test
+        void parse_a_body_naming_a_user_should_keep_it_out_of_the_correlation_set() {
+            // Correlation is what a support engineer searches by, and it reaches the log index. A
+            // user identifier is not a correlation key here; the record, the hearing and the day are.
+            final DistributionCommandParser.Correlation correlation =
+                    parser.canonicalCorrelation(bodyWithUser("\"" + USER + "\""));
+
+            assertThat(correlation.toString()).doesNotContain(USER);
+        }
+    }
+
     @Nested
     @DisplayName("an invalid body earns a bounded reason")
     class InvalidBody {
