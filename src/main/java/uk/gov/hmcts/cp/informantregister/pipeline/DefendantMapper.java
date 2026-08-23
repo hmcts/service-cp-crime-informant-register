@@ -33,6 +33,10 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  *
  * <p>Everything this mapper reads is defendant PII. Nothing here is logged.
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+@SuppressWarnings("PMD.OnlyOneReturn")
 final class DefendantMapper {
 
     private final JsonNode hearing;
@@ -46,7 +50,7 @@ final class DefendantMapper {
      * @param fragment         the authority's fragment
      * @param resultDataMapper the mapper for the detail hanging off each result
      */
-    DefendantMapper(
+    /* default */ DefendantMapper(
             final JsonNode hearing,
             final RegisterFragment fragment,
             final ResultDataMapper resultDataMapper) {
@@ -60,7 +64,7 @@ final class DefendantMapper {
      *
      * @return the defendants, in fragment order; never {@code null}
      */
-    List<InformantRegisterDefendant> build() {
+    /* default */ List<InformantRegisterDefendant> build() {
         final List<InformantRegisterDefendant> mapped = new ArrayList<>();
         // `informantRegister.registerDefendants.forEach` (DefendantMapper.js:19) — dereferenced with
         // no guard. The fragment builder always supplies a list, so this is unreachable from the
@@ -88,7 +92,7 @@ final class DefendantMapper {
      * @param masterDefendantId the identity to gather for
      * @return the records; never {@code null}
      */
-    List<JsonNode> defendantsOf(final String masterDefendantId) {
+    /* default */ List<JsonNode> defendantsOf(final String masterDefendantId) {
         final List<JsonNode> records = new ArrayList<>();
 
         for (final JsonNode prosecutionCase : Json.array(hearing, "prosecutionCases")) {

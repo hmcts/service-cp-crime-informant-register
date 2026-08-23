@@ -43,7 +43,14 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * <p>A port that simply compares everything refuses hearings the legacy files, which is the one
  * direction a bug-for-bug port must not drift in.
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+@SuppressWarnings("PMD.OnlyOneReturn")
 final class OrderedDates {
+
+    /** The size at which {@code sort} returns its input without ever calling the comparator. */
+    private static final int SOLE_ELEMENT = 1;
 
     private OrderedDates() {
     }
@@ -57,7 +64,7 @@ final class OrderedDates {
      * @return the latest ordered date's text, or {@code null} when there is nothing to compare
      * @throws TransformationFailedException if the comparator meets a date it cannot read
      */
-    static String latest(final List<JsonNode> orderedDates, final HearingDates dates) {
+    /* default */ static String latest(final List<JsonNode> orderedDates, final HearingDates dates) {
         final List<JsonNode> compared = new ArrayList<>(orderedDates.size());
         for (final JsonNode orderedDate : orderedDates) {
             if (orderedDate != null) {
@@ -68,7 +75,7 @@ final class OrderedDates {
             // Every element was `undefined`, so `sorted[0]` is `undefined` too.
             return null;
         }
-        if (compared.size() == 1) {
+        if (compared.size() == SOLE_ELEMENT) {
             // One element: `sort` returns it without ever calling the comparator, so an unreadable
             // date is carried rather than refused.
             return textOf(compared.getFirst());

@@ -39,6 +39,20 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * behaviour is only safe because nothing happens to read that tree again afterwards. The observable
  * output is identical, so this is an implementation difference and not a behaviour deviation.
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+// PMD.AvoidDuplicateLiterals: the repeats are legacy JSON field names. Spelling each one at
+// the site that reads it is what lets a reviewer check the line against the property access
+// it ports; behind a constant the field name sits one indirection from the code being audited.
+// PMD.AvoidInstantiatingObjectsInLoops: each allocation is per-iteration by necessity — one
+// context per defendant, one authority per case, one result list per defendant — so hoisting
+// any of them out of its loop would be a bug rather than an optimisation.
+@SuppressWarnings({
+    "PMD.OnlyOneReturn",
+    "PMD.AvoidDuplicateLiterals",
+    "PMD.AvoidInstantiatingObjectsInLoops"
+})
 final class DefendantContextBuilder {
 
     private final JsonNode hearing;
@@ -50,7 +64,7 @@ final class DefendantContextBuilder {
      * @param hearing the canonical hearing tree
      * @param dates   the date service used to order results
      */
-    DefendantContextBuilder(final JsonNode hearing, final HearingDates dates) {
+    /* default */ DefendantContextBuilder(final JsonNode hearing, final HearingDates dates) {
         this.hearing = hearing;
         this.dates = dates;
     }
@@ -63,7 +77,7 @@ final class DefendantContextBuilder {
      *
      * @return the defendant contexts
      */
-    List<DefendantContext> build() {
+    /* default */ List<DefendantContext> build() {
         final Map<String, DefendantContext> byMasterDefendant = new LinkedHashMap<>();
 
         setJudicialResultsAtDefendantAndOffenceLevel(byMasterDefendant);
@@ -102,7 +116,7 @@ final class DefendantContextBuilder {
                 context.defendantIds().add(Json.text(defendant, "id"));
 
                 if (Json.truthy(defendant, "defendantCaseJudicialResults")) {
-                    context.addResults(caseLevelResults(prosecutionCase, defendant, caseId));
+                    context.addResults(caseLevelResults(defendant, caseId));
                 }
                 context.addResults(offenceLevelResults(defendant, caseId, masterDefendantId));
 
@@ -117,13 +131,12 @@ final class DefendantContextBuilder {
     /**
      * Builds the results recorded against one defendant's case.
      *
-     * @param prosecutionCase   the prosecution case
-     * @param defendant         the defendant within it
+     * @param defendant         the defendant within the prosecution case
      * @param caseId            the prosecution case id
      * @return the case-level results
      */
     private List<RegisterResult> caseLevelResults(
-            final JsonNode prosecutionCase, final JsonNode defendant, final String caseId) {
+            final JsonNode defendant, final String caseId) {
 
         final List<RegisterResult> results = new ArrayList<>();
         for (final JsonNode judicialResult

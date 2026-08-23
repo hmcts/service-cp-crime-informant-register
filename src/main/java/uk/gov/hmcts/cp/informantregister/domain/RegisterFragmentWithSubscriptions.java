@@ -68,7 +68,7 @@ public record RegisterFragmentWithSubscriptions(
      *                             run
      * @return the fragment with its matched subscriptions
      */
-    public static RegisterFragmentWithSubscriptions of(
+    public static RegisterFragmentWithSubscriptions carrying(
             final RegisterFragment fragment, final List<JsonNode> matchedSubscriptions) {
 
         return new RegisterFragmentWithSubscriptions(

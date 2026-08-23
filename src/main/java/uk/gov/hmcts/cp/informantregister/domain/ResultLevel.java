@@ -24,10 +24,10 @@ public enum ResultLevel {
     /** A result recorded against a court application. */
     APPLICATION("A");
 
-    private final String code;
+    private final String wireCode;
 
-    ResultLevel(final String code) {
-        this.code = code;
+    ResultLevel(final String wireCode) {
+        this.wireCode = wireCode;
     }
 
     /**
@@ -37,6 +37,6 @@ public enum ResultLevel {
      */
     @JsonValue
     public String code() {
-        return code;
+        return wireCode;
     }
 }

@@ -29,6 +29,13 @@ import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterResultData;
  * turns anything else into the literal {@code "Invalid dateZ"}. Both are ported as written; see the
  * two methods for why.
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+// PMD.AvoidDuplicateLiterals: the repeats are legacy JSON field names. Spelling each one at
+// the site that reads it is what lets a reviewer check the line against the property access
+// it ports; behind a constant the field name sits one indirection from the code being audited.
+@SuppressWarnings({"PMD.OnlyOneReturn", "PMD.AvoidDuplicateLiterals"})
 final class ResultDataMapper {
 
     private final HearingDates dates;
@@ -38,7 +45,7 @@ final class ResultDataMapper {
      *
      * @param dates the date service the rendered timestamps come from
      */
-    ResultDataMapper(final HearingDates dates) {
+    /* default */ ResultDataMapper(final HearingDates dates) {
         this.dates = dates;
     }
 
@@ -48,7 +55,7 @@ final class ResultDataMapper {
      * @param judicialResult the judicial result, as a canonical tree
      * @return the result data, or {@code null} when the legacy creates none
      */
-    InformantRegisterResultData build(final JsonNode judicialResult) {
+    /* default */ InformantRegisterResultData build(final JsonNode judicialResult) {
         if (!canCreate(judicialResult)) {
             return null;
         }

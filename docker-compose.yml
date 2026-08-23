@@ -24,6 +24,15 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/informantregister
       SPRING_DATASOURCE_USERNAME: informantregister
       SPRING_DATASOURCE_PASSWORD: informantregister
+      # A local run is the walking-skeleton shape: the stub adapters, which is what STUB mode
+      # exists for. LIVE — the default an environment that says nothing gets — refuses to start
+      # without upstream endpoints and a CJSCPPUID identity, deliberately, so a deployed pod
+      # cannot boot half-configured. Local compose has neither results nor reference data to call.
+      INFORMANTREGISTER_PAYLOAD_MODE: STUB
+      INFORMANTREGISTER_REFERENCEDATA_MODE: STUB
+      # Local-only dummy: the submission gateway refuses to construct without an identity, and a
+      # local run POSTs nothing. Never a real user id.
+      INFORMANT_REGISTER_SYSTEM_USER_ID: 00000000-0000-0000-0000-000000000000
 
   postgres:
     image: postgres:16

@@ -29,6 +29,10 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * defaults, and a hearing with no court centre is not something this service should quietly file a
  * register for.
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+@SuppressWarnings("PMD.OnlyOneReturn")
 final class VocabularyBuilder {
 
     /** The prompt reference that marks a result as custodial. */
@@ -47,7 +51,7 @@ final class VocabularyBuilder {
      *
      * @param hearing the canonical hearing tree
      */
-    VocabularyBuilder(final JsonNode hearing) {
+    /* default */ VocabularyBuilder(final JsonNode hearing) {
         this.hearing = hearing;
     }
 
@@ -57,7 +61,7 @@ final class VocabularyBuilder {
      * @param defendant the defendant context, already filtered for court extract
      * @return the vocabulary flags
      */
-    RegisterVocabulary build(final DefendantContext defendant) {
+    /* default */ RegisterVocabulary build(final DefendantContext defendant) {
         final boolean custodyIsPolice = custodyAt(defendant, POLICE_STATION);
         final boolean custodyIsPrison = custodyAt(defendant, PRISON);
 
@@ -237,10 +241,10 @@ final class VocabularyBuilder {
      */
     private boolean cpsProsecuted() {
         for (final JsonNode prosecutionCase : Json.array(hearing, "prosecutionCases")) {
-            final JsonNode isCps = Json.at(Json.at(prosecutionCase, "prosecutor"), "isCps");
+            final JsonNode cpsFlag = Json.at(Json.at(prosecutionCase, "prosecutor"), "isCps");
             // The legacy test is `=== true`, so only a real boolean true counts — a truthy
             // string or 1 does not.
-            if (isCps != null && isCps.isBoolean() && isCps.booleanValue()) {
+            if (cpsFlag != null && cpsFlag.isBoolean() && cpsFlag.booleanValue()) {
                 return true;
             }
         }

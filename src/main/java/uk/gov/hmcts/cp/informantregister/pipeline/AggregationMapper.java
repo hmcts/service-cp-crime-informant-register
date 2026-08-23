@@ -37,6 +37,10 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * of that shape at all, and an identifier written in upper case, which a {@code UUID} can only render
  * back in lower. Both are deviations-register entry 10.
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+@SuppressWarnings("PMD.OnlyOneReturn")
 public final class AggregationMapper {
 
     /** What JavaScript prints when an absent value is concatenated into a string. */

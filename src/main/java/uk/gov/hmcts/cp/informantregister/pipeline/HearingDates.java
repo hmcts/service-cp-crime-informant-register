@@ -62,6 +62,10 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * exception and stays a refusal: it ports {@code DateService.parse}, which really does
  * {@code throw new Error('Invalid date format')}.
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+@SuppressWarnings("PMD.OnlyOneReturn")
 public final class HearingDates {
 
     private static final ZoneId LONDON = ZoneId.of("Europe/London");
@@ -112,6 +116,9 @@ public final class HearingDates {
      * twenty-first ({@code parseTwoDigitYear}).
      */
     private static final int TWO_DIGIT_YEAR_PIVOT = 68;
+
+    /** The token width at which the pivot above applies; any other width is the year as written. */
+    private static final int TWO_DIGIT_YEAR_TOKEN_LENGTH = 2;
 
     private final Clock clock;
 
@@ -328,7 +335,7 @@ public final class HearingDates {
      */
     private static int inACentury(final String token) {
         final int year = Integer.parseInt(token);
-        if (token.length() != 2) {
+        if (token.length() != TWO_DIGIT_YEAR_TOKEN_LENGTH) {
             return year;
         }
         return year > TWO_DIGIT_YEAR_PIVOT ? year + 1900 : year + 2000;
@@ -340,7 +347,7 @@ public final class HearingDates {
         private final String value;
         private int position;
 
-        Digits(final String value) {
+        /* default */ Digits(final String value) {
             this.value = value;
         }
 
@@ -350,7 +357,7 @@ public final class HearingDates {
          * @param width the token's maximum width
          * @return the digits, or {@code null} when the value has none left
          */
-        String take(final int width) {
+        /* default */ String take(final int width) {
             while (position < value.length() && !Character.isDigit(value.charAt(position))) {
                 position++;
             }

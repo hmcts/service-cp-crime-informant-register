@@ -50,6 +50,10 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * behind {@link NowSubscriptionsSource}, which refuses rather than answering {@code null}
  * ({@code doc/DEVIATIONS.md} entry 14).
  */
+// PMD.OnlyOneReturn: the early returns mirror the legacy source's own, line for line —
+// funnelling them through a single exit would reshape the very control flow the parity
+// harness pins (constitution Principle I, bug-for-bug parity).
+@SuppressWarnings("PMD.OnlyOneReturn")
 public final class RegisterTransformationChain implements RegisterTransformer {
 
     private static final Logger LOG = LoggerFactory.getLogger(RegisterTransformationChain.class);

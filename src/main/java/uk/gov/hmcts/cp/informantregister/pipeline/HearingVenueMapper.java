@@ -32,7 +32,7 @@ final class HearingVenueMapper {
      * @param dates            the date service the session's start time is rendered by
      * @param resultDataMapper the mapper for the detail hanging off each result
      */
-    HearingVenueMapper(
+    /* default */ HearingVenueMapper(
             final JsonNode hearing,
             final RegisterFragment fragment,
             final HearingDates dates,
@@ -48,7 +48,7 @@ final class HearingVenueMapper {
      *
      * @return the venue
      */
-    InformantRegisterHearingVenue build() {
+    /* default */ InformantRegisterHearingVenue build() {
         // `this.hearingJson.courtCentre.name` — dereferenced with no guard
         // (HearingVenueMapper.js:13).
         final JsonNode courtCentre = Json.dereferenced(hearing, "courtCentre");
