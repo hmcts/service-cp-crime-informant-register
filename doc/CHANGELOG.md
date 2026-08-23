@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- 2026-08-22 — **The submission leg: `add-informant-register` is actually POSTed.** The stub
+  submission client is replaced by `adapter/results/`, which posts one command per prosecuting
+  authority to the results-owned endpoint at the exact vendor media type, and by the
+  `processed_output` half of the processed log, which has existed since V1 and until now stayed
+  empty (no new migration — the schema was already complete).
+  - The row is claimed **before** the POST, carrying `request_digest` — SHA-256 of exactly the bytes
+    sent — and moved to `POSTED` or `FAILED` afterwards, so a POST whose outcome is never learned
+    still leaves evidence of what was attempted. The claim and the skip are one conditional upsert
+    rather than a read and then a write, because two deliveries of a request can be in flight and a
+    `SELECT` is stale the moment it returns. An authority already `POSTED` is skipped, so partial
+    progress survives a redelivery or a replay.
+  - Retry classification is the one sanctioned behaviour change (`doc/DEVIATIONS.md` #2): connect
+    and read failures, dropped connections and 5xx are retried with a doubling wait; 429 is retried
+    after the delay the server asked for, capped so a misconfigured server cannot park a run past
+    its claim; any other 4xx is a refusal, is never retried, and comes back `NON_TRANSIENT` under
+    the new bounded reason `SUBMISSION_REJECTED`. An **ambiguous** outcome is retried, preferring a
+    duplicate the 19:00 sweep absorbs over a loss nothing does — and no code or comment promises
+    more than that.
+  - `AuthoritySubmission` gains the request's key, because `processed_output` is keyed
+    `(source, request_id, prosecution_authority_id)` and an authority identifier alone cannot name
+    that row.
+  - Endpoint, identity and retry policy are typed configuration under `informantregister.results.*`.
+    `CJSCPPUID` is the one documented header; because the authorisation scheme is **not** documented
+    anywhere, any further header is configuration rather than a guess in code.
+  - WireMock joins the build for this: one exact path, one exact vendor media type and a body the
+    results-owned schema accepts are not assertable against a mocked HTTP client, which agrees with
+    whatever the code does.
+
 ### Fixed
 - 2026-08-23 — **The startup time budget now covers the whole payload fetch** (second Story 1
   review round):
@@ -65,6 +94,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     transition `recordNonTransientFailure`, and the first producer of `DeadLetterReason.NON_TRANSIENT`;
   - deviations register: new entry **7** records the transformation's own swallowed exceptions, which
     the code had been attributing to entry 2 — that entry covers the final POST only.
+- 2026-08-22 — **Second review pass over the submission leg** (findings re-verified against the
+  rules and the Node source before fixing; the ones that contradicted a rule were rebutted, not
+  applied):
+  - `RESULTS_SYSTEM_USER_ID` now reaches something. `application.yaml` documented the variable in a
+    comment and bound no key to it, so a deployment that set the identity correctly still refused to
+    start with "system-user-id is required". It is bound as `${RESULTS_SYSTEM_USER_ID:}`, in the
+    same shape as `RESULTS_BASE_URL`, and the shipped file's binding is now asserted against the
+    real file rather than against property values a test invents;
+  - the retry policy is validated at startup alongside the claim timings and the credential rule.
+    `max-attempts` below one attempted no POST at all and handed every hearing back as an unresolved
+    transient failure — silent non-delivery wearing a retry policy's clothes. A negative
+    `initial-backoff` and a `max-backoff` below it are refused for the same reason: they fail
+    quietly at runtime and loudly at startup;
+  - a transport failure is logged with the exception rather than with its class name. The
+    classification is what the pipeline settles on; a refused connection, a read that timed out and
+    a dropped route are three different investigations, and the bounded reason code the failure is
+    reported under cannot carry the difference;
+  - the idempotency gate is now proven across the real repository, a real store and a real socket
+    (`SubmissionRedeliveryIT`): a redelivery does not re-POST an authority that went, and a
+    redelivery after a partial failure repeats exactly the authority that did not. The existing
+    suites proved each half against a mock of the other;
+  - `doc/DEVIATIONS.md` #8 records the `Retry-After` treatment that #2 implied but did not state.
+- 2026-08-22 — **Post-review hardening of the submission leg** (review of the story-3 change,
+  findings re-verified against the rules and the contract before fixing):
+  - a failure that carries a classification is now settled on it. A refusal from the Results command
+    was being caught as an unexpected runtime failure, recorded `UNEXPECTED_FAILURE` and retried to
+    exhaustion; it is now parked on the delivery that met it, under the reason it carried
+    (`SUBMISSION_REJECTED`) and the dead-letter category `non-transient`. The guard grew
+    `recordNonTransientFailure` for it, and the data model's transition table names the row;
+  - `POSTED` is terminal in `processed_output`, enforced by the statements rather than by
+    convention: a runner whose claim was reclaimed while it worked can no longer move an authority
+    the winner had already posted back to `FAILED`, which would have had the next delivery re-claim
+    it and POST a second, non-idempotent register;
+  - the adapter checks that its outcome writes landed and reports an overlap at ERROR instead of
+    discarding the affected-row count;
+  - `AuthoritySubmission` carries an `InformantRegisterDocument` rather than a `JsonNode`. The tree
+    was a placeholder for a document type that did not exist yet; it exists, and constitution
+    Principle IV asks the compiler — not a runtime schema check — to keep an unnameable field out of
+    a closed contract;
+  - `CJSCPPUID` is required. The gateway refuses to be built without one, so a deployment missing the
+    identity fails to start instead of dead-lettering every hearing it is given, one 403 at a time;
+  - success is `202 Accepted` and nothing else: any other 2xx is reported non-transient under the new
+    `SUBMISSION_NOT_ACCEPTED` rather than marking an authority POSTED for a command nothing enqueued
+    (`doc/DEVIATIONS.md` #2 extended to say so);
+  - `Retry-After` is matched before it is read, so an unusable header is classified rather than
+    raised and caught. The delta-seconds-only rule stands and is now pinned by a test: honouring an
+    HTTP-date would measure a remote clock against this pod's, and a server minutes ahead would park
+    a run past the claim it holds.
 - 2026-08-21 — **Post-review hardening of the walking skeleton** (whole-`src/` review, findings
   independently re-verified before fixing):
   - an unexpected exception inside an admitted run is now recorded through the guard (RETRYING, or

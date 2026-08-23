@@ -73,6 +73,29 @@ public enum ReasonCode {
     TRANSFORMATION_FAILED("TRANSFORMATION_FAILED"),
 
     /**
+     * The Results command API refused an {@code add-informant-register} body.
+     *
+     * <p>A 4xx other than 429: the request was understood and declined, so the same bytes will be
+     * declined again and a redelivery would only spend the budget. The status is not part of the
+     * code and the response body never is — both are the other side's words, and this code reaches
+     * a dead-letter description and the log index.
+     */
+    SUBMISSION_REJECTED("SUBMISSION_REJECTED"),
+
+    /**
+     * The Results command API answered something other than the {@code 202 Accepted} its contract
+     * declares.
+     *
+     * <p>A separate code from a refusal because it is a separate investigation: a 4xx is this
+     * service's body being declined, while a 2xx that is not 202 is the endpoint not behaving as the
+     * contract says — a proxy answering on its behalf, or a route reaching something else. It is
+     * never retried, because a second POST of a body that may already have been applied would create
+     * the duplicate register row the processed log exists to prevent, and it is never treated as
+     * success, because a command that was not accepted was not enqueued.
+     */
+    SUBMISSION_NOT_ACCEPTED("SUBMISSION_NOT_ACCEPTED"),
+
+    /**
      * The processed log could not be reached, so the delivery was not examined at all.
      *
      * <p>Distinct from every other failure here because it says nothing about the message. The

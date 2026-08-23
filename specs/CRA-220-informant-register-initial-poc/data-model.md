@@ -39,7 +39,7 @@ One row per `(source, request_id)`. The durable memory that makes the service id
 | `attempts` | integer | not null default 0; lifetime count of pipeline-run starts (successes included); incremented atomically in the same statement that acquires the claim; never a control variable |
 | `completion_reason` | text | nullable; e.g. `no-authorities` |
 | `failure_reason` | text | nullable; sanitised bounded reason code + summary — no PII, no raw exception text |
-| `exhausted_message_id` | text | nullable; broker messageId of the delivery that exhausted `maxDeliveryCount`; written in the same transaction as `status = FAILED` |
+| `exhausted_message_id` | text | nullable; broker messageId of the delivery that parked the request — the one that exhausted `maxDeliveryCount`, or the one that met a failure no redelivery could fix; written in the same transaction as `status = FAILED` |
 | `audit_note` | text | nullable; e.g. replay note on `FAILED → RECEIVED` |
 | `claim_owner` | text | nullable; runner identity (instance id + delivery id) while a run is in flight |
 | `claim_token` | uuid | nullable; minted fresh on **every** claim acquisition; the predicate that lets an outcome write prove the claim it holds is still the current one |
@@ -148,6 +148,7 @@ gets no row. Full branch narrative: `doc/TECHNICAL_DESIGN.md` "Processing State 
 | RECEIVED / RETRYING | COMPLETED | run succeeds (empty output set ⇒ `completion_reason = 'no-authorities'`) | conditional on the claim triple; recorded before `complete()` |
 | RECEIVED / RETRYING | RETRYING | transient run failure, deliveries of this message remain | conditional on the claim triple; reason recorded before `abandon()` |
 | RECEIVED / RETRYING | FAILED | transient failure on the final permitted delivery (broker delivery count = 5) | conditional on the claim triple; `exhausted_message_id` written in the same transaction; before `deadLetter()` |
+| RECEIVED / RETRYING | FAILED | non-transient failure (the Results command refuses the body), whatever the delivery budget says — no redelivery would send anything different | same statement as above; `exhausted_message_id` carries the delivery that parked it; before `deadLetter()` |
 | FAILED | RECEIVED | delivery for the same key under a **different** messageId than `exhausted_message_id` (deliberate resubmission) | attempts preserved and incremented; `failure_reason` and `exhausted_message_id` cleared; `audit_note` written; claim taken |
 | FAILED | FAILED (no change) | delivery under the **same** messageId | no run; `deadLetter()` re-attempted |
 | COMPLETED | — | terminal; any delivery acknowledged without a run | row untouched |

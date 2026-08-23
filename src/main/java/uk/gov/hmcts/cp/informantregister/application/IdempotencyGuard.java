@@ -134,7 +134,8 @@ public class IdempotencyGuard {
      * Records a run that failed in a way no redelivery can change, parking it at once.
      *
      * <p>The delivery budget is irrelevant here and deliberately not consulted. A transformation
-     * error or a contract rejection reads the same on every delivery, so abandoning it back to the
+     * error reads the same on every delivery, and a body the Results command refused is the same
+     * body on the next one, so abandoning it back to the
      * broker would spend four more deliveries reaching the same answer and then park it under
      * {@code DELIVERY_LIMIT_EXHAUSTED} — a reason that tells support the service ran out of tries
      * rather than that the payload was unusable (`design_rules.md`, "Processing State Machine":

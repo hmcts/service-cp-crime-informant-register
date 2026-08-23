@@ -18,7 +18,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import uk.gov.hmcts.cp.informantregister.adapter.stub.StubHearingPayloadSource;
-import uk.gov.hmcts.cp.informantregister.adapter.stub.StubRegisterSubmissionClient;
+import uk.gov.hmcts.cp.informantregister.adapter.results.ResultsRegisterSubmissionClient;
 import uk.gov.hmcts.cp.informantregister.domain.CompletionReason;
 import uk.gov.hmcts.cp.informantregister.domain.RequestStatus;
 import uk.gov.hmcts.cp.informantregister.support.CapturedLog;
@@ -72,12 +72,16 @@ class WalkingSkeletonIT {
         registry.add("spring.datasource.password", PostgresTestSupport::password);
         registry.add("informantregister.servicebus.connection-string", () -> connectionString);
         ServiceTestSupport.stubPayloadSource(registry);
+        // CJSCPPUID. The service refuses to start without one, because a command sent
+        // anonymously is a command Results refuses; no suite here ever reaches Results.
+        registry.add("informantregister.results.system-user-id",
+                () -> ServiceTestSupport.SYSTEM_USER_ID);
     }
 
     @BeforeEach
     void captureTheStubLogs() {
         payloadStubLog = CapturedLog.of(StubHearingPayloadSource.class);
-        submissionStubLog = CapturedLog.of(StubRegisterSubmissionClient.class);
+        submissionStubLog = CapturedLog.of(ResultsRegisterSubmissionClient.class);
     }
 
     @AfterEach

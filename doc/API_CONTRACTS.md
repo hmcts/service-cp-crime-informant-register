@@ -156,13 +156,44 @@ change to this body is a change to somebody else's contract: raise it with the R
 row. (The 19:00 sweep takes the latest row per hearing, so the CSV self-heals — do not rely on it.)
 Duplicate submission is prevented on this side by the `(source, requestId)` processed-log plus a
 per-authority `processed_output` row, so an authority already `POSTED` is skipped on redelivery or
-replay. The `processed_output` half of that is the **design for the later real-submission stories**:
-this increment creates the table and writes no rows, because the stub pipeline produces no outputs
-and this contract is not called at all yet.
+replay. That row is written **before** the POST, carrying `request_digest` — SHA-256 of exactly the
+bytes sent — and moved to `POSTED` or `FAILED` afterwards, so a POST whose outcome is never learned
+still leaves evidence of what was attempted.
 
-**Retry policy:** connect/IO errors, 5xx and 429 (honouring `Retry-After`) are retried with
-exponential back-off; other 4xx are non-transient and go straight to `FAILED` + dead-letter. This is
-the one deliberate behaviour change from the function app, which swallowed these errors entirely.
+The guarantee, stated honestly: at-most-once submission in normal operation, redeliveries and
+replays included; across a crash in the instant between an accepted POST and the row being marked
+`POSTED`, at-least-once. The duplicate is absorbed downstream exactly like a re-share.
+
+**Success is `202 Accepted` and nothing else.** Any other 2xx is treated as a failure: it means
+something other than the command endpoint answered — a proxy, or a route that no longer reaches it —
+and marking the authority `POSTED` for a command nothing enqueued would lose the register with the
+log saying it was sent. It is not retried either, because the body may already have been applied, so
+it is reported non-transient under `SUBMISSION_NOT_ACCEPTED` and parked for somebody to look at the
+endpoint.
+
+**Retry policy:** connect/IO errors, 5xx and 429 (honouring `Retry-After` in its delta-seconds form;
+an HTTP-date falls back to the back-off rather than measuring a remote clock against this pod's) are
+retried with exponential back-off; other 4xx are non-transient and go straight to `FAILED` +
+dead-letter, on the delivery that met them rather than after the delivery budget is spent. An
+**ambiguous** outcome — a timeout, a dropped connection — is retried, deliberately preferring a
+possible duplicate (absorbed) over a possible loss (silent). This is the one deliberate behaviour
+change from the function app, which swallowed these errors entirely (`doc/DEVIATIONS.md` #2).
+
+The numbers are this service's own, because the contract documents that back-off happens and not how
+much of it: `informantregister.results.max-attempts` (4), `initial-backoff` (500ms, doubling),
+`max-backoff` (20s — the ceiling on a server-supplied `Retry-After` too, so a misconfigured server
+cannot park a run past its claim), `connect-timeout` (5s) and `read-timeout` (30s). The worst case
+must stay well inside `informantregister.claim.processing-deadline`.
+
+**Identity and authorisation:** `CJSCPPUID` is the documented header and is supplied from
+`informantregister.results.system-user-id`. It is **required**: the gateway refuses to be built
+without it, so a deployment missing the identity fails to start rather than dead-lettering every
+hearing it is given, one 403 at a time. The Results side additionally applies access-control
+rules requiring the caller to be in a named user group (`System Users` is the applicable one for a
+service caller), and no repo document states how that identity is presented on the wire. Rather than
+guess, every further header is configuration — `informantregister.results.headers.<name>` — so
+whatever the mesh requires can be supplied without a code change. **Open decision**, see the
+blockers recorded against the submission story.
 
 ---
 

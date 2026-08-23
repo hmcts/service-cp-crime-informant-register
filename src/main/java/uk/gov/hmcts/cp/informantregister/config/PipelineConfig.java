@@ -5,21 +5,24 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import tools.jackson.databind.ObjectMapper;
-import uk.gov.hmcts.cp.informantregister.adapter.stub.StubRegisterSubmissionClient;
+import uk.gov.hmcts.cp.informantregister.adapter.results.ResultsCommandGateway;
+import uk.gov.hmcts.cp.informantregister.adapter.results.ResultsRegisterSubmissionClient;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.application.HearingPayloadSource;
 import uk.gov.hmcts.cp.informantregister.application.IdempotencyGuard;
 import uk.gov.hmcts.cp.informantregister.application.RegisterSubmissionClient;
 import uk.gov.hmcts.cp.informantregister.inbound.DistributionCommandParser;
+import uk.gov.hmcts.cp.informantregister.persistence.ProcessedOutputRepository;
 
 /**
  * The application core and the adapters currently serving its ports.
  *
- * <p>The remaining stub is declared as its port type rather than as its own class, so replacing it
- * with a real adapter is a change to one method here and to nothing else. That is the claim the
- * skeleton made, and the payload port has now been through it: the adapter behind it moved out to
+ * <p>Every bean here is declared as its port type rather than as its own class, so replacing an
+ * adapter is a change to one method here and to nothing else. That is the claim the skeleton made,
+ * and both ports have now been through it: the payload adapter moved out to
  * {@link LivePayloadConfig} and {@link StubPayloadConfig}, which choose between two implementations,
- * and nothing in {@link DistributionPipeline} changed to allow it.
+ * and the submission stub was replaced by the Results adapter — with nothing in
+ * {@link DistributionPipeline} changed to allow either.
  *
  * <p>Excluded from the {@code test} profile for the same reason as the processed-log wiring: the
  * pipeline needs the guard, the guard needs a store, and that profile has none.
@@ -49,10 +52,32 @@ public class PipelineConfig {
         return new DistributionCommandParser(objectMapper);
     }
 
-    /** The submission port, stubbed until the Results adapter story lands. */
+    /**
+     * The {@code add-informant-register} transport, with its own retry policy.
+     *
+     * <p>A bean of its own rather than a field of the adapter, so the policy is configurable and
+     * visible at the wiring rather than buried a constructor deeper. The wait is
+     * {@link Thread#sleep(java.time.Duration)}; the suites substitute a recorder, which is the only
+     * reason it is a parameter at all.
+     */
     @Bean
-    public RegisterSubmissionClient registerSubmissionClient() {
-        return new StubRegisterSubmissionClient();
+    public ResultsCommandGateway resultsCommandGateway(final InformantRegisterProperties properties) {
+        return new ResultsCommandGateway(properties.results(), Thread::sleep);
+    }
+
+    /**
+     * The submission port.
+     *
+     * <p>The claim the skeleton made — that replacing a stub is a change to one method here and to
+     * nothing else — is being cashed in: the return type is unchanged, the pipeline is untouched,
+     * and the adapter behind it now writes {@code processed_output} and POSTs.
+     */
+    @Bean
+    public RegisterSubmissionClient registerSubmissionClient(
+            final ProcessedOutputRepository outputs,
+            final ResultsCommandGateway gateway,
+            final ObjectMapper objectMapper) {
+        return new ResultsRegisterSubmissionClient(outputs, gateway, objectMapper);
     }
 
     /** The use-case orchestrator, wired against ports only. */

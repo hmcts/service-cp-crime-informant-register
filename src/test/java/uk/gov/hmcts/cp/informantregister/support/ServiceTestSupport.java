@@ -30,6 +30,15 @@ import static org.awaitility.Awaitility.await;
  */
 public final class ServiceTestSupport {
 
+    /**
+     * The {@code CJSCPPUID} every context needs before it will start.
+     *
+     * <p>The gateway refuses to be built without an identity — a command sent anonymously is a
+     * command Results refuses — so a suite that boots the real configuration has to supply one. It
+     * is never used: no suite produces an authority, so nothing is ever posted.
+     */
+    public static final String SYSTEM_USER_ID = "00000000-0000-4000-8000-000000000000";
+
     /** How long a freshly started service is given to process its first request. */
     private static final Duration CONSUMING_WITHIN = Duration.ofSeconds(60);
 
@@ -126,6 +135,7 @@ public final class ServiceTestSupport {
         // The deployed interval is ten seconds. Two makes a resume observable without making the
         // probe itself the thing under test.
         properties.put("informantregister.store.probe-interval", "2s");
+        properties.put("informantregister.results.system-user-id", SYSTEM_USER_ID);
         return properties;
     }
 

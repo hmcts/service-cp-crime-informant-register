@@ -81,7 +81,7 @@ uk.gov.hmcts.cp.informantregister
 ├── adapter/
 │   ├── stub/      CRA-220 logging no-op implementations of every port
 │   ├── payload/   Redis + results-query-api payload source            (later story)
-│   └── results/   add-informant-register submission client            (later story)
+│   └── results/   add-informant-register submission client + retry policy
 ├── pipeline/      RegisterBuilder, SubscriptionMatcher, AggregationMapper (later story)
 ├── persistence/   entities + repositories; migrations in resources/db/migration
 └── config/        typed properties, ObjectMapper, health indicators
@@ -133,16 +133,18 @@ held, and its expiry is what the reclaim branch waits on. The branches that sett
 path that inserts a fresh `RECEIVED` record over an existing one: an existing non-terminal record is
 either contested (abandon) or reclaimed, never duplicated.
 
-In CRA-220 the only non-transient path is contract validation, which is settled before the state
-machine starts; the non-transient RUN branch above is exercised once the real submission adapter
-lands (non-429 4xx, transformation error).
+The non-transient RUN branch is taken on the delivery that meets the failure, whatever the delivery
+budget still allows: the Results command refusing a body refuses the same body next time, so the
+remaining deliveries would buy nothing and would only delay the dead-letter support acts on. Its
+sources are a non-429 4xx, a 2xx that is not the contract's `202 Accepted`, and — once the
+transformation lands — a transformation error. Contract validation is non-transient too, but it is
+settled before the state machine starts and so leaves no row.
 
 - **Request statuses:** `RECEIVED`, `RETRYING`, `COMPLETED`, `FAILED` (last two terminal).
 - Terminal is not the same as final: a resubmitted `FAILED` request is replayable (below); a
   resubmitted `COMPLETED` request is acknowledged and never reprocessed.
-- **Per-authority statuses** (`processed_output`): `PENDING` (row written before the POST),
-  `POSTED`, `FAILED` — schema only in CRA-220; see
-  Idempotency below.
+- **Per-authority statuses** (`processed_output`): `PENDING` (row claimed before the POST),
+  `POSTED`, `FAILED`. A `POSTED` authority is skipped on any later delivery; see Idempotency below.
 - A hearing that legitimately yields no authorities still ends `COMPLETED`, with the reason
   `no-authorities` recorded — a business outcome, not an error, and not a status of its own.
 - **`attempts` semantics.** `attempts` is the **lifetime cumulative count of pipeline-run starts**
@@ -186,8 +188,8 @@ lands (non-429 4xx, transformation error).
   reprocesses it. Replaying a dead-lettered message is the supported recovery route. A redelivery
   carrying the *original* `messageId` (e.g. dead-lettering did not settle and the lock expired) is
   not a replay: the record stays `FAILED`, the pipeline does not run, and dead-lettering is
-  re-attempted. Once the real submission adapter lands, a replayed run also skips authorities already
-  `POSTED` (see Idempotency — deferred with `processed_output`).
+  re-attempted. A replayed run skips authorities already `POSTED`, so only the work that failed is
+  repeated (see Idempotency).
 - `requestId` is minted deterministically by the publisher from `hearingId | hearingDay | sharedTime`,
   so a republish of the same share carries the same id while a genuine re-share mints a new one
   (re-shares are legitimate and must be reprocessed).
@@ -203,7 +205,7 @@ Message shape and field semantics: `doc/API_CONTRACTS.md`.
 | Table | Key | Purpose |
 |-------|-----|---------|
 | `processed_request` | PK `(source, request_id)` | The idempotency claim. Insert-on-first-sight; a unique violation means a concurrent/duplicate delivery. Carries `hearing_id`, `hearing_day`, `shared_time`, `event_type`, `status`, `attempts`, `completion_reason`, `failure_reason`, timestamps — plus the three groups of columns the state machine's branches need, below. |
-| `processed_output` | PK `output_id`, UNIQUE `(source, request_id, prosecution_authority_id)` | **CRA-220 creates the schema and writes no rows** — the stub pipeline produces no outputs. Its semantics are deferred; see below. |
+| `processed_output` | PK `output_id`, UNIQUE `(source, request_id, prosecution_authority_id)` | One row per authority, claimed **before** the POST and updated after. Created complete in V1, so the submission story added rows rather than columns. See below. |
 
 `processed_request` columns that the branches of the state machine depend on:
 
@@ -213,13 +215,15 @@ Message shape and field semantics: `doc/API_CONTRACTS.md`.
 | `exhausted_message_id` | FAILED redelivery vs. resubmission (spec FR-007) | The broker message identity of the delivery that exhausted `maxDeliveryCount` — written in the same transaction that sets `status = FAILED`, `NULL` before that. A later delivery of a `FAILED` request compares its own `messageId` against this value: **equal** means the same exhausted message coming round again (stays `FAILED`, no run, dead-letter re-attempted); **different** means a deliberate support resubmission (`FAILED` → `RECEIVED`, attempts preserved, audit note, run). |
 | `claim_owner`, `claim_token`, `claim_expires_at` | Single-runner claim (spec FR-008) | The claim triple is taken **atomically** in the same conditional `UPDATE`/`INSERT` that moves the record into a running state, stamping the runner's identity (instance + delivery), a **fresh `claim_token` minted on every acquisition**, and an expiry (`now() + lease`). An enforced processing deadline strictly shorter than the lease bounds every run, so a live-but-slow runner aborts (RETRYING) before its lease can lapse; every outcome write is predicated on `claim_owner` **and** `claim_token`, so a runner whose claim was reclaimed cannot overwrite the new owner's result — it discards its work, logs at WARN and abandons. A competing delivery that finds an **unexpired** claim owned by someone else is abandoned for retry and never acknowledged; one that finds an **expired or absent** claim reclaims it atomically (a conditional update guarded on the old owner/expiry, so exactly one of several racing deliveries wins) and runs. The expiry is what makes a crashed runner recoverable without operator action. Exact SQL: `specs/CRA-220-informant-register-initial-poc/data-model.md` "Guard operations". |
 
-Deferred with `processed_output` — **the design for the later real-submission stories, not a
-contract of this increment**: one row per authority written **before** the POST and updated after,
-so an authority already `POSTED` is skipped on redelivery or replay and partial progress is never
-re-sent; `request_digest` (SHA-256 of the outbound body) carried for reconciliation. None of that
-is observable in CRA-220, because the stub pipeline produces no outputs and therefore writes no
-rows; the semantics become testable and contractual with the stories that attach the real
-submission adapter.
+`processed_output`, as the submission story implemented it: one row per authority, claimed **before**
+the POST and updated after, so an authority already `POSTED` is skipped on redelivery or replay and
+partial progress is never re-sent; `request_digest` (SHA-256 of exactly the bytes sent) carried for
+reconciliation and replay diffing, and left in place after a failure because what was attempted is
+the evidence. The claim and the skip are **one conditional upsert**, not a read followed by a write:
+two deliveries of a request can be in flight, and a `SELECT status` is stale by the time the caller
+acts on it. The rows only appear once a run produces authorities, which needs the transformation
+story; until then the statements are exercised by their own suites and the pipeline still produces
+none.
 
 **Delivery guarantee.** At-most-once submission in all normal operation, redeliveries and replays
 included. Across a crash in the instant between a successful POST and recording it, the guarantee
@@ -269,6 +273,11 @@ writes · actuator · container build · structured logging · failure ERROR log
 metrics. `processed_output` is created as schema only — the stub pipeline produces no outputs, so no
 rows are written this increment.
 
+**Since CRA-220:** the submission leg landed — `adapter/results/` POSTs `add-informant-register` per
+authority with the retry policy above, and the `processed_output` statements claim, skip and record
+around it. It is wired and tested, but produces no rows in normal running until the transformation
+story gives a run some authorities to submit.
+
 **Single replica.** CRA-220 deploys **one** consumer pod. Intake suspension on a processed-log
 outage is a per-pod decision, so with several replicas an outage could still burn deliveries on the
 pods that have not yet noticed it. Cluster-safe suspension — a shared suspension signal, or KEDA
@@ -290,7 +299,11 @@ Everything `${ENV_VAR:default}` in `application.yaml`, bound to typed `@Configur
 | `informantregister.servicebus.max-concurrent-calls` | 2 | Processor concurrency |
 | `informantregister.servicebus.max-delivery-count` | 5 | Broker dead-letter threshold (mirrors the queue setting) |
 | `informantregister.payload.redis.*` | — | Redis host/port/TLS (later story) |
-| `informantregister.results.base-url` | — | Results command/query API base (later story) |
+| `informantregister.results.base-url` | — | Results command API base; no default, the local value in `application.yaml` is the command API's own declared `baseUri` |
+| `informantregister.results.system-user-id` | — | `CJSCPPUID` identity; a secret, from Key Vault. **Required**: the gateway refuses to be built without one, so a deployment missing it fails to start rather than having every command refused |
+| `informantregister.results.headers.*` | — | Any further header the mesh requires; configuration because the authorisation scheme is undocumented |
+| `informantregister.results.max-attempts` / `initial-backoff` / `max-backoff` | 4 / 500ms / 20s | POST retry policy; `max-backoff` also caps a server-supplied `Retry-After` |
+| `informantregister.results.connect-timeout` / `read-timeout` | 5s / 30s | Worst case must stay inside `claim.processing-deadline` |
 | `spring.flyway.enabled` | `true` | Processed-log migrations |
 
 Secrets and identity: Key Vault CSI → env vars; workload identity (`DefaultAzureCredential`) for
