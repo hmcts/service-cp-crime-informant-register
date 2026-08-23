@@ -1,6 +1,7 @@
 package uk.gov.hmcts.cp.informantregister.pipeline;
 
 import java.time.Clock;
+import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -66,6 +67,18 @@ public final class HearingDates {
     private static final Pattern LEADING_DATE =
             Pattern.compile("^(\\d{4})\\D(\\d{1,2})\\D(\\d{1,2})");
 
+    /**
+     * The day, month and year of a {@code DD/MM/YYYY} value, whatever separates them.
+     *
+     * <p>The counterpart of {@link #LEADING_DATE} for {@code DateService.formatDate}'s hard-coded
+     * format. Same non-strict rule, different token order — which is the whole of defect D11.
+     */
+    private static final Pattern DAY_MONTH_YEAR =
+            Pattern.compile("^\\D*(\\d{1,2})\\D*(\\d{1,2})\\D*(\\d{1,4})");
+
+    /** What moment renders instead of throwing when it cannot read a value. */
+    private static final String INVALID_DATE = "Invalid date";
+
     private final Clock clock;
 
     /**
@@ -100,6 +113,59 @@ public final class HearingDates {
      */
     public String localDateTime(final String value) {
         return toLondon(value).format(LOCAL_DATE_TIME) + "Z";
+    }
+
+    /**
+     * The London wall-clock time of a value first re-read as a {@code DD/MM/YYYY} day.
+     *
+     * <p>Ports {@code DateService.formatDateAndGetLocalDateTime}, which is two steps and one defect.
+     * The first step is {@code DateService.formatDate}, whose {@code sourceFormat} and
+     * {@code targetFormat} parameters exist only to make the call sites look configurable — the body
+     * ignores both and hard-codes {@code moment(value, 'DD/MM/YYYY').format('YYYY-MM-DD')}. The
+     * second step formats the result the same way {@link #localDateTime} does.
+     *
+     * <p><strong>A date in any other order is not read, and not refused either.</strong> moment
+     * answers an unparseable value with the literal string {@code "Invalid date"} rather than by
+     * throwing, and step two appends {@code Z} to it, so the value {@code "Invalid dateZ"} is what
+     * reaches the outbound body — inside a field the frozen contract types as a date-time. Verified
+     * against the {@code moment} vendored with the function app: {@code 26/02/2019} reads as 26
+     * February, while the ISO {@code 2021-07-26} does not read at all. This is defect D11 and the
+     * parity pack pins it; a {@code java.time} port that reads both correctly is a behaviour change
+     * to values prosecuting authorities ingest, and needs a deviations-register entry first.
+     *
+     * <p>The parse itself is moment's non-strict one: it takes the numeric tokens in the order the
+     * format names them — one or two digits of day, one or two of month, up to four of year — and
+     * ignores whatever separates them, which is why a value with a time on the end still reads. Only
+     * that leading run is reproduced; a value moment would resolve through some other route is not
+     * reachable from this call site, whose inputs are duration dates.
+     *
+     * @param value the duration date to read; may be {@code null}
+     * @return the London wall-clock time, labelled {@code Z}, or {@code "Invalid dateZ"}
+     */
+    public String formattedLocalDateTime(final String value) {
+        final LocalDate day = asDayMonthYear(value);
+        return day == null ? INVALID_DATE + "Z" : localDateTime(day.format(LOCAL_DATE));
+    }
+
+    /**
+     * Reads a value as moment's non-strict {@code DD/MM/YYYY} does.
+     *
+     * @param value the value to read; may be {@code null}
+     * @return the day, or {@code null} when moment would call the value invalid
+     */
+    private static LocalDate asDayMonthYear(final String value) {
+        final Matcher matcher = value == null ? null : DAY_MONTH_YEAR.matcher(value);
+        if (matcher == null || !matcher.find()) {
+            return null;
+        }
+        try {
+            return LocalDate.of(
+                    Integer.parseInt(matcher.group(3)),
+                    Integer.parseInt(matcher.group(2)),
+                    Integer.parseInt(matcher.group(1)));
+        } catch (DateTimeException notACalendarDay) {
+            return null;
+        }
     }
 
     /**

@@ -166,6 +166,37 @@ final class Json {
     }
 
     /**
+     * A field the legacy reads <strong>through</strong> without a guard, as {@code parent.field.x}
+     * would reach it.
+     *
+     * <p>The scalar counterpart of {@link #dereferencedArray}, and it refuses the same two values for
+     * the same reason. In JavaScript only {@code undefined} and {@code null} throw when a property is
+     * read off them; anything else answers {@code undefined} and the expression carries on. So an
+     * absent field and an explicit JSON null are refused here — the legacy dies there and the hearing
+     * produces no register for anybody — while a value of the wrong shape is returned, because
+     * reading a property off it is legal and yields nothing.
+     *
+     * <p>Reading a missing parent as "no value" instead would carry on and emit a register the legacy
+     * never sent, to a real prosecuting authority. That is the one direction a bug-for-bug port must
+     * not drift in; the refusal is deviations-register entry 7.
+     *
+     * @param node  the object being dereferenced; may be {@code null}, which is itself a refusal
+     * @param field the field name
+     * @return the field's value, never {@code null}
+     * @throws TransformationFailedException if the field is absent or JSON null
+     */
+    static JsonNode dereferenced(final JsonNode node, final String field) {
+        final JsonNode value = at(node, field);
+        if (value == null || value.isNull()) {
+            // The field name is this service's own vocabulary, so it is safe to name. The value is
+            // the producer's, and may be defendant detail, so it is never quoted.
+            throw new TransformationFailedException(
+                    "hearing field '" + field + "' cannot be read through");
+        }
+        return value;
+    }
+
+    /**
      * Whether a field would satisfy {@code parent.field && parent.field.length > 0}.
      *
      * <p>The second half is the reason this is not {@code !array(node, field).isEmpty()}. A truthy

@@ -218,4 +218,64 @@ class HearingDatesTest {
             assertThat(dates.localDateTime("2020-06-19")).isEqualTo("2020-06-19T00:00:00Z");
         }
     }
+
+    /**
+     * The hard-coded {@code DD/MM/YYYY} re-read that duration dates go through, and defect D11 with
+     * it. Every expectation below was taken from the {@code moment} vendored with the function app,
+     * by calling {@code DateService.formatDateAndGetLocalDateTime} on the same input — none of them
+     * is a reading of what moment "ought" to do.
+     *
+     * <p>The pair that matters is the third and fourth: the same calendar day written the producer's
+     * way reads correctly, and written the ISO way does not read at all. A port that accepted both
+     * would be a change to values prosecuting authorities ingest.
+     */
+    @Nested
+    @DisplayName("formattedLocalDateTime — the DD/MM/YYYY re-read (D11)")
+    class FormattedLocalDateTime {
+
+        @Test
+        @DisplayName("reads a day-first date, which is the form the producer sends")
+        void reads_a_day_first_date() {
+            assertThat(dates.formattedLocalDateTime("26/02/2019"))
+                    .isEqualTo("2019-02-26T00:00:00Z");
+        }
+
+        @Test
+        @DisplayName("reads single-digit day and month, as the non-strict parse allows")
+        void reads_single_digit_day_and_month() {
+            assertThat(dates.formattedLocalDateTime("1/2/2019")).isEqualTo("2019-02-01T00:00:00Z");
+        }
+
+        @Test
+        @DisplayName("ignores anything after the leading date, as the non-strict parse does")
+        void ignores_anything_after_the_leading_date() {
+            assertThat(dates.formattedLocalDateTime("26/02/2019T10:00:00Z"))
+                    .isEqualTo("2019-02-26T00:00:00Z");
+        }
+
+        @Test
+        @DisplayName("D11 — an ISO date is not read, and ships as the literal 'Invalid dateZ'")
+        void an_iso_date_ships_as_the_literal_invalid_date() {
+            assertThat(dates.formattedLocalDateTime("2021-07-26")).isEqualTo("Invalid dateZ");
+        }
+
+        @Test
+        @DisplayName("D11 — a full ISO timestamp is not read either")
+        void a_full_iso_timestamp_ships_as_the_literal_invalid_date() {
+            assertThat(dates.formattedLocalDateTime("2020-06-19T09:08:03.001Z"))
+                    .isEqualTo("Invalid dateZ");
+        }
+
+        @Test
+        @DisplayName("D11 — an empty value is answered, not refused")
+        void an_empty_value_ships_as_the_literal_invalid_date() {
+            assertThat(dates.formattedLocalDateTime("")).isEqualTo("Invalid dateZ");
+        }
+
+        @Test
+        @DisplayName("a date that is not a calendar day is invalid, as moment's validation says")
+        void a_non_calendar_day_ships_as_the_literal_invalid_date() {
+            assertThat(dates.formattedLocalDateTime("31/02/2019")).isEqualTo("Invalid dateZ");
+        }
+    }
 }
