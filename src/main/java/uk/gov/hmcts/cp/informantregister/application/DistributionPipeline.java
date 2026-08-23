@@ -16,6 +16,7 @@ import uk.gov.hmcts.cp.informantregister.domain.FailureClassification;
 import uk.gov.hmcts.cp.informantregister.domain.GuardDecision;
 import uk.gov.hmcts.cp.informantregister.domain.PayloadUnavailableException;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
+import uk.gov.hmcts.cp.informantregister.domain.ReferenceDataUnavailableException;
 import uk.gov.hmcts.cp.informantregister.domain.RequestOutcome;
 import uk.gov.hmcts.cp.informantregister.domain.RunClaim;
 import uk.gov.hmcts.cp.informantregister.domain.SubmissionFailedException;
@@ -28,11 +29,12 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * place that knows the order the ports are called in. The transport adapter above it decides how a
  * delivery is settled; this decides what the delivery is worth settling as.
  *
- * <p><strong>A run produces no authorities in this increment.</strong> There is no transformation
- * port yet, so the submission port is invoked once per member of an empty set — which is not at all
- * — and the request completes with {@code no-authorities}. An empty result is a legitimate business
- * outcome recorded as such, and a submission stub that is never called is the intended shape of the
- * skeleton rather than a missing step (spec US1-2, FR-010).
+ * <p><strong>A run that produces no authorities is a success.</strong> The transformation port
+ * answers with one document per prosecuting authority, and a hearing that has no register in it
+ * answers with none — which is what the legacy orchestrator's {@code if (informantRegisters)} guard
+ * means ({@code index.js:27}). The submission port is then invoked once per member of an empty set,
+ * which is not at all, and the request completes with {@code no-authorities}: a business outcome
+ * recorded as such rather than an error (spec US1-2, FR-010; deviations-register entry 6).
  *
  * <p><strong>The run bounds itself.</strong> Before the ports are touched the deadline is fixed at
  * {@code informantregister.claim.processing-deadline} from now, and the run checks it before writing
@@ -69,6 +71,7 @@ public class DistributionPipeline {
 
     private final IdempotencyGuard guard;
     private final HearingPayloadSource payloadSource;
+    private final RegisterTransformer transformer;
     private final RegisterSubmissionClient submissionClient;
     private final ProcessingMetrics metrics;
     private final Clock clock;
@@ -78,12 +81,14 @@ public class DistributionPipeline {
     public DistributionPipeline(
             final IdempotencyGuard guard,
             final HearingPayloadSource payloadSource,
+            final RegisterTransformer transformer,
             final RegisterSubmissionClient submissionClient,
             final ProcessingMetrics metrics,
             final Clock clock,
             final Duration processingDeadline) {
         this.guard = guard;
         this.payloadSource = payloadSource;
+        this.transformer = transformer;
         this.submissionClient = submissionClient;
         this.metrics = metrics;
         this.clock = clock;
@@ -133,6 +138,12 @@ public class DistributionPipeline {
             outcome = failed(claim, unavailable.classification(), unavailable.reason(), lastChance);
         } catch (TransformationFailedException unreadable) {
             outcome = failed(claim, unreadable.classification(), unreadable.reason(), lastChance);
+        } catch (ReferenceDataUnavailableException unaddressable) {
+            // The register was built; what is missing is who it goes to. The legacy answers that
+            // with an empty recipient list and POSTs anyway — a register that reaches nobody, with
+            // nothing recording the outage (deviations-register entry 14, parity pin d03).
+            outcome = failed(
+                    claim, unaddressable.classification(), unaddressable.reason(), lastChance);
         } catch (SubmissionFailedException submission) {
             // Both of these say whether they are worth retrying, so they are asked rather than
             // assumed: a payload the transformation cannot read reads the same on every delivery,
@@ -156,9 +167,7 @@ public class DistributionPipeline {
         LOG.info("Hearing payload obtained. source={} requestId={} hearingId={} topLevelFields={}",
                 command.source(), command.requestId(), command.hearingId(), payload.size());
 
-        // No transformation port exists this increment, so the run produces no authorities. The loop
-        // below is therefore the submission port's real call site, executed zero times.
-        final List<AuthoritySubmission> submissions = List.of();
+        final List<AuthoritySubmission> submissions = submissionsFor(command, payload);
 
         final GuardDecision outcome;
         // Strictly before, so the deadline is a bound that is *reached* rather than passed: a run
@@ -168,7 +177,7 @@ public class DistributionPipeline {
             for (final AuthoritySubmission submission : submissions) {
                 submissionClient.submit(submission);
             }
-            outcome = completed(claim, submissions.size());
+            outcome = completed(claim, submissions);
         } else {
             outcome = failed(claim, FailureClassification.TRANSIENT,
                     ReasonCode.PROCESSING_DEADLINE_EXCEEDED, lastChance);
@@ -177,16 +186,56 @@ public class DistributionPipeline {
     }
 
     /**
+     * Turns the fetched payload into one submission per prosecuting authority.
+     *
+     * <p>The transformation is handed the payload the run fetched and the shared time the command
+     * carries, rendered as the wire form the legacy activity receives
+     * ({@code InformantRegisterOrchestrator/index.js:23} passes {@code hearingResultedObj.sharedTime}
+     * straight through). It is the command's value rather than a value re-read from the payload,
+     * because the command is this service's own closed contract and the payload is not.
+     *
+     * <p>Order is carried, never re-derived: the documents come back in the order the legacy produces
+     * its fragments, and each becomes exactly one submission in that order. Nothing downstream sorts,
+     * so which authority is POSTed first is decided here and nowhere else.
+     *
+     * @param command the request being run
+     * @param payload the hearing payload the source answered with
+     * @return the submissions, in the order they are to be made
+     */
+    private List<AuthoritySubmission> submissionsFor(
+            final DistributionCommand command, final JsonNode payload) {
+
+        return transformer.transform(payload, command.sharedTime().toString()).stream()
+                .map(document -> new AuthoritySubmission(
+                        command.source(),
+                        command.requestId(),
+                        document.prosecutionAuthorityId().toString(),
+                        document))
+                .toList();
+    }
+
+    /**
      * Records the run's success, and counts it only if the guard accepted the write.
      *
      * <p>A superseded runner's completion affects no rows and comes back as an abandon; counting it
      * as a completed request would report work that was never recorded.
+     *
+     * <p>Both completions are successes and the reason says which. A hearing that legitimately
+     * produces no authorities ends {@code COMPLETED} with {@code no-authorities} — a business
+     * outcome, not an error, and the shape {@code design_rules.md} requires. Leaving the reason blank
+     * for the other case would make "nothing was sent" and "everything was sent" the same row to
+     * anybody reading the processed log.
      */
-    private GuardDecision completed(final RunClaim claim, final int authorities) {
-        final GuardDecision outcome = guard.recordCompletion(claim, CompletionReason.NO_AUTHORITIES);
+    private GuardDecision completed(
+            final RunClaim claim, final List<AuthoritySubmission> submissions) {
+
+        final CompletionReason reason = submissions.isEmpty()
+                ? CompletionReason.NO_AUTHORITIES
+                : CompletionReason.AUTHORITIES_SUBMITTED;
+        final GuardDecision outcome = guard.recordCompletion(claim, reason);
         if (outcome instanceof GuardDecision.Complete) {
-            LOG.info("Run finished. source={} requestId={} authorities={}",
-                    claim.source(), claim.requestId(), authorities);
+            LOG.info("Run finished. source={} requestId={} authorities={} reason={}",
+                    claim.source(), claim.requestId(), submissions.size(), reason.value());
             metrics.requestSettled(RequestOutcome.COMPLETED);
         }
         return outcome;

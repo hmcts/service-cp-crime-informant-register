@@ -7,12 +7,21 @@ import org.springframework.context.annotation.Profile;
 import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.adapter.results.ResultsCommandGateway;
 import uk.gov.hmcts.cp.informantregister.adapter.results.ResultsRegisterSubmissionClient;
+import uk.gov.hmcts.cp.informantregister.adapter.stub.RefusingNowSubscriptionsSource;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.application.HearingPayloadSource;
 import uk.gov.hmcts.cp.informantregister.application.IdempotencyGuard;
+import uk.gov.hmcts.cp.informantregister.application.NowSubscriptionsSource;
 import uk.gov.hmcts.cp.informantregister.application.RegisterSubmissionClient;
+import uk.gov.hmcts.cp.informantregister.application.RegisterTransformer;
 import uk.gov.hmcts.cp.informantregister.inbound.DistributionCommandParser;
 import uk.gov.hmcts.cp.informantregister.persistence.ProcessedOutputRepository;
+import uk.gov.hmcts.cp.informantregister.pipeline.AggregationMapper;
+import uk.gov.hmcts.cp.informantregister.pipeline.HearingDates;
+import uk.gov.hmcts.cp.informantregister.pipeline.RegisterBuilder;
+import uk.gov.hmcts.cp.informantregister.pipeline.RegisterTransformationChain;
+import uk.gov.hmcts.cp.informantregister.pipeline.SubscriptionMatcher;
+import uk.gov.hmcts.cp.informantregister.pipeline.SubscriptionRules;
 
 /**
  * The application core and the adapters currently serving its ports.
@@ -80,16 +89,50 @@ public class PipelineConfig {
         return new ResultsRegisterSubmissionClient(outputs, gateway, objectMapper);
     }
 
+    /**
+     * Where the register's recipients come from.
+     *
+     * <p>The reference-data adapter is a later story, so the port is served by the one answer that
+     * cannot lose a register: a refusal. See {@link RefusingNowSubscriptionsSource} for why an empty
+     * answer would be the dangerous stub here and a refusal is the safe one.
+     */
+    @Bean
+    public NowSubscriptionsSource nowSubscriptionsSource() {
+        return new RefusingNowSubscriptionsSource();
+    }
+
+    /**
+     * The transformation port, served by the three ported activities chained as the legacy
+     * orchestrator chains them.
+     *
+     * <p>The clock is the same one the run's deadline is measured against, and it is load-bearing
+     * rather than incidental: {@code DateService.js:37} reads "now" for a hearing shared without a
+     * shared time, or resulted without an ordered date, and that value reaches {@code registerDate},
+     * {@code hearingDate} and the file name.
+     */
+    @Bean
+    public RegisterTransformer registerTransformer(
+            final Clock clock, final NowSubscriptionsSource nowSubscriptionsSource) {
+
+        final HearingDates dates = new HearingDates(clock);
+        return new RegisterTransformationChain(
+                new RegisterBuilder(dates),
+                new SubscriptionMatcher(new SubscriptionRules()),
+                new AggregationMapper(dates),
+                nowSubscriptionsSource);
+    }
+
     /** The use-case orchestrator, wired against ports only. */
     @Bean
     public DistributionPipeline distributionPipeline(
             final IdempotencyGuard guard,
             final HearingPayloadSource payloadSource,
+            final RegisterTransformer registerTransformer,
             final RegisterSubmissionClient submissionClient,
             final ProcessingMetrics metrics,
             final Clock clock,
             final InformantRegisterProperties properties) {
-        return new DistributionPipeline(guard, payloadSource, submissionClient, metrics, clock,
-                properties.claim().processingDeadline());
+        return new DistributionPipeline(guard, payloadSource, registerTransformer, submissionClient,
+                metrics, clock, properties.claim().processingDeadline());
     }
 }
