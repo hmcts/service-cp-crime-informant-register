@@ -6,13 +6,14 @@ Generate or update the standard Modern by Default (MbD) project documents.
 
 | #  | Document           | File                        | Purpose                          |
 |----|--------------------|-----------------------------|----------------------------------|
-| 1  | Solution Brief     | doc/SOLUTION_BRIEF.md       | Problem, solution, integrations  |
-| 2  | Technical Design   | doc/TECHNICAL_DESIGN.md     | Architecture, classes, patterns  |
-| 3  | API Contracts      | doc/API_CONTRACTS.md        | Endpoint specs, request/response |
-| 4  | Event Contracts    | doc/EVENT_CONTRACTS.md      | Event schemas (if event-driven)  |
-| 5  | Migration Plan     | doc/MIGRATION_PLAN.md       | Legacy transition strategy       |
-| 6  | Runbook            | doc/RUNBOOK.md              | Operations, monitoring, alerts   |
-| 7  | Changelog          | doc/CHANGELOG.md            | Version history                  |
+| 1  | API Contracts      | doc/API_CONTRACTS.md        | Inbound message + outbound command |
+| 2  | Event Contracts    | doc/EVENT_CONTRACTS.md      | Event schemas (if event-driven)  |
+| 3  | Runbook            | doc/RUNBOOK.md              | Operations, monitoring, alerts   |
+| 4  | Changelog          | doc/CHANGELOG.md            | Version history                  |
+
+Solution-brief and technical-design content is **not** generated into this repo. Design is
+maintained on the [Informant Register Service](https://tools.hmcts.net/confluence/spaces/CRA/pages/2004096218/Informant+Register+Service) Confluence page (space CRA), which is the single
+source of truth — do not re-create `doc/SOLUTION_BRIEF.md` or `doc/TECHNICAL_DESIGN.md`.
 
 ## Instructions
 
@@ -29,7 +30,7 @@ Return a compact status table:
 ```
 | Document         | Status  | Notes                    |
 |------------------|---------|--------------------------|
-| SOLUTION_BRIEF   | Updated | Added integration details |
-| TECHNICAL_DESIGN | Created | 12 classes documented    |
+| API_CONTRACTS    | Updated | Added integration details |
+| CHANGELOG        | Updated | 3 entries added          |
 | ...              | ...     | ...                      |
 ```

@@ -181,9 +181,9 @@ Rules:
 - A change to either contract is a **cross-team event**: it requires a spec, an
   agreed change with the Results context, and a compatibility plan (consumers
   and producers deploy independently — assume the old shape is in flight).
-- The only HTTP this service exposes is Spring Boot Actuator. `doc/openapi.yaml`
-  does not describe business endpoints, and adding a business endpoint requires
-  a constitution amendment, not just a spec.
+- The only HTTP this service exposes is Spring Boot Actuator. There is no
+  OpenAPI specification in this repository, and adding a business endpoint
+  requires a constitution amendment, not just a spec.
 
 **Rationale**: the queue message and the results command are the whole external
 surface. Treating them with the discipline other services give an OpenAPI spec

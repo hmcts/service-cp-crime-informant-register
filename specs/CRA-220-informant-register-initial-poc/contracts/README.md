@@ -21,4 +21,4 @@ to avoid drift; this file points at the canonical, versioned artefacts.
 ## HTTP
 
 - None beyond operational actuator endpoints (health/liveness/readiness, info, metrics,
-  Prometheus). `doc/openapi.yaml` describes no business endpoints.
+  Prometheus). There is no OpenAPI specification and no business endpoints.

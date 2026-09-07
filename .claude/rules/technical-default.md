@@ -64,8 +64,7 @@
 
 | Document                | Location                  |
 |-------------------------|---------------------------|
-| Solution Brief          | `doc/SOLUTION_BRIEF.md`   |
-| Technical Design        | `doc/TECHNICAL_DESIGN.md` |
+| Design (source of truth) | [Informant Register Service](https://tools.hmcts.net/confluence/spaces/CRA/pages/2004096218/Informant+Register+Service) (Confluence, space CRA) |
 | Contracts (in + out)    | `doc/API_CONTRACTS.md`    |
 | Changelog               | `doc/CHANGELOG.md`        |
 | Agreed Option 2 design  | `~/moj/analysis/results-distribution/InformantRegister/option2-implementation-page.md` |
