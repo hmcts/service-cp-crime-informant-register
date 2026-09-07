@@ -1,6 +1,7 @@
 # Data Model — CRA-220 walking skeleton
 
-Phase 1 output. Authoritative narrative: `doc/TECHNICAL_DESIGN.md` (state machine + idempotency);
+Phase 1 output. Authoritative narrative: the [Informant Register Service](https://tools.hmcts.net/confluence/spaces/CRA/pages/2004096218/Informant+Register+Service) Confluence page
+(idempotency) and `.claude/rules/design_rules.md` (state machine);
 this file is the feature-scoped distillation the tasks and migrations are written from.
 
 ## Entities
@@ -140,7 +141,7 @@ rather than cascading.
 ## State machine (processed_request.status)
 
 The state machine starts **only after** contract validation succeeds; a contract-invalid delivery
-gets no row. Full branch narrative: `doc/TECHNICAL_DESIGN.md` "Processing State Machine".
+gets no row. Full branch narrative: `.claude/rules/design_rules.md` "Processing State Machine".
 
 | From | To | Trigger | Persistence rule |
 |------|----|---------|------------------|

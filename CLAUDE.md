@@ -14,10 +14,8 @@ Team: Resulting Assistant
 ## Key Documentation
 | Document           | Location                      |
 |--------------------|-------------------------------|
-| Solution Brief     | doc/SOLUTION_BRIEF.md         |
-| Technical Design   | doc/TECHNICAL_DESIGN.md       |
-| API Contract (OpenAPI) | doc/openapi.yaml          |
-| API Contracts (docs)   | doc/API_CONTRACTS.md      |
+| Design (source of truth) | https://tools.hmcts.net/confluence/spaces/CRA/pages/2004096218/Informant+Register+Service |
+| API Contracts      | doc/API_CONTRACTS.md          |
 | Changelog          | doc/CHANGELOG.md              |
 
 ## Message-Contract Rule

@@ -40,7 +40,7 @@ You are a senior Spring Boot developer on the Crime Common Platform (MOJ/HMCTS),
 - **ASB consumer**: peek-lock, explicit `complete()` / `abandon()` / `deadLetter()` on every path — no auto-complete, no path that returns without settling. `maxDeliveryCount` 5, DLQ configured, broker duplicate detection on, `messageId = source:requestId`. Any replay/resubmit mints a **fresh** `messageId` and keeps the body `requestId`.
 - **Idempotency before delivery**: check the `(source, requestId)` processed-log before any outbound POST; record per-authority outcomes in `processed_output`. `add-informant-register` is not idempotent on the Results side.
 - **Outbound contract is frozen** (Results-owned, `additionalProperties: false`) — never add a field to it. Media type `application/vnd.results.add-informant-register+json`, `CJSCPPUID` header, expect `202`, retry on connect/IO/5xx/429.
-- **No REST API.** Actuator only. Do not add controllers, do not add paths to `doc/openapi.yaml`, do not build a replay endpoint.
+- **No REST API.** Actuator only. Do not add controllers, do not add an OpenAPI specification, do not build a replay endpoint.
 - **ASB health must never gate readiness** — keep broker indicators out of the readiness health group.
 - No hardcoded queue names, URLs, ports or secrets — typed `@ConfigurationProperties`.
 
@@ -84,7 +84,7 @@ Note `-Werror` is on for `JavaCompile` — warnings are build failures. After si
 
 ## Workflow
 
-1. Read the relevant design documents (`specs/*/spec.md`, `plan.md`, `tasks.md`, `doc/TECHNICAL_DESIGN.md`) before coding
+1. Read the relevant design documents (`specs/*/spec.md`, `plan.md`, `tasks.md`, and the [Informant Register Service](https://tools.hmcts.net/confluence/spaces/CRA/pages/2004096218/Informant+Register+Service) Confluence page) before coding
 2. For each behaviour change, write the failing test first; confirm it fails for the right reason
 3. Implement the minimum to pass, following `.claude/rules/technical-rules.md`
 4. Run `./gradlew build` (and `./gradlew pmdMain` for new code)

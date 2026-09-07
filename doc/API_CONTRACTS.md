@@ -5,9 +5,9 @@
 This service exposes **no REST API**. The only HTTP surface is Spring Boot Actuator
 (health, info, metrics, Prometheus), which is operational, not a contract with any consumer.
 
-There is no OpenAPI specification — `doc/openapi.yaml` exists only as a comment-only stub explaining this — and no `springdoc`, no Swagger UI, no controller layer.
-`doc/openapi.yaml` exists only as a stub explaining this and pointing back here. Do not add
-endpoints without an agreed story — a status/replay API is a separate decision, not a default.
+There is no OpenAPI specification in this repository, and no `springdoc`, no Swagger UI, no
+controller layer. Do not add endpoints without an agreed story — a status/replay API is a separate
+decision, not a default.
 
 This service has exactly **two** contracts:
 
