@@ -257,8 +257,17 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ github.repository }}:${{ needs.Artefact-Version.outputs.artefact_version }}
+          # Stands in for the base ADO actually deploys from,
+          # crmdvrepo01.azurecr.io/hmcts/apm-services:25-jre, which is Ubuntu 24.04 and a JRE.
+          # That registry is private (RFC1918), so a GitHub-hosted runner cannot pull it and this
+          # job has to build on the public equivalent. Matching its OS release and its JRE-ness is
+          # what makes the Trivy scan below say anything about the artefact that ships: the tag
+          # this used to pin was a JDK on Ubuntu 26.04, whose base layer carries a pebble binary
+          # that nothing we deploy contains, so the scan reported findings against an image no
+          # environment ever runs. What it still cannot reproduce is the ACR image's patch level.
+          # Pinned to the multi-arch index digest, not a platform-specific one.
           build-args: |
-            BASE_IMAGE=eclipse-temurin:25@sha256:201fbb8886b2d273218aa3a192f0afbf7b5ff65ee8cc6ef47f5dce2171f013ea
+            BASE_IMAGE=eclipse-temurin:25-jre-noble@sha256:b4c93a50fc67612798db73d68ca3b0ee4ebdd51736e59cca370e689b9797037e
             JAR_FILENAME=${{ needs.Build.outputs.artefact_name }}.jar
 
       - name: Run Trivy vulnerability scan
