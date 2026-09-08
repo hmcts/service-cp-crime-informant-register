@@ -4,6 +4,12 @@ pmd {
   ruleSets = []
   ruleSetFiles = files(".github/pmd-ruleset.xml")
   ignoreFailures = false
+  // Pinned so the gate is answerable. Unset, the Gradle plugin picks its own default, which
+  // moves with the Gradle version rather than with any decision made here -- so a Gradle bump
+  // silently changes which rules run, and a rule added in a new PMD release fails a build that
+  // nobody changed. This is the version the Code analysis job runs, because that job now runs
+  // this task; the two cannot drift apart again.
+  toolVersion = "7.22.0"
 }
 
 tasks.named("pmdMain").configure {
