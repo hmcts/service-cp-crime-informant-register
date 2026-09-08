@@ -15,7 +15,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test") // context-load only: no broker, no database, no Docker (see application-test.yaml)
-@SuppressWarnings("PMD.UnitTestShouldIncludeAssert") // MockMvc andExpect() calls are assertions
 class ActuatorIntegrationTest {
 
     private final MockMvc mockMvc;

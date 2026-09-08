@@ -15,6 +15,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterDocument;
+import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterRecipient;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterFragment;
 import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
 import uk.gov.hmcts.cp.informantregister.support.JsonParity;
@@ -332,7 +333,7 @@ class AggregationMapperTest {
             assertThat(recipients.get(2).emailAddress1())
                     .isEqualTo("trimmed@pinning.invalid");
             assertThat(recipients.get(2).emailAddress2()).isEqualTo("also@pinning.invalid");
-            assertThat(recipients).extracting(recipient -> recipient.recipientName())
+            assertThat(recipients).extracting(InformantRegisterRecipient::recipientName)
                     .doesNotContain("letter-only-no-email-delivery")
                     .doesNotContain("email-delivery-without-address");
         }

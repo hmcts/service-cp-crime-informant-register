@@ -1,6 +1,5 @@
 package uk.gov.hmcts.cp.informantregister.support;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
