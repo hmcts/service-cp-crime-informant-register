@@ -66,7 +66,7 @@ jobs:
       #   If the (auto)build fails above, remove it and uncomment the following three lines.
       #   modify them (or add more) to build your code if your project, please refer to the EXAMPLE below for guidance.
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4
+        uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
         with:
           category: "/language:${{matrix.language}}"
 
