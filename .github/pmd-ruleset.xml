@@ -26,10 +26,30 @@
         <exclude name="LongVariable"/>
         <exclude name="ShortVariable"/>
         <exclude name="TooManyStaticImports"/>
+        <!-- OnlyOneReturn is deliberately NOT excluded here. The codebase suppresses it at the
+             34 sites where an early return is the clearer shape, each with its reason; excluding
+             it wholesale would make every one of those annotations redundant and trip
+             UnnecessaryWarningSuppression instead. Suppress at the site, not here. -->
+        <!-- Cannot be evaluated soundly by the CI gate. pmd-github-action exposes no auxclasspath
+             input, so PMD runs there without type resolution and reports catch branches as
+             identical when they are not: the pipeline's failure exceptions each declare
+             classification() and reason() independently and extend RuntimeException directly, so
+             the multi-catch this rule asks for would type the variable at RuntimeException and
+             fail to compile. Gradle's type-aware run does not report them at all. The real fix is
+             a common supertype for those exceptions; until that refactor the rule can only
+             mislead. -->
+        <exclude name="IdenticalCatchBranches"/>
     </rule>
     <rule ref="category/java/errorprone.xml">
         <exclude name="InvalidLogMessageFormat"/>
     </rule>
-    <rule ref="category/java/performance.xml"/>
+    <rule ref="category/java/performance.xml">
+        <!-- Conflicts with a written convention. technical-rules.md mandates switch expressions
+             for routing precisely so the compiler enforces exhaustive coverage; rewriting a
+             two-constant enum switch as an if, as this rule asks, throws that away and lets a
+             third constant be added without a compile error. The enums it fires on are small by
+             design, not by accident. -->
+        <exclude name="TooFewBranchesForSwitch"/>
+    </rule>
     <rule ref="category/java/security.xml"/>
 </ruleset>

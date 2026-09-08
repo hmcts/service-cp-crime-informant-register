@@ -246,6 +246,11 @@ public class DistributionPipeline {
      * @param lastChance  whether the queue's delivery budget ends with this delivery
      * @return the recorded outcome — a completion, or the transient failure that stopped it
      */
+    // PMD.OnlyOneReturn: the deadline stops the loop part-way and must record why it stopped, with
+    // the submitted/outstanding counts that only exist at that point. Funnelling both exits through
+    // one return would carry that outcome out in a variable and separate the reason from the
+    // condition that produced it — the same trade the rest of this package resolves the same way.
+    @SuppressWarnings("PMD.OnlyOneReturn")
     private GuardDecision submitWithin(
             final RunClaim claim,
             final List<AuthoritySubmission> submissions,

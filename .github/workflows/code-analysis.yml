@@ -27,6 +27,10 @@ jobs:
         id: pmd
         continue-on-error: true
         with:
+          # Pinned to match gradle/pmd.gradle. Left to resolve the latest release, this gate drifts
+          # away from the one developers run locally and a PR fails on rules `./gradlew pmdMain`
+          # never applied. Bump both together.
+          version: '7.27.0'
           rulesets: '.github/pmd-ruleset.xml'
           sourcePath: 'src/main/java'
           analyzeModifiedFilesOnly: false

@@ -53,6 +53,10 @@ final class RecipientMapper {
      *
      * @return the recipients, or {@code null} when none survived
      */
+    // "No recipients" must reach the wire as an omitted array, not as []: the outbound schema marks
+    // recipients optional with minItems: 1, and @JsonInclude(NON_NULL) drops only null. Returning
+    // empty, as the rule asks, would emit [] against a frozen schema this service does not own.
+    @SuppressWarnings("PMD.ReturnEmptyCollectionRatherThanNull")
     /* default */ List<InformantRegisterRecipient> build() {
         final List<InformantRegisterRecipient> recipients = new ArrayList<>();
         for (final JsonNode member : matchedSubscriptions) {

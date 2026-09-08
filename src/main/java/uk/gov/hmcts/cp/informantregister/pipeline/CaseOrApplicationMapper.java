@@ -66,6 +66,10 @@ final class CaseOrApplicationMapper {
      *
      * @return the entries, or {@code null} when the defendant has none the hearing carries
      */
+    // Empty means "omit the array", and the outbound schema marks it optional with minItems: 1, so
+    // null is the only rendering that serialises legally under @JsonInclude(NON_NULL). Returning an
+    // empty list, as the rule asks, would emit [] and change outbound bytes the parity goldens pin.
+    @SuppressWarnings("PMD.ReturnEmptyCollectionRatherThanNull")
     /* default */ List<InformantRegisterCaseOrApplication> build() {
         final List<InformantRegisterCaseOrApplication> entries = new ArrayList<>();
         addCases(entries);
