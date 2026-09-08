@@ -16,8 +16,13 @@ tasks.named("pmdMain").configure {
   onlyIf { gradle.startParameter.taskNames.contains(name) }
 }
 
+// src/test gets its own ruleset -- the same base as main, minus rules that are inapplicable to
+// test code or that report against this project's own test conventions. Every exclusion in that
+// file names its reason. The task was disabled outright before, which meant the test sources -- a
+// suite this service's correctness argument rests on, parity recordings included -- were the one
+// part of the codebase no static analysis read at all.
 tasks.named("pmdTest").configure {
-  enabled = false
+  ruleSetFiles = files(".github/pmd-test-ruleset.xml")
 }
 
 tasks.withType(Pmd) {

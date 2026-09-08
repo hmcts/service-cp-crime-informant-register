@@ -37,8 +37,8 @@ jobs:
       # and it also drops the unpinned PMD version, which was free to float to a newer release
       # than the build uses. pmdMain fails the job on a real violation by itself
       # (ignoreFailures = false), so no separate violation-counting step is needed.
-      - name: PMD (main sources)
-        run: ./gradlew pmdMain
+      - name: PMD (main and test sources)
+        run: ./gradlew pmdMain pmdTest
 
       - name: Upload PMD report
         if: always()
