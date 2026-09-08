@@ -274,8 +274,12 @@ Exact SQL for every guard statement is in `data-model.md` "Guard operations".
   message id, authority id or exception message MUST NEVER be a label value — that is both a
   cardinality explosion and, for hearing data, a privacy breach (constitution Principle VII). The
   correlation identifiers live in the MDC-structured logs, which carry
-  `requestId`/`hearingId`/`hearingDay`/`source`, and every failure path emits exactly one sanitised
-  ERROR log carrying whichever of those the message yielded.
+  `requestId`/`hearingId`/`hearingDay`/`source` from the request and
+  `sequenceNumber`/`deliveryCount` from the broker, and every failure path emits exactly one
+  sanitised ERROR log carrying whichever of those the message yielded. The broker-stamped pair is
+  always available — it is put in place before the body is read — so an ERROR that could not parse a
+  single identifier is still joinable to the queue, which is what makes "reported but unfindable"
+  unreachable rather than merely unlikely.
 - **Failure reasons are bounded codes**: what lands in `failure_reason`, in a DLQ reason/description
   and in a log's reason field is a **stable enum reason code** (for example
   `CONTRACT_VALIDATION_FAILED`, `IDEMPOTENCY_COLLISION`, `PIPELINE_TRANSIENT_FAILURE`,

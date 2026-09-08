@@ -103,8 +103,17 @@ as a guaranteed dead-letter here.
 
 **The identity is never logged.** It is a user identifier, and the no-PII gate applies to it exactly
 as it applies to the configured system identity, which is treated as a secret. MDC carries
-`requestId`, `hearingId` and `source`; it does not carry `userId`, and neither does any log line or
+`requestId`, `hearingId`, `hearingDay` and `source`, plus the `sequenceNumber` and `deliveryCount`
+the broker stamped on the delivery; it does not carry `userId`, and neither does any log line or
 dead-letter reason.
+
+*Which* of the two identities a run was made as **is** recorded, on the delivery's receipt line, as
+the bounded label `attributedTo=message-user|system-identity`. That is a different fact from the
+identity itself, and it is the only field that separates the two halves of an attribution complaint:
+a producer that named no user, and this service's documented fallback behaving as designed. The
+label is produced by `CallerIdentity#label()`, beside the `orSystem(...)` that fills the header, so
+one resolution feeds both and they cannot drift; `CallerIdentityTest` pins the agreement and
+`TelemetryPrivacyTest` pins the user id's absence at every level.
 
 **It is not part of the request fingerprint.** The fingerprint compares `hearingId`, `hearingDay`,
 `sharedTime` and `eventType`. A replay of the same request carrying no `userId` where the original

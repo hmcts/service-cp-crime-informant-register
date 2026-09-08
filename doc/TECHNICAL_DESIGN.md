@@ -114,6 +114,8 @@ look up (source, requestId) in processed_request
    │        ───────────────────▶ stays FAILED, NO run, deadLetter() re-attempted
    ├─ RECEIVED/RETRYING, claim held by a LIVE runner
    │        ───────────────────▶ abandon() → broker redelivers    [NO run, never complete()]
+   │                              …on the final permitted delivery instead:
+   │                              deadLetter() CLAIM_NOT_ACQUIRED  [NO run, row untouched]
    └─ RECEIVED/RETRYING, claim expired or absent (crashed runner)
             ───────────────────▶ reclaim the claim atomically ────────────────────▶ RUN
    ▼
@@ -165,6 +167,22 @@ settled before the state machine starts and so leaves no row.
   carrying a different immutable-field fingerprint). A contract-validation failure is dead-lettered
   *before* the state machine starts, so it produces no `processed_request` row — it is accounted for
   by the DLQ entry, an ERROR log and a failure metric.
+- **Handed back with no delivery left is a third outcome**, and neither of the two above. Three
+  admission branches return a delivery rather than running it — the claim could not be taken, a
+  `FAILED` record moved under the replay, and the record was absent after the insert race — and each
+  expects the broker to deliver again. On the final permitted delivery there is no again: `abandon()`
+  carries no back-off, so a hand-back that keeps recurring consumes the budget back-to-back in under
+  a second and the broker parks the message under *its own* reason — no code of ours, no
+  `deadlettered` metric, nothing in the log index to search for. `IdempotencyGuard.admit` therefore
+  escalates the last hand-back to a dead-letter of ours. It carries the branch's own reason code
+  (`CLAIM_NOT_ACQUIRED`, `REPLAY_NOT_ADMITTED`, `RECORD_ABSENT`) and **not**
+  `DELIVERY_LIMIT_EXHAUSTED`: the budget says *when* a request was parked, never *why*, and the code
+  is what tells support whether to look at lease timing or at a stuck runner. **Nothing is written** —
+  on all three branches this runner never held the claim, and every terminal write is predicated on
+  `claim_owner` and `claim_token`, so what the budget buys is attribution, not state. In particular
+  the request is never parked out from under a live holder whose run may still be succeeding; the row
+  is left to whoever owns it. Asserted in `application/AdmissionExhaustionTest` and, against the real
+  store, in `persistence/CrashWindowIT`.
 - **Lock loss is neither.** Losing the delivery lock is not an "abandon → retry" outcome, because
   once the lock is gone the handler can no longer settle the message at all — there is nothing left
   to abandon, complete or dead-letter. The outcome is therefore a sanitised ERROR log plus a failure
@@ -219,7 +237,7 @@ Message shape and field semantics: `doc/API_CONTRACTS.md`.
 |-----------|----------------|--------|
 | `request_fingerprint` | Idempotency collision (spec FR-018) | A **stored SHA-256 hash** over the canonical form of the four immutable fields — `hearingId \| hearingDay \| sharedTime \| eventType` — written when the record is created and never updated. The individual fields are also kept as their own columns for support querying, but the **hash is what the collision check compares**: one fixed-width equality test, no field-by-field drift and no risk of a comparison silently omitting a field as the message contract grows. A mismatch is dead-lettered with a reason and the record is left untouched. |
 | `exhausted_message_id` | FAILED redelivery vs. resubmission (spec FR-007) | The broker message identity of the delivery that exhausted `maxDeliveryCount` — written in the same transaction that sets `status = FAILED`, `NULL` before that. A later delivery of a `FAILED` request compares its own `messageId` against this value: **equal** means the same exhausted message coming round again (stays `FAILED`, no run, dead-letter re-attempted); **different** means a deliberate support resubmission (`FAILED` → `RECEIVED`, attempts preserved, audit note, run). |
-| `claim_owner`, `claim_token`, `claim_expires_at` | Single-runner claim (spec FR-008) | The claim triple is taken **atomically** in the same conditional `UPDATE`/`INSERT` that moves the record into a running state, stamping the runner's identity (instance + delivery), a **fresh `claim_token` minted on every acquisition**, and an expiry (`now() + lease`). An enforced processing deadline strictly shorter than the lease bounds every run, so a live-but-slow runner aborts (RETRYING) before its lease can lapse; every outcome write is predicated on `claim_owner` **and** `claim_token`, so a runner whose claim was reclaimed cannot overwrite the new owner's result — it discards its work, logs at WARN and abandons. A competing delivery that finds an **unexpired** claim owned by someone else is abandoned for retry and never acknowledged; one that finds an **expired or absent** claim reclaims it atomically (a conditional update guarded on the old owner/expiry, so exactly one of several racing deliveries wins) and runs. The expiry is what makes a crashed runner recoverable without operator action. Exact SQL: `specs/CRA-220-informant-register-initial-poc/data-model.md` "Guard operations". |
+| `claim_owner`, `claim_token`, `claim_expires_at` | Single-runner claim (spec FR-008) | The claim triple is taken **atomically** in the same conditional `UPDATE`/`INSERT` that moves the record into a running state, stamping the runner's identity (instance + delivery), a **fresh `claim_token` minted on every acquisition**, and an expiry (`now() + lease`). An enforced processing deadline strictly shorter than the lease bounds every run, so a live-but-slow runner aborts (RETRYING) before its lease can lapse — bounded to the deadline plus at most one authority's worst-case POST, because the deadline is tested before each submission and a submission already begun runs to its own timeout (see Claim and lock timing); every outcome write is predicated on `claim_owner` **and** `claim_token`, so a runner whose claim was reclaimed cannot overwrite the new owner's result — it discards its work, logs at WARN and abandons. A competing delivery that finds an **unexpired** claim owned by someone else is abandoned for retry and never acknowledged; one that finds an **expired or absent** claim reclaims it atomically (a conditional update guarded on the old owner/expiry, so exactly one of several racing deliveries wins) and runs. The expiry is what makes a crashed runner recoverable without operator action. Exact SQL: `specs/CRA-220-informant-register-initial-poc/data-model.md` "Guard operations". |
 
 `processed_output`, as the submission story implemented it: one row per authority, claimed **before**
 the POST and updated after, so an authority already `POSTED` is skipped on redelivery or replay and
@@ -246,6 +264,269 @@ Migrations are **Flyway** (Boot convention in this estate) — not Liquibase. He
 never persisted; Redis and the query API remain the payload source. The log doubles as the support
 answer to "was this hearing processed?", queryable by `hearing_id` / `hearing_day`.
 
+## Claim and lock timing
+
+Three durations govern how long a run may take and how quickly a dead runner's work is retaken:
+`LockDuration` on the queue, `informantregister.claim.lease` in the processed log, and
+`informantregister.claim.processing-deadline` in the pipeline. They are not independent, and every
+relationship between them is enforced at startup by `PropertiesValidator` rather than left to review.
+
+**The defect these values close.** With `LockDuration` 1m against a 5m lease, a pod that dies mid-run
+leaves `claim_expires_at` almost five minutes in the future. The broker redelivers about a lock
+duration later, the redelivery finds a live claim, and `IdempotencyGuard.claimOrHandBack` abandons
+with `CLAIM_NOT_ACQUIRED`. Service Bus makes an abandoned message available **immediately** — there
+is no back-off on `abandon()` — so the remaining deliveries are consumed back-to-back in under a
+second, the broker dead-letters under *its own* reason, and `processed_request` is left `RECEIVED`
+with a live claim, no `FAILED` status, no failure reason and no `deadlettered` metric. That is
+precisely the silent parking the state machine exists to prevent. Raising `maxDeliveryCount` does not
+help: the delivery budget is a count, never a clock, so a budget of 50 burns as fast as a budget of 5.
+
+**Two layers, not one.** The values below remove the *trigger* — after a crash the claim has always
+lapsed by the time the broker redelivers, so the redelivery reclaims on its first attempt and the
+bounce never starts. They do not, and cannot, remove the *class*: a hand-back that recurs for some
+other reason still walks the same path. The second layer is the guard's escalation of the final
+hand-back into a dead-letter of ours (Processing State Machine, "handed back with no delivery left"),
+which makes any residual instance visible instead of silent. Timing prevents the common case;
+escalation ensures the uncommon one is attributable. Neither substitutes for the other.
+
+### Broker settings — on the queue, not in `application.yaml`
+
+| Setting | Value | Note |
+|---------|-------|------|
+| `LockDuration` | **5m** | The ASB maximum. Raised from 1m; this is the change that makes crash recovery work |
+| `MaxDeliveryCount` | 5 | Unchanged |
+| Duplicate detection | on | `messageId` = `{source}:{requestId}` |
+
+The emulator's queue definition — `docker/servicebus-emulator/config.json`, mounted by both
+docker-compose and the Testcontainers suites — is where that queue setting actually lives for local
+and CI runs, and it carries the same `PT5M`. It was `PT1M` against a 5m lease, which is to say the
+defect above was the shipped local configuration and every `*IT` ran against it.
+
+`LockDuration` is mirrored into `informantregister.servicebus.lock-duration` so the validator can
+enforce the invariants below. The two must move **together**: changing the queue without the config
+silently voids rule 3 and restores the defect. This is the second mirrored broker setting with
+nothing verifying the mirror, `max-delivery-count` being the first.
+
+### Timing values
+
+```yaml
+informantregister:
+  servicebus:
+    lock-duration: 5m                # mirrors the queue's LockDuration
+    max-auto-lock-renew-duration: 5m
+    max-delivery-count: 5
+    max-concurrent-calls: 2
+  claim:
+    lease: PT4M30S
+    processing-deadline: 4m
+```
+
+**Compound durations must be ISO-8601.** Spring's simple format takes a single value and unit
+(`5m`, `30s`), so `4m30s` will not bind — write `PT4M30S`. `ProcessedRequestRepository` relies on
+this too: it renders the `Duration` with `toString()` and Postgres reads the ISO-8601 form as an
+`interval` (`ProcessedRequestRepository.java:298`).
+
+Every downstream timeout is **unchanged** by this design, which is the reason for choosing it over a
+shortened lease: `results` and `referencedata` keep their 5s connect / 30s read, `payload.redis` its
+5s / 5s, `payload.fallback` its 5s / 30s with 3 attempts. See Configuration.
+
+### Invariants
+
+| # | Rule | Where | Check |
+|---|------|-------|-------|
+| 1 | `processing-deadline` < `lease` | `PropertiesValidator.validateRunFinishesBeforeTheClaimExpires` | 4m < 4m30s |
+| 2 | `max-auto-lock-renew-duration` >= `processing-deadline` + 30s | `PropertiesValidator.validateLockOutlivesTheRun` | 5m >= 4m30s |
+| 3 | `lease` < `lock-duration` | `PropertiesValidator.validateTheClaimLapsesBeforeTheBrokerRedelivers` | 4m30s < 5m |
+| 4 | payload fetch worst case < `processing-deadline` | `PropertiesValidator.validateTheFetchFinishesInsideTheRun` | 2m07s < 4m |
+| 5 | refdata read worst case < `processing-deadline` | `PropertiesValidator.validateTheSubscriptionsReadFinishesInsideTheRun` | 1m47s < 4m |
+
+Rule 3 is what prevents the bounce: a dead runner's claim has always lapsed by the time the broker
+redelivers, so the redelivery reclaims on its **first** attempt instead of burning the budget.
+
+**The submission leg is not in this table, and that is a gap rather than an omission.** Rules 4 and 5
+budget the two *reads* against the deadline; nothing budgets the *writes*. One authority's worst case
+is `max-attempts 4 x (5s connect + 30s read)` = 140s plus three back-offs which `max-backoff` caps at
+20s each when a server supplies a `Retry-After` — **3m20s for a single authority**, against a 4m
+deadline, and multiplied by however many authorities a hearing produces. The runtime half of the
+answer is in place (`DistributionPipeline.submitWithin` tests the deadline before every POST); the
+startup half needs an expected-maximum-authorities figure that is neither configured nor measured.
+Until it exists, a `results` retry policy that cannot fit is caught by an aborted run rather than by
+a refused boot. See Outstanding code changes.
+
+Worst cases behind rules 4 and 5, with their working, because the next person to raise a
+`read-timeout` needs the arithmetic and not the answer:
+
+- **Payload fetch** — 2 x (5s connect + 5s command) Redis = 20s, plus 3 x (5s connect + 30s read)
+  fallback = 105s, plus 2 x 1s retry interval = **127s**
+- **Reference data** — 3 x (5s connect + 30s read) = 105s, plus 2 x 1s retry interval = **107s**
+
+Document the **inequalities**, not the values. Any change to a downstream timeout, the deadline or
+the lease has to be walked through all five rules; all five are startup-fatal, which is what stops a
+plausible one-line YAML edit from putting two runners on the same request.
+
+### What the values buy
+
+| Property | Value |
+|----------|-------|
+| Claim lapses after a crash | 4m30s from claim acquisition |
+| First redelivery after a crash | ~5m from receipt, on lock expiry |
+| Safety margin (`lock-duration` - `lease`) | 30s |
+| Deliveries consumed by one crash | 2 of 5 — the dead one, plus the successful reclaim |
+| Crash recovery latency | up to ~5m, no operator action |
+| Wedged run (process alive, pipeline blocked) | claim lapses at 4m30s; the SDK stops renewing the lock at 5m, so the redelivery still finds it lapsed |
+
+Five minutes of recovery latency is deliberate and, for this flow, invisible: the register's business
+clock is the 19:00 CSV sweep in `cpp-context-results`, so a hearing recovered at 14:03 rather than
+13:58 reaches the same batch.
+
+### Outstanding code changes
+
+The values above are necessary but not sufficient. The state-machine completeness violation that sat
+alongside them is a timing question in none of its parts, and no lease value substitutes for it: a
+recurring hand-back that runs out of deliveries ends as a broker-reasoned dead-letter with no row and
+no metric behind it whatever the lease says.
+
+**Landed.** The guard now claims that parking. `IdempotencyGuard.admit` escalates a hand-back to a
+dead-letter of ours when the delivery budget ends with this delivery, over the whole decision rather
+than at each site, so the three admission paths — `CLAIM_NOT_ACQUIRED`, `REPLAY_NOT_ADMITTED`,
+`RECORD_ABSENT` — are covered and a fourth added later inherits it. The path's own reason code is
+carried through rather than replaced by `DELIVERY_LIMIT_EXHAUSTED`: the budget says when a request
+was parked, never why, and the code is what tells support whether to look at lease timing or at a
+stuck runner. Nothing is written to the row — on all three paths the runner holds no claim, so what
+the budget buys is attribution, not state (`application/AdmissionExhaustionTest`).
+
+The processing deadline is now tested before **every** POST rather than once before the loop
+(`DistributionPipeline.submitWithin`). One authority can spend `results.max-attempts` x
+(connect + read) plus back-offs, so a loop entered with seconds of budget left could run minutes past
+the deadline and past the lease — at which point a redelivery has reclaimed the request and is
+granted every authority not yet `POSTED`, and both runners POST a command that is not idempotent.
+Aborting mid-loop is transient and loses nothing: the authorities already sent are skipped on the
+redelivery, so only the outstanding ones repeat.
+
+**What it bounds, stated honestly.** The check caps the *number* of overrunning POSTs at one, not the
+overrun itself: a submission begun an instant before the deadline still runs to its own timeout, up
+to 3m20s. A run can therefore still finish past the 4m30s lease — one authority's worth, not every
+remaining authority's — and the crash-window duplicate stays possible in that narrow case. That
+residual is the accepted at-least-once case the 19:00 sweep absorbs. Closing it needs the startup
+rule in Outstanding code changes, and even then a single authority's worst case has to fit the
+budget that is left. Do not write a comment promising the deadline bounds a run outright.
+
+`CrashWindowIT` now races the real lease rather than calling
+`ProcessedLogTestSupport.expireClaim(...)`: it configures a short lease, waits for the database's own
+clock to pass it, and asserts `claim_expires_at` equals `created_at` plus the configured lease
+exactly — the assertion a fixture that rewrites the column makes impossible, and the reason the suite
+could not have caught any of this. The final-permitted-delivery parking is asserted there too,
+against the real store rather than mocks.
+
+**Landed — the remaining three hand-backs.** Every hand-back this service produces is now escalated
+on the same rule, so no path can end as a broker-reasoned dead-letter with no row and no metric.
+
+`STALE_RUNNER` is returned when a terminal write affects no row, which happens after admission and so
+never reaches `admit`'s escalation. The delivery's budget position now travels on `RunClaim`
+alongside the message identity, and `IdempotencyGuard.rejectStaleRunner` — the single rejection all
+four outcome writes fall back to — parks the message with `STALE_RUNNER` as the detail when the budget
+ends with this delivery. Applying it in the rejection rather than at the four writes is the same
+reasoning that put the admission escalation over the whole decision: a fifth write inherits it. Under
+`recordExhaustion` this is not an edge case but the normal case, that method being reached only *on*
+the final delivery. Nothing is written, and the invariant is stronger here than on the admission
+paths: a stale runner is a non-holder *by proof* — the write it just attempted was predicated on
+`claim_owner` and `claim_token` and affected nothing — and the row now belongs to the runner that
+reclaimed it, which may be succeeding at this moment (`application/OutcomeWriteExhaustionTest`).
+
+`STORE_UNAVAILABLE` and `UNEXPECTED_FAILURE` are manufactured in the listener, which owns its own
+settlement decision, and are escalated there by one `handBack` helper both routes pass through — again
+so a third hand-back added to that class inherits the rule. These two are where the broker's own
+reason costs most, because neither failure is the message's fault: parked as `STORE_UNAVAILABLE` the
+message tells support to go and look at the database, and parked as `MaxDeliveryCountExceeded` it
+tells them nothing. Nothing is written on either path and nothing could be — on the store path the log
+is unreachable and the body was deliberately never read, so there is no key to write under, and on
+the fault path the listener holds no claim. Intake still stops on the store path: that the store is
+down does not stop being true because this delivery was parked. The unexpected-fault metric stays
+`TRANSIENT` whichever way the delivery settles, because the classification describes the fault and not
+the settlement — reclassifying on the last delivery would make the series report a different kind of
+failure at the moment it met the same one for the fifth time; what became of the message is recorded
+by the dead-letter counter (`inbound/ListenerExhaustionTest`).
+
+The two ERROR lines on the store paths no longer say the delivery is being returned. They cannot: the
+budget decides that, and `handBack` names the settlement that actually happened.
+
+**Still outstanding:**
+
+| Change | Location |
+|--------|----------|
+| A startup rule that the submission leg fits inside `processing-deadline` — `payload worst case + refdata worst case + (results worst case x expected max authorities)`. Needs an expected-maximum-authorities figure, which is neither configured nor measured today; the per-POST check in `DistributionPipeline.submitWithin` catches the overrun at runtime in the meantime | `PropertiesValidator` |
+
+No Flyway migration is required: `claim_expires_at` already exists and is already written as
+`now() + lease`. No `doc/DEVIATIONS.md` entry is required either — this sits inside the sanctioned
+transport-reliability change and has no function-app counterpart, the Durable framework having owned
+this concern there.
+
+### Deferred — renewable lease, if recovery latency starts to matter
+
+The single `lease` knob is over-loaded: it must be longer than the slowest legitimate socket read
+(127s) and shorter than the fastest broker redelivery. Those are satisfiable together only because
+`LockDuration` was raised to its maximum. A **heartbeat-renewed lease** removes the conflict — the
+lease stops meaning "a work budget" and starts meaning "how long since this runner last proved it was
+alive", which decouples it from the deadline entirely.
+
+**Nothing below is in effect.** These are the values this design *would* take; what ships today is
+`Timing values` above, and the two blocks are deliberately the same shape so they can be read
+side by side. Every comment here reads "today → proposed".
+
+```yaml
+# PROPOSED — NOT the running configuration. See "Timing values" above for what ships.
+informantregister:
+  servicebus:
+    lock-duration: 1m                 # 5m today; back to 1m, so recovery is ~60s not ~5m
+    max-auto-lock-renew-duration: 5m  # 5m today; untouched, still >= deadline + 30s
+  claim:
+    lease: 30s                        # PT4M30S today; no longer sized to the slowest run
+    heartbeat-interval: 10s           # new key, does not exist today
+    processing-deadline: 4m           # 4m today; untouched, now independent of the lease
+```
+
+| Rule | Check |
+|------|-------|
+| Rule 1 (`processing-deadline` < `lease`) | **removed** — no longer meaningful |
+| `lease` + `heartbeat-interval` < `lock-duration` | 40s < 60s |
+| `lease` >= 3 x `heartbeat-interval` | 30s >= 30s — tolerates two consecutive missed renewals |
+| `deadline` + `lease` < `max-auto-lock-renew-duration` + `lock-duration` | 4m30s < 6m |
+
+Rules 2, 4 and 5 carry over unchanged. Rule 3 is **superseded**, not dropped: `lease` +
+`heartbeat-interval` < `lock-duration` is the same guarantee — the claim lapses before the broker
+redelivers — restated for a lease that is renewed rather than sized to the work. Crash recovery
+drops from ~5m to ~60s.
+
+Design notes for whoever picks this up:
+
+- **Renewal must be asynchronous to the run.** Renewing inline at the pipeline's checkpoints cannot
+  work: one payload fetch can legitimately spend 127s, far longer than any lease short enough to be
+  useful, so a healthy run would lose its claim mid-socket.
+- **Renewal is evidence, not a decision.** Nothing asks whether the pod is alive; the scheduled write
+  *is* the proof, and its absence is the signal. Never consult Kubernetes for this — on AKS a
+  `NotReady` node does not mean the process stopped, and a peer trusting the API would hand a live
+  runner's work to a second runner.
+- **Cap the renewal window at `run start + processing-deadline`.** A bare heartbeat proves the
+  renewer thread is alive, not that the run is progressing; without the cap a wedged pipeline holds
+  its claim indefinitely while the heartbeat cheerfully renews it.
+- **Errored is not lost.** Only a renewal affecting zero rows proves the claim is gone; an exception
+  means unknown, so keep working and retry the next tick. Conflating them makes every database hiccup
+  abandon every in-flight run.
+- The renewal statement needs `claim_expires_at >= now()` alongside the existing owner-and-token
+  predicate, so a zombie runner cannot resurrect a claim that has already lapsed.
+- The window narrows but never closes: a runner paused between its last liveness check and its POST
+  can still emit a duplicate. That residual is the accepted at-least-once case the 19:00 sweep
+  absorbs, and no comment should promise otherwise.
+
+### Considered and rejected
+
+- **Short lease with the timeout tree cut to fit** (lease under ~55s, deadline under 55s). Requires
+  `read-timeout` down from 30s to ~10s on Results and reference data, turning slow-downstream periods
+  into dead-lettered hearings. Trades a rare failure for a common one.
+- **Raising `maxDeliveryCount`.** Achieves nothing, for the reason given above.
+- **Lowering the lease alone** (5m to 4m30s, `LockDuration` left at 1m). Indistinguishable from doing
+  nothing: the budget burns in under a second either way.
+
 ## Porting map (JS → Java)
 
 All Node sources under `cpp-context-azure-legalaidagency/azure-functions/durable-functions/`.
@@ -257,6 +538,7 @@ All Node sources under `cpp-context-azure-legalaidagency/azure-functions/durable
 | 3 | `InformantRegisterSubscriptions` | `pipeline/SubscriptionMatcher` + `adapter/refdata` | The matching is pure and the fetch is a port. `now-subscriptions?on={registerDate}` with the vendor `Accept` type and `CJSCPPUID`; the `on` day honours the register date's misleading `Z` (D9), the retry rule is the legacy `AxiosRetryWrapper`'s, and a failure to obtain the body is reported rather than answered as `null` (deviation 14). Port the 2-arg vocabulary call exactly (major-creditor lists always empty today — parity, not a bug fix) |
 | 4 | `OutboundInformantRegister` mappers | `pipeline/AggregationMapper` | Per-authority document incl. recipients, filename, verdict mapping |
 | 5 | `ProcessOutboundInformantRegister` | `adapter/results` | POST per authority — **now with retry on connect/IO/5xx/429 and DLQ on exhaustion** (today errors are swallowed) |
+| — | `NowsHelper/service/DateService.js` (a helper, not an activity — rows 2, 3 and 4 all read dates through it) | `pipeline/HearingDates` | Reproduces `moment` 2.30.1 as vendored, not as documented. **Two parse paths, because the legacy uses two formats**: `parse`'s `YYYY/MM/DD` behind `orderingKey`, and `formatDate`'s hard-coded `DD/MM/YYYY` behind `formattedLocalDateTime` — which is why an ISO duration date ships as the literal `"Invalid dateZ"` (D11) and why `registerDate` / `hearingDate` carry a literal `Z` whatever the offset was (D9). Rules that belong to moment's **tokeniser** rather than to either format string apply to **both** paths — the two-digit-year pivot (`parseTwoDigitYear`, exactly two digits, 68 forward / 69 back) is the one that exists, and it was implemented on one path only until `PORT_AUDIT.md` caught it |
 
 Technique: **JsonNode-canonical inbound, typed outbound**. One Java class per JS activity so the
 Jest → JUnit mapping stays 1:1.
@@ -269,6 +551,16 @@ unexplained difference. The recorded set must include multi-authority hearings, 
 group proceedings, re-shares and legal-entity defendants. Any deliberate difference is a named entry
 in `doc/DEVIATIONS.md` with its own assertion — the harness fails on any *unregistered* divergence.
 The build is done when every twin passes and the recorded set matches.
+
+**What the gate does not cover, and what covers it instead.** The gate is bounded by the corpus: a
+behaviour no fixture exercises is not under test, however thorough the twins are. The two-digit-year
+pivot is the worked example — the corpus carries no duration date written `26/02/19`, so every twin
+passed while one of the two date paths resolved it to the year 19 AD and shipped it. Behaviour
+reproduced from the **vendored library's rules** rather than from a recorded value therefore needs
+its own pinning, and the expectations must be taken by *running the vendored copy* — moment 2.30.1
+under `azure-functions/durable-functions/node_modules/` — never from the library's documentation,
+which describes a version this function app may not be on. Where a rule has more than one
+implementation site, each site needs its own case: one passing site proves nothing about the other.
 
 ## CRA-220 scope — walking skeleton
 
@@ -304,12 +596,16 @@ Everything `${ENV_VAR:default}` in `application.yaml`, bound to typed `@Configur
 | `informantregister.servicebus.queue-name` | `informantregister.requests` | Inbound queue |
 | `informantregister.servicebus.max-concurrent-calls` | 2 | Processor concurrency |
 | `informantregister.servicebus.max-delivery-count` | 5 | Broker dead-letter threshold (mirrors the queue setting) |
+| `informantregister.servicebus.lock-duration` | 5m | Broker lock duration (mirrors the queue setting). Validated against `claim.lease` — see Claim and lock timing |
+| `informantregister.servicebus.max-auto-lock-renew-duration` | 5m | How long the processor keeps renewing the lock. Must be at least `claim.processing-deadline` + 30s |
+| `informantregister.claim.lease` | `PT4M30S` | Claim expiry, written as `now() + lease` by the database. ISO-8601 — Spring's simple format cannot express a compound duration |
+| `informantregister.claim.processing-deadline` | 4m | Enforced bound on a run, strictly shorter than the lease so a slow runner stops before its claim can be reclaimed |
 | `informantregister.payload.redis.*` | — | Redis host/port/TLS (later story) |
 | `informantregister.results.base-url` | — | Results command API base; no default, the local value in `application.yaml` is the command API's own declared `baseUri` |
 | `informantregister.results.system-user-id` | — | `CJSCPPUID` identity; a secret, from Key Vault. **Required**: the gateway refuses to be built without one, so a deployment missing it fails to start rather than having every command refused |
 | `informantregister.results.headers.*` | — | Any further header the mesh requires; configuration because the authorisation scheme is undocumented |
 | `informantregister.results.max-attempts` / `initial-backoff` / `max-backoff` | 4 / 500ms / 20s | POST retry policy; `max-backoff` also caps a server-supplied `Retry-After` |
-| `informantregister.results.connect-timeout` / `read-timeout` | 5s / 30s | Worst case must stay inside `claim.processing-deadline` |
+| `informantregister.results.connect-timeout` / `read-timeout` | 5s / 30s | Worst case must stay inside `claim.processing-deadline` — **not enforced at startup**, unlike the reference-data row below: no rule budgets the submission leg (see Invariants). A policy that cannot fit aborts a run instead of refusing a boot |
 | `informantregister.referencedata.mode` | `LIVE` | `LIVE` is the reference-data query-API adapter; `STUB` is the refusing stub, for local runs and the suites that address no register. Startup refuses `STUB` on the deployed credential source |
 | `informantregister.referencedata.base-url` | — | Reference-data query API base; no default, the local value in `application.yaml` is the query API's own declared `baseUri`. **Required in `LIVE`** |
 | `informantregister.referencedata.system-user-id` | — | `CJSCPPUID` identity; a secret, from Key Vault. **Required in `LIVE`** — reference data authorises the query on it. Falls back to `INFORMANT_REGISTER_SYSTEM_USER_ID`, because the function app threads one `cjscppuid` through both calls |
@@ -332,6 +628,13 @@ Service Bus. **No static keys, no committed connection strings.**
 | Golden parity | JUnit twins of the Jest suite over byte-identical fixtures | `./gradlew test` |
 
 TDD is mandatory: failing test first, every commit.
+
+**Time is raced, never simulated, where the mechanism under test is time.** A fixture that writes
+`claim_expires_at` into the past proves the reclaim predicate and hides everything upstream of it —
+whether the configured lease reaches the column at all, and whether a claim lapses without anyone's
+help. Suites about the lapse configure a short real lease and wait for the database's own clock
+(`persistence/CrashWindowIT`); the fixture remains legitimate in suites that are about something
+else and merely need an expired claim to exist.
 
 ## Observability
 
