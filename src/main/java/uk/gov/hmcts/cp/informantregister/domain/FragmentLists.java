@@ -31,11 +31,6 @@ final class FragmentLists {
      * @param <T>    the element type
      * @return an unmodifiable copy, or {@code null} if the list itself was absent
      */
-    // Null in, null out, deliberately: see the class documentation. This tree ports a JavaScript
-    // structure in which an absent array and an empty one are different values, and the parity
-    // goldens record the difference. Substituting empty, as the rule asks, would change the
-    // observable shape and fail the golden-parity gate.
-    @SuppressWarnings("PMD.ReturnEmptyCollectionRatherThanNull")
     /* default */ static <T> List<T> frozen(final List<T> values) {
         return values == null ? null : Collections.unmodifiableList(new ArrayList<>(values));
     }

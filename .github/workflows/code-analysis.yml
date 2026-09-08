@@ -15,31 +15,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: 'temurin'
           java-version: '25'
 
-      - uses: pmd/pmd-github-action@d9c1f3c5940cbf5923f1354e83fa858b4496ebaa # v2
-        id: pmd
-        continue-on-error: true
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
         with:
-          # Pinned to match gradle/pmd.gradle. Left to resolve the latest release, this gate drifts
-          # away from the one developers run locally and a PR fails on rules `./gradlew pmdMain`
-          # never applied. Bump both together.
-          version: '7.27.0'
-          rulesets: '.github/pmd-ruleset.xml'
-          sourcePath: 'src/main/java'
-          analyzeModifiedFilesOnly: false
+          gradle-version: current
 
-      - name: Fail build if there are violations
+      # PMD runs through the build's own gate (gradle/pmd.gradle), not the standalone PMD CLI
+      # action it replaced. The Gradle task hands PMD the compiled classes as its auxclasspath,
+      # so PMD can resolve types; several rules in this ruleset are answerable only with type
+      # resolution, and silently misfire without it. On this repo the CLI action reported
+      # IdenticalCatchBranches against catch blocks for unrelated exception types and
+      # TooFewBranchesForSwitch against an exhaustive two-arm switch, none of which the build's
+      # own gate reports. The action has no input for an auxclasspath, so the divergence could
+      # not be closed by configuring it; running the build's task is what makes the two agree,
+      # and it also drops the unpinned PMD version, which was free to float to a newer release
+      # than the build uses. pmdMain fails the job on a real violation by itself
+      # (ignoreFailures = false), so no separate violation-counting step is needed.
+      - name: PMD (main sources)
+        run: ./gradlew pmdMain
+
+      - name: Upload PMD report
         if: always()
-        run: |
-          VIOLATIONS="${{ steps.pmd.outputs.violations }}"
-          if [ -n "$VIOLATIONS" ] && [ "$VIOLATIONS" != "0" ]; then
-            echo "PMD found $VIOLATIONS violations"
-            exit 1
-          fi
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pmd-report
+          path: build/reports/pmd/
+          if-no-files-found: ignore

@@ -1,14 +1,15 @@
 apply plugin: 'pmd'
 
 pmd {
-  // Pinned to the version the CI action resolves (.github/workflows/code-analysis.yml).
-  // Unpinned, Gradle uses its own default and the two gates disagree: PMD 7.22 found one
-  // violation on the same tree where the action's 7.27 found nine, so `./gradlew pmdMain`
-  // passing locally said nothing about whether the PR would go green.
-  toolVersion = '7.27.0'
   ruleSets = []
   ruleSetFiles = files(".github/pmd-ruleset.xml")
   ignoreFailures = false
+  // Pinned so the gate is answerable. Unset, the Gradle plugin picks its own default, which
+  // moves with the Gradle version rather than with any decision made here -- so a Gradle bump
+  // silently changes which rules run, and a rule added in a new PMD release fails a build that
+  // nobody changed. This is the version the Code analysis job runs, because that job now runs
+  // this task; the two cannot drift apart again.
+  toolVersion = "7.22.0"
 }
 
 tasks.named("pmdMain").configure {

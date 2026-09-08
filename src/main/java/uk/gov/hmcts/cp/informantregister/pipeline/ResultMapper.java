@@ -99,10 +99,6 @@ final class ResultMapper {
      * @param selector the filter
      * @return the mapped results, or {@code null} when none matched
      */
-    // "Nothing matched this filter" must be an omitted array rather than []: the outbound schema
-    // marks each result array optional with minItems: 1, and @JsonInclude(NON_NULL) drops only
-    // null. Returning empty, as the rule asks, would emit [] and change bytes the goldens pin.
-    @SuppressWarnings("PMD.ReturnEmptyCollectionRatherThanNull")
     private List<InformantRegisterResult> select(final Predicate<RegisterResult> selector) {
         final List<InformantRegisterResult> results = new ArrayList<>();
         for (final RegisterResult result : defendant.results()) {

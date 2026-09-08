@@ -28,11 +28,6 @@ final class ContractLists {
      * @param <T>    the element type
      * @return an unmodifiable copy, or {@code null}
      */
-    // Null is the contract, not an oversight: see the class documentation. Every array in the
-    // outbound schema is optional and carries minItems: 1, so an absent list must be dropped from
-    // the wire by @JsonInclude(NON_NULL). Returning empty, as the rule asks, would serialise [] and
-    // violate a schema this service does not own.
-    @SuppressWarnings("PMD.ReturnEmptyCollectionRatherThanNull")
     /* default */ static <T> List<T> frozen(final List<T> values) {
         return values == null ? null : List.copyOf(values);
     }
