@@ -96,7 +96,11 @@ public final class RegisterTransformationChain implements RegisterTransformer {
         // legacy answers `undefined` (deviations-register entry 6), and it stops the chain here in
         // exactly the same way.
         if (fragments.isEmpty()) {
-            LOG.info("Hearing produced no register fragments; nothing is addressed or sent.");
+            // `path` rather than Json.array: a log argument must not be able to throw, and
+            // Json.array refuses a truthy non-array. `path` counts a non-array as zero, which is
+            // the honest answer to "how many defendants did the builder have to work with".
+            LOG.info("Hearing produced no register fragments; nothing is addressed or sent. "
+                    + "defendants={}", hearing.path("defendants").size());
             return List.of();
         }
 
@@ -106,13 +110,25 @@ public final class RegisterTransformationChain implements RegisterTransformer {
                 subscriptions.fetch(queryDate(matcher.registerDate(fragments)), identity);
         final List<RegisterFragmentWithSubscriptions> addressed = matcher.match(fragments, answer);
 
+        // "Authority X got no register" has three different causes with three different owners: no
+        // fragment was built for it (this service), reference data returned no subscriptions at all
+        // (reference data), or its subscriptions did not match the hearing (a business
+        // configuration question). The per-authority detail stays at DEBUG in the matcher; this is
+        // the line that says which of the three it was without turning tracing on.
+        final long unaddressed = addressed.stream()
+                .filter(fragment -> matchedSubscriptions(fragment).isEmpty())
+                .count();
+        LOG.info("Register fragments addressed. authorities={} authoritiesWithNoSubscription={}",
+                addressed.size(), unaddressed);
+
         // index.js:37-41 — OutboundInformantRegister, over the ORIGINAL hearing.
         final List<InformantRegisterDocument> documents = new ArrayList<>(addressed.size());
         for (int index = 0; index < addressed.size(); index++) {
             documents.add(aggregation.build(
                     hearing, fragments.get(index), matchedSubscriptions(addressed.get(index))));
         }
-        LOG.info("Hearing transformed into {} register document(s).", documents.size());
+        LOG.info("Hearing transformed into {} register document(s). fragments={}",
+                documents.size(), fragments.size());
         return List.copyOf(documents);
     }
 

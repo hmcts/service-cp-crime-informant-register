@@ -1,9 +1,11 @@
 package uk.gov.hmcts.cp.informantregister.persistence;
 
+import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import uk.gov.hmcts.cp.informantregister.observability.FaultSummary;
 
 /**
  * Can the processed log be reached right now?
@@ -34,9 +36,31 @@ public class ProcessedLogProbe {
 
     private final JdbcClient jdbcClient;
 
+    /**
+     * Why the last probe failed, for whoever reports the outage.
+     *
+     * <p>The probe runs every ten seconds and must not narrate: a prolonged outage would write
+     * hundreds of identical lines, so the per-probe detail stays at DEBUG. But the reason itself is
+     * the answer to "readiness is DOWN, why?" — a refused connection, an exhausted pool, a
+     * permission problem and an unmigrated schema all fail this probe and route to different teams
+     * — and at DEBUG it never reaches a log index. Holding it here lets the component that reports
+     * the transition, once, report it with its cause.
+     */
+    private final AtomicReference<Throwable> lastFailure = new AtomicReference<>();
+
     /** Creates the probe over the processed log's connection. */
     public ProcessedLogProbe(final JdbcClient jdbcClient) {
         this.jdbcClient = jdbcClient;
+    }
+
+    /**
+     * Why the most recent failed probe failed, by type and SQL state.
+     *
+     * @return the bounded rendering, or {@code none} when no probe has failed
+     */
+    public String lastFailureSummary() {
+        final Throwable failure = lastFailure.get();
+        return FaultSummary.typeChain(failure) + " sqlState=" + FaultSummary.sqlState(failure);
     }
 
     /**
@@ -51,6 +75,7 @@ public class ProcessedLogProbe {
             reachable = true;
         } catch (DataAccessException unreachable) {
             LOG.debug("The processed log did not answer the probe.", unreachable);
+            lastFailure.set(unreachable);
             reachable = false;
         }
         return reachable;

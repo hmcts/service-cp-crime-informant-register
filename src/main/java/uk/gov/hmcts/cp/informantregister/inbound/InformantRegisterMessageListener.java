@@ -7,6 +7,7 @@ import com.azure.messaging.servicebus.ServiceBusFailureReason;
 import com.azure.messaging.servicebus.ServiceBusReceivedMessage;
 import com.azure.messaging.servicebus.ServiceBusReceivedMessageContext;
 import com.azure.messaging.servicebus.models.DeadLetterOptions;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +19,7 @@ import org.springframework.dao.TransientDataAccessException;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
 import uk.gov.hmcts.cp.informantregister.config.ServiceBusHealthIndicator;
+import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.ContractValidationException;
 import uk.gov.hmcts.cp.informantregister.domain.DeadLetterReason;
 import uk.gov.hmcts.cp.informantregister.domain.DeliveryIdentity;
@@ -26,6 +28,7 @@ import uk.gov.hmcts.cp.informantregister.domain.FailureClassification;
 import uk.gov.hmcts.cp.informantregister.domain.GuardDecision;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.SettlementOperation;
+import uk.gov.hmcts.cp.informantregister.observability.FaultSummary;
 
 /**
  * One delivery in, exactly one settlement out.
@@ -43,15 +46,20 @@ import uk.gov.hmcts.cp.informantregister.domain.SettlementOperation;
  * returned durably, because a message acknowledged before the write is a request the processed log
  * has never heard of and the broker will never deliver again.
  *
- * <p>One broker fact is read here and nowhere else: whether the queue will deliver this message
- * again. The processed log cannot answer it — the delivery budget belongs to the message, not to the
- * request — so the transport adapter reads it from the delivery and carries it into the core, where
- * it decides whether a failing run is recorded as retrying or parked.
+ * <p>One broker fact <em>crosses into the core</em>, and it is read here and nowhere else: whether
+ * the queue will deliver this message again. The processed log cannot answer it — the delivery
+ * budget belongs to the message, not to the request — so the transport adapter reads it from the
+ * delivery and carries it in, where it decides whether a failing run is recorded as retrying or
+ * parked. The delivery's other broker facts are read here too, but only to be written down: they
+ * describe the delivery for a reader and no decision is taken on them.
  *
- * <p>Correlation is put in place as soon as the body yields it and taken down when the delivery
- * ends, so receipt, processing and settlement all carry the same {@code requestId}, {@code hearingId}
- * and {@code hearingDay}. The pod is single-threaded per delivery from the SDK's point of view, and
- * the {@code finally} is what keeps one delivery's identifiers off the next one's lines.
+ * <p>Correlation comes in two layers, both taken down when the delivery ends. What the broker
+ * stamped — {@code sequenceNumber} and {@code deliveryCount} — is in place before anything is
+ * judged, so even a delivery handed back unexamined during a store outage can be joined to the
+ * queue. What the request itself names — {@code requestId}, {@code hearingId}, {@code hearingDay},
+ * {@code source} — follows as soon as the body yields it, so receipt, processing and settlement all
+ * read as one story. The pod is single-threaded per delivery from the SDK's point of view, and the
+ * {@code finally} is what keeps one delivery's identifiers off the next one's lines.
  */
 public class InformantRegisterMessageListener {
 
@@ -63,11 +71,35 @@ public class InformantRegisterMessageListener {
     private static final String HEARING_DAY = "hearingDay";
 
     /**
-     * How deep to walk a refusal's cause chain before giving up — bounded because the chain is
-     * supplied by libraries, and a self-referential one must classify a few times and stop rather
-     * than hang the settlement path.
+     * Which delivery of this message is being handled, counted by the broker from zero.
+     *
+     * <p>Correlated rather than passed as an argument, because it qualifies every line the delivery
+     * writes and not just the first: "the payload was unavailable" reads very differently on
+     * delivery 1 and on delivery 4 of a budget of 5, and without it the log index cannot tell a
+     * first attempt from the last one before the dead-letter. It is the broker's own integer —
+     * nothing the producer chose, and nothing about a defendant.
      */
-    private static final int MAX_CAUSE_DEPTH = 10;
+    private static final String DELIVERY_COUNT = "deliveryCount";
+
+    /**
+     * The broker's own handle on this message, for joining the log index to the queue.
+     *
+     * <p>The one identifier that ties a line written here to the message a support engineer is
+     * looking at in Service Bus Explorer or a management-API listing. {@code messageId} would be the
+     * obvious choice and is not available: it is text the producer chose, and producer text is never
+     * written into the log index. The sequence number is the broker's own — assigned on enqueue,
+     * monotonic per queue, and about nobody.
+     *
+     * <p>Correlated rather than logged once, for two reasons. It qualifies every line the delivery
+     * writes, exactly as the delivery count does. And it is the <em>only</em> handle on the lines
+     * written when the processed log could not be reached: the body is deliberately not read there,
+     * so there is no request id to correlate on, and "is the same message coming back" is precisely
+     * the question an outage raises.
+     */
+    private static final String SEQUENCE_NUMBER = "sequenceNumber";
+
+    /** What a broker stamp the message never carried is called, rather than the literal null. */
+    private static final String ABSENT = "none";
 
     /**
      * This runner's identity, for the half of {@code claim_owner} that is not the delivery.
@@ -107,14 +139,28 @@ public class InformantRegisterMessageListener {
      * @param context the delivery, and the settlement calls it permits
      */
     public void onMessage(final ServiceBusReceivedMessageContext context) {
-        final ServiceBusReceivedMessage message = context.getMessage();
         try {
-            settle(context, storeGate.storeAvailable()
-                    ? decide(message)
-                    : storeUnavailable());
+            settle(context, outcomeOf(context.getMessage()));
         } finally {
             clearCorrelation();
         }
+    }
+
+    /**
+     * What the broker says about this delivery, in place before anything is judged.
+     *
+     * <p>Before the store gate deliberately, so that even a delivery returned unexamined during an
+     * outage says which attempt it was and which message it was. That is how support tells "the
+     * outage cost us one redelivery" from "the outage is burning through the delivery budget", and
+     * on that path it is the <em>only</em> thing joining the lines to the queue — the body is never
+     * read there, so there is no request id.
+     *
+     * <p>Both reads sit inside the caller's catch-and-settle boundary; see {@link #outcomeOf} for
+     * why that is load-bearing rather than incidental.
+     */
+    private static void correlateDelivery(final ServiceBusReceivedMessage message) {
+        MDC.put(DELIVERY_COUNT, Long.toString(message.getDeliveryCount()));
+        MDC.put(SEQUENCE_NUMBER, Long.toString(message.getSequenceNumber()));
     }
 
     /**
@@ -127,22 +173,30 @@ public class InformantRegisterMessageListener {
      * the state machine, nothing is counted as an attempt, and the delivery goes back exactly as it
      * arrived.
      *
+     * <p>What becomes of the delivery is decided by the budget rather than stated here: ordinarily
+     * it goes back exactly as it arrived, and on the last delivery the message is entitled to it is
+     * parked under this service's own reason instead — see {@link #handBack}. Either way nothing was
+     * judged and nothing was written.
+     *
      * <p>Then intake is <em>asked</em> to stop. Asked, because this is the broker's own callback
      * thread and stopping a processor from inside one deadlocks the shutdown; the controller carries
      * it out elsewhere. Stopping is the point: without it every message on the queue would be taken,
      * handed back, and taken again until the broker's delivery budget ran out and parked work whose
      * only fault was arriving during an outage of ours.
      *
-     * <p>The line carries the bounded reason code and nothing else. There is nothing else to carry:
-     * the body was deliberately not read, so there is no request id to correlate on, and the broker's
-     * identity for the message is text the producer chose and is never written out. The delivery
-     * comes round again once the store is back, and that one is correlated.
+     * <p>The line's message carries the bounded reason code and nothing else — the body was
+     * deliberately not read, so there is no request id to name, and the broker's identity for the
+     * message is text the producer chose and is never written out. What it does carry, from the MDC,
+     * is what the broker stamped: the sequence number and the delivery count. Those are the whole
+     * answer to the question an outage actually raises — is this the same message coming back, and
+     * how much of its delivery budget has the outage eaten. The delivery comes round again once the
+     * store is back, and that one is fully correlated.
      */
-    private GuardDecision storeUnavailable() {
+    private GuardDecision storeUnavailable(final ServiceBusReceivedMessage message) {
         LOG.error("The processed log could not be reached, so the delivery was not examined; "
-                        + "returning it and asking for intake to stop. reason={}",
+                        + "asking for intake to stop. reason={}",
                 ReasonCode.STORE_UNAVAILABLE.code());
-        return handBackAndSuspend();
+        return handBackAndSuspend(message);
     }
 
     /**
@@ -158,28 +212,90 @@ public class InformantRegisterMessageListener {
      *
      * <p>It is told apart by the failure's own type rather than by where it was thrown, because the
      * store is reached from more than one place inside a run and the answer is the same wherever it
-     * was: the request may be perfectly good, and this service was not fit to judge it.
+     * was: the request may be perfectly good, and this service was not fit to judge it. That now
+     * includes the precondition probe itself, which is inside the boundary rather than in front of
+     * it — a probe that throws instead of answering is the same outage as one that answers "no", and
+     * it reaches the same two-part outcome rather than escaping unsettled.
      */
-    private GuardDecision storeDiedMidRun() {
-        LOG.error("The processed log went away during the run, so nothing was recorded; returning "
-                        + "the delivery and asking for intake to stop. reason={}",
+    private GuardDecision storeDiedMidRun(final ServiceBusReceivedMessage message) {
+        LOG.error("The processed log went away during the run, so nothing was recorded; asking "
+                        + "for intake to stop. reason={}",
                 ReasonCode.STORE_UNAVAILABLE.code());
-        return handBackAndSuspend();
+        return handBackAndSuspend(message);
     }
 
     /**
      * The two halves a store outage always costs: this delivery back, and intake stopped.
+     *
+     * <p>Both, in that order, and independently. Intake stopping is a fact about the store and does
+     * not stop being true because this particular delivery turned out to be the message's last —
+     * whereas what becomes of the delivery is decided by the budget, below.
      */
-    private GuardDecision handBackAndSuspend() {
+    private GuardDecision handBackAndSuspend(final ServiceBusReceivedMessage message) {
         storeGate.suspendIntake();
-        return new GuardDecision.Abandon(ReasonCode.STORE_UNAVAILABLE);
+        return handBack(ReasonCode.STORE_UNAVAILABLE, message);
+    }
+
+    /**
+     * A hand-back of this class's own making — parked instead when the budget ends here.
+     *
+     * <p>The guard escalates the hand-backs it produces, on admission and on its outcome writes.
+     * Two never reach it: a store that cannot be read, and a fault nothing anticipated. Both are
+     * manufactured here, in the class that owns the settlement decision, so the guard's rule cannot
+     * cover them and they need the same one.
+     *
+     * <p>Without it they are the silent failure this service exists to end. Service Bus makes an
+     * abandoned message available again <em>immediately</em>, with no back-off, so a fault that keeps
+     * recurring spends the whole delivery budget back-to-back and the broker parks the message under
+     * its own reason — no reason code of ours, no {@code deadlettered} reading, and nothing in the
+     * log index to search for. These are the two failures where that costs most, because neither is
+     * the message's fault: a message parked as {@code STORE_UNAVAILABLE} tells support to go and look
+     * at the database, and one parked as {@code MaxDeliveryCountExceeded} tells them nothing at all.
+     *
+     * <p>The path's own reason code is carried through rather than replaced by
+     * {@code DELIVERY_LIMIT_EXHAUSTED}. The budget says <em>when</em> a request was parked and never
+     * <em>why</em>, and the code is the one fact that decides where to look.
+     *
+     * <p><strong>Nothing is written, and nothing could be.</strong> On the store path the processed
+     * log is unreachable — that is the premise — and the body was deliberately never read, so there
+     * is no key to write a row under. On the unexpected-fault path this class holds no claim, and
+     * every terminal write is predicated on one. What the budget buys here is attribution, not state,
+     * exactly as on the guard's admission paths.
+     *
+     * <p>Applied once, over both, so that a third hand-back added to this class later inherits the
+     * rule instead of having to remember it.
+     */
+    private GuardDecision handBack(
+            final ReasonCode reason, final ServiceBusReceivedMessage message) {
+        final GuardDecision decision;
+        if (isFinalPermittedDelivery(message)) {
+            LOG.warn("No deliveries remain, so the message is parked with our own reason rather "
+                            + "than handed back into nothing. reason={}", reason.code());
+            decision = new GuardDecision.DeadLetter(DeadLetterReason.EXHAUSTED, reason);
+        } else {
+            decision = new GuardDecision.Abandon(reason);
+        }
+        return decision;
     }
 
     /**
      * Works out what should happen to the delivery, turning every failure into a decision.
      *
      * <p>Nothing escapes: a decision is the only thing this method can produce, which is what makes
-     * the settlement below unconditional.
+     * the settlement above unconditional.
+     *
+     * <p><strong>Everything the delivery touches is inside this boundary</strong> — the correlation
+     * reads, the store-availability precondition and the run itself. That is a correctness property
+     * and not tidiness. {@code onMessage} has a {@code finally} and no {@code catch}, so anything
+     * thrown out there escapes past {@link #settle} into the processor's error handler with
+     * auto-complete disabled: the lock runs to expiry, the message comes back, fails the same way
+     * five times, and the broker parks it under its own reason with no processed-request row and no
+     * reason from this service — the silent loss the whole design exists to prevent. The
+     * {@link #examine} javadoc records the same lesson for the body read. The broker's accessors
+     * earn the suspicion: {@code getDeliveryCount()} unboxes a {@code Long} that a header need not
+     * carry, and {@code getSequenceNumber()} casts an annotation whose type it does not check, so a
+     * message stamped unusually — a hand-built republish, a dead-letter resubmission — throws on
+     * being *described* rather than on being processed. Described or not, it gets settled.
      */
     @SuppressWarnings("PMD.AvoidCatchingGenericException")
     // Deliberate, and narrow: this is the boundary that owns the delivery's settlement. An exception
@@ -187,12 +303,13 @@ public class InformantRegisterMessageListener {
     // whole design exists to prevent — so the catch is total and each branch still logs at ERROR and
     // names a settlement: the body that can never be valid is parked, and the fault nothing
     // anticipated is handed back. It is a catch-and-settle, not a catch-and-ignore.
-    private GuardDecision decide(final ServiceBusReceivedMessage message) {
+    private GuardDecision outcomeOf(final ServiceBusReceivedMessage message) {
         GuardDecision decision;
         try {
-            decision = examine(message);
+            correlateDelivery(message);
+            decision = storeGate.storeAvailable() ? examine(message) : storeUnavailable(message);
         } catch (ConcurrencyFailureException contention) {
-            decision = lostContentionRace(contention);
+            decision = lostContentionRace(contention, message);
         } catch (TransientDataAccessException | RecoverableDataAccessException
                 | DataAccessResourceFailureException storeGone) {
             // The outage classes, and deliberately not the whole DataAccessException hierarchy.
@@ -202,9 +319,9 @@ public class InformantRegisterMessageListener {
             // or a broken statement is the store *answering*, over a connection that plainly
             // worked. Only the store-went-away classes may stop the queue; a per-statement fault
             // is handed back below without turning one poison message into an intake outage.
-            decision = storeDiedMidRun();
+            decision = storeDiedMidRun(message);
         } catch (RuntimeException unexpected) {
-            decision = unexpectedFailure(unexpected);
+            decision = unexpectedFailure(unexpected, message);
         }
         return decision;
     }
@@ -225,8 +342,9 @@ public class InformantRegisterMessageListener {
      * even when the outcome is the same: a multi-catch may not name a type and its own supertype,
      * and moving it below the outage classes is the very thing this branch prevents.
      */
-    private GuardDecision lostContentionRace(final ConcurrencyFailureException contention) {
-        return unexpectedFailure(contention);
+    private GuardDecision lostContentionRace(
+            final ConcurrencyFailureException contention, final ServiceBusReceivedMessage message) {
+        return unexpectedFailure(contention, message);
     }
 
     /**
@@ -256,6 +374,42 @@ public class InformantRegisterMessageListener {
 
     /**
      * Runs a validated request, under the correlation identifiers it carries.
+     *
+     * <p>The receipt line is where a support investigation starts, so it carries the facts that
+     * decide <em>which kind</em> of problem is being looked at — none of which the request
+     * identifiers answer on their own:
+     *
+     * <ul>
+     *   <li>{@code enqueuedTime} — when the broker took the message. Read against this line's own
+     *       timestamp it is the queue dwell, which is the whole difference between "the hearing was
+     *       resulted late" and "this service is behind". <strong>Indicative, not measured:</strong>
+     *       the two stamps come off two clocks — the broker's and this pod's — so at second
+     *       granularity a dwell can even come out slightly negative. That skew is exactly why no
+     *       code here compares the two; a person reading minutes off them is on safe ground, and a
+     *       dashboard subtracting them is not.</li>
+     *   <li>{@code lockedUntil} — when this delivery's lock runs out. It is what a lock-lost report
+     *       is read against (spec FR-016): a run that settled after this instant overran, and lock
+     *       renewal is not covering the pipeline. <strong>Recorded, never compared.</strong> The
+     *       settlement path learns about the lock from the broker's own refusal rather than from a
+     *       local clock reading, deliberately, and writing the instant down does not change that —
+     *       the comparison is made later, by a person, over two logged facts.</li>
+     *   <li>{@code sharedTime} — how stale the share being resulted is: the producer-side half of
+     *       the same latency question, and the field that distinguishes a backlog being worked
+     *       through from a fresh hearing.</li>
+     *   <li>{@code attributedTo} — whether this run's outbound calls go out as the user the message
+     *       named or as the configured system identity. An attribution complaint is either a
+     *       producer that sent no user or this service's documented fallback behaving as designed,
+     *       and nothing else on the line tells the two apart.</li>
+     * </ul>
+     *
+     * <p>Which delivery this is and the broker's handle on the message are in the MDC instead,
+     * because they qualify every line the delivery writes and not only this one.
+     *
+     * <p>The request's own identifiers are named in the text as well as carried in the MDC. That is
+     * a deliberate duplication and the house convention — {@code DistributionPipeline},
+     * {@code IdempotencyGuard} and the results adapters all do it — because it makes the one line an
+     * investigation starts from legible on its own, in a terminal, in a paste into a ticket, and in
+     * any reader that shows the message and not the structured fields.
      */
     private GuardDecision process(
             final DistributionCommand command, final ServiceBusReceivedMessage message) {
@@ -263,10 +417,26 @@ public class InformantRegisterMessageListener {
         MDC.put(REQUEST_ID, command.requestId().toString());
         MDC.put(HEARING_ID, command.hearingId().toString());
         MDC.put(HEARING_DAY, command.hearingDay().toString());
-        LOG.info("Delivery received. source={} eventType={} deliveryCount={} finalPermittedDelivery={}",
-                command.source(), command.eventType(), message.getDeliveryCount(),
+        LOG.info("Delivery received. source={} requestId={} hearingId={} hearingDay={} "
+                        + "eventType={} sharedTime={} attributedTo={} enqueuedTime={} "
+                        + "lockedUntil={} finalPermittedDelivery={}",
+                command.source(), command.requestId(), command.hearingId(), command.hearingDay(),
+                command.eventType(), command.sharedTime(), CallerIdentity.of(command).label(),
+                stamp(message.getEnqueuedTime()), stamp(message.getLockedUntil()),
                 isFinalPermittedDelivery(message));
         return pipeline.process(command, identityOf(message));
+    }
+
+    /**
+     * A broker timestamp, or the absence of one said out loud.
+     *
+     * <p>Both stamps come off the AMQP annotations and both are {@code null} when the annotation is
+     * not there. Rendering that as the literal {@code null} invites a support engineer to read a
+     * missing stamp as a defect in this service, on the one delivery they came to look at; the
+     * codebase's own convention for "there was nothing here" is a token that says so.
+     */
+    private static String stamp(final OffsetDateTime instant) {
+        return instant == null ? ABSENT : instant.toString();
     }
 
     /**
@@ -305,6 +475,10 @@ public class InformantRegisterMessageListener {
     /**
      * Anything else at all.
      *
+     * <p>The delivery goes back for another attempt, unless this was the last one the message was
+     * entitled to, in which case it is parked under this service's own reason rather than left to
+     * the broker's — see {@link #handBack}.
+     *
      * <p>Reported by type and bounded code, with no stack trace — the same rule as everywhere else,
      * and for a reason that applies here more than anywhere. "Anything else at all" includes a
      * payload adapter quoting the key it was asked for, a parser quoting the bytes it choked on, and
@@ -312,15 +486,22 @@ public class InformantRegisterMessageListener {
      * routinely made of the message. The type names what happened, and the delivery comes round
      * again to say whether it is still happening.
      */
-    private GuardDecision unexpectedFailure(final RuntimeException unexpected) {
-        LOG.error("Delivery failed unexpectedly; returning it for redelivery. type={} reason={}",
-                unexpected.getClass().getName(), ReasonCode.UNEXPECTED_FAILURE.code());
+    private GuardDecision unexpectedFailure(
+            final RuntimeException unexpected, final ServiceBusReceivedMessage message) {
+        LOG.error("Delivery failed unexpectedly. type={} reason={}",
+                FaultSummary.typeChain(unexpected), ReasonCode.UNEXPECTED_FAILURE.code());
         // Counted as well as reported. An ERROR nobody is watching for is how an incident is
-        // reconstructed afterwards from a dashboard that said the service was fine; the
-        // classification is transient because the delivery is handed back, which is the whole of
-        // what this service is claiming about it.
+        // reconstructed afterwards from a dashboard that said the service was fine.
+        //
+        // Classified TRANSIENT whichever way the delivery is then settled, because the
+        // classification describes the *fault* and not the settlement: a fault that would have been
+        // worth retrying is still one when the retries happen to have run out, and reclassifying it
+        // on the last delivery would make the series say the service met a different kind of
+        // failure at the exact moment it met the same one for the fifth time. What became of the
+        // message is recorded by the dead-letter counter, from the settlement that actually
+        // happened.
         metrics.pipelineFailed(FailureClassification.TRANSIENT);
-        return new GuardDecision.Abandon(ReasonCode.UNEXPECTED_FAILURE);
+        return handBack(ReasonCode.UNEXPECTED_FAILURE, message);
     }
 
     /**
@@ -454,7 +635,7 @@ public class InformantRegisterMessageListener {
             } else {
                 LOG.error("The broker refused the settlement; no second settlement is attempted "
                                 + "and the delivery will come round again. operation={} type={}",
-                        operation.label(), refused.getClass().getName());
+                        operation.label(), FaultSummary.typeChain(refused));
                 metrics.settlementFailed(operation);
                 // The same call that failed is also the most recent thing this service knows about
                 // the connection, and a refusal is the counterpart of the successful settlement the
@@ -485,22 +666,29 @@ public class InformantRegisterMessageListener {
      *
      * <p>The cause chain is walked because the SDK wraps: a blocking settlement's failure routinely
      * carries the interesting reason a level or two beneath the exception it throws. The walk is
-     * bounded, so a self-referential chain supplied by a library classifies a few times and stops.
+     * bounded by {@link FaultSummary#MAX_CAUSE_DEPTH}, so a self-referential chain supplied by a
+     * library classifies a few times and stops rather than hanging the settlement path. The Azure
+     * types stay here, in the transport adapter, and only the traversal is shared.
      */
     private static boolean lockLost(final Throwable refusal) {
-        boolean lost = false;
-        Throwable current = refusal;
-        for (int depth = 0; !lost && current != null && depth < MAX_CAUSE_DEPTH; depth++) {
-            lost = switch (current) {
-                case ServiceBusException serviceBus ->
-                    serviceBus.getReason() == ServiceBusFailureReason.MESSAGE_LOCK_LOST;
-                case AmqpException amqp ->
-                    amqp.getErrorCondition() == AmqpErrorCondition.MESSAGE_LOCK_LOST;
-                default -> false;
-            };
-            current = current.getCause();
-        }
-        return lost;
+        return FaultSummary.anyCause(refusal, InformantRegisterMessageListener::namesTheLock);
+    }
+
+    /**
+     * Whether one link in a refusal's chain is the broker naming the lock, in either SDK's terms.
+     *
+     * <p>A named method rather than an inline lambda so that the two vocabularies — the
+     * {@code ServiceBusException} reason and the AMQP error condition beneath it — read as the one
+     * question they are.
+     */
+    private static boolean namesTheLock(final Throwable cause) {
+        return switch (cause) {
+            case ServiceBusException serviceBus ->
+                serviceBus.getReason() == ServiceBusFailureReason.MESSAGE_LOCK_LOST;
+            case AmqpException amqp ->
+                amqp.getErrorCondition() == AmqpErrorCondition.MESSAGE_LOCK_LOST;
+            default -> false;
+        };
     }
 
     /**
@@ -543,5 +731,7 @@ public class InformantRegisterMessageListener {
         MDC.remove(REQUEST_ID);
         MDC.remove(HEARING_ID);
         MDC.remove(HEARING_DAY);
+        MDC.remove(DELIVERY_COUNT);
+        MDC.remove(SEQUENCE_NUMBER);
     }
 }

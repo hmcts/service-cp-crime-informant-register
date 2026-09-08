@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
 import uk.gov.hmcts.cp.informantregister.config.ServiceBusHealthIndicator;
+import uk.gov.hmcts.cp.informantregister.observability.FaultSummary;
 import uk.gov.hmcts.cp.informantregister.persistence.ProcessedLogProbe;
 
 /**
@@ -325,8 +326,9 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
             // migration exception, and those quote connection URLs, statements and, on a parse
             // failure, the bytes they choked on. The type says what happened; the next probe says
             // whether it is still happening.
-            LOG.error("Intake could not be started; the next probe will try again. type={}",
-                    failed.getClass().getName());
+            LOG.error("Intake could not be started; the next probe will try again. "
+                            + "type={} sqlState={}",
+                    FaultSummary.typeChain(failed), FaultSummary.sqlState(failed));
         }
     }
 
@@ -404,8 +406,14 @@ public class ConsumerLifecycleController implements SmartLifecycle, StoreGate {
      */
     private synchronized void suspend() {
         if (state.compareAndSet(State.RUNNING, State.SUSPENDED)) {
+            // The reason travels with the transition, which is the one place it can be said
+            // without narrating: the probe itself runs every few seconds and keeps its detail at
+            // DEBUG. Without this, "readiness is DOWN" had no cause attached anywhere above DEBUG,
+            // and a refused connection, an exhausted pool and a failed migration were the same
+            // line.
             LOG.warn("The processed log is unreachable; stopping intake so the delivery budget is "
-                    + "not spent on an outage of ours. queue={}", processor.getQueueName());
+                            + "not spent on an outage of ours. queue={} cause={}",
+                    processor.getQueueName(), storeProbe.lastFailureSummary());
             processor.stop();
             processorRunning = false;
             metrics.intakeSuspended();

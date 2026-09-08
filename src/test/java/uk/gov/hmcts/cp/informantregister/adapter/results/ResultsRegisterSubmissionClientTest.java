@@ -109,9 +109,38 @@ class ResultsRegisterSubmissionClientTest {
 
             final InOrder order = inOrder(outputs, gateway);
             order.verify(outputs).claimPending(any(), eq(SOURCE), eq(requestId), eq(AUTHORITY), anyString());
-            order.verify(gateway).post(any(byte[].class), any(CallerIdentity.class));
+            order.verify(gateway).post(
+                    any(byte[].class), any(CallerIdentity.class), any(CommandCorrelation.class));
             order.verify(outputs).recordPosted(SOURCE, requestId, AUTHORITY);
             order.verifyNoMoreInteractions();
+        }
+
+        /**
+         * The identifiers handed to the gateway are the ones its lines will be searched by.
+         *
+         * <p>{@code source} and {@code requestId} were already on this class's own lines; the
+         * hearing was not, and "was this hearing's register filed?" is the question support
+         * actually arrives with. It comes off the document, because the document is the register of
+         * that hearing — reading it from anywhere else would be a second answer to the same
+         * question.
+         */
+        @Test
+        void the_gateway_should_be_told_which_request_and_hearing_the_command_belongs_to() {
+            when(outputs.claimPending(any(), anyString(), any(), anyString(), anyString()))
+                    .thenReturn(true);
+            when(outputs.recordPosted(SOURCE, requestId, AUTHORITY)).thenReturn(true);
+            final ArgumentCaptor<CommandCorrelation> correlation =
+                    ArgumentCaptor.forClass(CommandCorrelation.class);
+
+            client().submit(submission());
+
+            verify(gateway).post(any(), any(), correlation.capture());
+            assertThat(correlation.getValue().source()).isEqualTo(SOURCE);
+            assertThat(correlation.getValue().requestId()).isEqualTo(requestId);
+            assertThat(correlation.getValue().authorityId()).isEqualTo(AUTHORITY);
+            assertThat(correlation.getValue().hearingId())
+                    .as("the hearing the document is a register of, not some other hearing")
+                    .isEqualTo(submission().document().hearingId());
         }
 
         @Test
@@ -123,7 +152,7 @@ class ResultsRegisterSubmissionClientTest {
 
             client().submit(submission());
 
-            verify(gateway).post(sent.capture(), any());
+            verify(gateway).post(sent.capture(), any(), any());
             assertThat(new String(sent.getValue(), StandardCharsets.UTF_8))
                     .isEqualTo(MAPPER.writeValueAsString(document()));
         }
@@ -141,7 +170,7 @@ class ResultsRegisterSubmissionClientTest {
 
             client().submit(submission());
 
-            verify(gateway).post(any(), caller.capture());
+            verify(gateway).post(any(), caller.capture(), any());
             assertThat(caller.getValue()).isEqualTo(IDENTITY);
         }
 
@@ -172,7 +201,7 @@ class ResultsRegisterSubmissionClientTest {
             client().submit(submission());
 
             verify(outputs).claimPending(any(), anyString(), any(), anyString(), digest.capture());
-            verify(gateway).post(sent.capture(), any());
+            verify(gateway).post(sent.capture(), any(), any());
             assertThat(digest.getValue()).isEqualTo(sha256(sent.getValue()));
         }
     }
@@ -188,7 +217,7 @@ class ResultsRegisterSubmissionClientTest {
 
             client().submit(submission());
 
-            verify(gateway, never()).post(any(), any());
+            verify(gateway, never()).post(any(), any(), any());
             verify(outputs, never()).recordPosted(anyString(), any(), anyString());
             verify(outputs, never()).recordFailed(anyString(), any(), anyString());
         }
@@ -205,7 +234,7 @@ class ResultsRegisterSubmissionClientTest {
             when(outputs.recordFailed(SOURCE, requestId, AUTHORITY)).thenReturn(true);
             doThrow(new SubmissionFailedException(
                     FailureClassification.TRANSIENT, ReasonCode.PIPELINE_TRANSIENT_FAILURE))
-                    .when(gateway).post(any(), any());
+                    .when(gateway).post(any(), any(), any());
 
             assertThatThrownBy(() -> client().submit(submission()))
                     .isInstanceOf(SubmissionFailedException.class)
@@ -213,7 +242,7 @@ class ResultsRegisterSubmissionClientTest {
                     .isEqualTo(FailureClassification.TRANSIENT);
 
             final InOrder order = inOrder(gateway, outputs);
-            order.verify(gateway).post(any(), any());
+            order.verify(gateway).post(any(), any(), any());
             order.verify(outputs).recordFailed(SOURCE, requestId, AUTHORITY);
             verify(outputs, never()).recordPosted(anyString(), any(), anyString());
         }
@@ -225,7 +254,7 @@ class ResultsRegisterSubmissionClientTest {
             when(outputs.recordFailed(SOURCE, requestId, AUTHORITY)).thenReturn(true);
             doThrow(new SubmissionFailedException(
                     FailureClassification.NON_TRANSIENT, ReasonCode.SUBMISSION_REJECTED))
-                    .when(gateway).post(any(), any());
+                    .when(gateway).post(any(), any(), any());
 
             assertThatThrownBy(() -> client().submit(submission()))
                     .isInstanceOf(SubmissionFailedException.class)
@@ -270,7 +299,7 @@ class ResultsRegisterSubmissionClientTest {
             when(outputs.recordFailed(SOURCE, requestId, AUTHORITY)).thenReturn(false);
             doThrow(new SubmissionFailedException(
                     FailureClassification.NON_TRANSIENT, ReasonCode.SUBMISSION_REJECTED))
-                    .when(gateway).post(any(), any());
+                    .when(gateway).post(any(), any(), any());
 
             try (CapturedLog log = CapturedLog.of(ResultsRegisterSubmissionClient.class)) {
                 assertThatThrownBy(() -> client().submit(submission()))

@@ -898,6 +898,60 @@ class DistributionPipelineTest {
             assertThat(decision).isEqualTo(handedBack);
         }
 
+        /**
+         * The deadline holds <em>inside</em> the submission loop, not merely before it.
+         *
+         * <p>The clock advances 90s per reading against a 4m deadline, so: the run starts at T0,
+         * the transformation lands at T+1m30s, the first submission is checked at T+3m and goes,
+         * and the second is checked at T+4m30s — past the deadline, with one authority still
+         * unsent.
+         *
+         * <p>What a check only before the loop costs: each authority can spend
+         * {@code max-attempts x (connect + read)} plus capped back-offs, so a run admitted with
+         * seconds of budget left POSTs every remaining authority minutes past a lease a redelivery
+         * has already reclaimed — and the new runner is granted every authority not yet POSTED.
+         * Both runners then POST, and {@code add-informant-register} is not idempotent.
+         */
+        private void theRunReachesItsDeadlineBetweenSubmissions() {
+            when(guard.admit(command, delivery)).thenReturn(new GuardDecision.Run(claim));
+            when(payloadSource.fetch(command)).thenReturn(payload());
+            when(transformer.transform(any(), any(), any()))
+                    .thenReturn(List.of(document(), secondDocument()));
+            clock.stepBy(Duration.ofSeconds(90));
+            when(guard.recordTransientFailure(claim, ReasonCode.PROCESSING_DEADLINE_EXCEEDED))
+                    .thenReturn(handedBack);
+        }
+
+        @Test
+        void should_abort_when_the_deadline_passes_between_two_submissions() {
+            theRunReachesItsDeadlineBetweenSubmissions();
+
+            final GuardDecision decision = pipeline.process(command, delivery);
+
+            verify(guard).recordTransientFailure(claim, ReasonCode.PROCESSING_DEADLINE_EXCEEDED);
+            assertThat(decision).isEqualTo(handedBack);
+        }
+
+        @Test
+        void should_leave_the_authority_it_ran_out_of_time_for_unsent() {
+            // Partial progress is the point: the authority already POSTed is recorded as such and
+            // skipped on the redelivery, so only the outstanding one is repeated.
+            theRunReachesItsDeadlineBetweenSubmissions();
+
+            pipeline.process(command, delivery);
+
+            verify(submissionClient, times(1)).submit(any());
+        }
+
+        @Test
+        void should_not_record_a_completion_for_a_run_that_submitted_only_some() {
+            theRunReachesItsDeadlineBetweenSubmissions();
+
+            pipeline.process(command, delivery);
+
+            verify(guard, never()).recordCompletion(any(), any());
+        }
+
         @Test
         void should_complete_a_run_that_finishes_inside_its_deadline() {
             guardAdmitsTheDelivery();

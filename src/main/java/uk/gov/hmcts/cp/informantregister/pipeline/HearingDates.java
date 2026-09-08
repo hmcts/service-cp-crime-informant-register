@@ -251,7 +251,12 @@ public final class HearingDates {
         }
         try {
             return LocalDate.of(
-                    Integer.parseInt(matcher.group(3)),
+                    // The pivot belongs to moment's tokeniser, not to either format string: it
+                    // fires wherever a YYYY token consumed exactly two digits, and this format
+                    // admits that as readily as the ordering one does. Reading the group raw shipped
+                    // a producer's "26/02/19" as 0019-02-26 — not a refusal, which would be visible,
+                    // but a well-formed date two millennia out, onto the wire as a duration date.
+                    inACentury(matcher.group(3)),
                     Integer.parseInt(matcher.group(2)),
                     Integer.parseInt(matcher.group(1)));
         } catch (DateTimeException notACalendarDay) {
@@ -329,6 +334,11 @@ public final class HearingDates {
 
     /**
      * A year token as moment resolves it.
+     *
+     * <p>Used by <strong>both</strong> parse paths. The rule is moment's tokeniser's, not any one
+     * format's — {@code parseTwoDigitYear} fires whenever the {@code YYYY} token consumed exactly
+     * two digits — so {@code DD/MM/YYYY} needs it exactly as {@code YYYY/MM/DD} does. Exactly two:
+     * one and three digits are years as written, and so are four, however small.
      *
      * @param token the digits the year token consumed
      * @return the year

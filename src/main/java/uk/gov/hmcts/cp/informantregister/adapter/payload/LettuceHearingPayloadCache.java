@@ -4,11 +4,13 @@ import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisException;
 import io.lettuce.core.api.StatefulRedisConnection;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import uk.gov.hmcts.cp.informantregister.observability.FaultSummary;
 
 /**
  * The hearing payload cache over Lettuce.
@@ -49,6 +51,16 @@ public class LettuceHearingPayloadCache implements HearingPayloadCache, AutoClos
     private final RedisClient client;
     private final ObjectMapper objectMapper;
 
+    /**
+     * The last observed reachability of the cache, so the transition can be reported once.
+     *
+     * <p>Not health, and not a gate on anything: a cache miss and a dead cache are the same empty
+     * answer to a caller, exactly as the fallback ordering requires. This exists only so the log
+     * says "the cache went away" once, instead of saying "a key was absent" once per hearing and
+     * leaving the difference to be inferred from the volume.
+     */
+    private final AtomicBoolean reachable = new AtomicBoolean(true);
+
     private volatile StatefulRedisConnection<String, String> connection;
 
     /**
@@ -82,12 +94,26 @@ public class LettuceHearingPayloadCache implements HearingPayloadCache, AutoClos
         Optional<String> value;
         try {
             value = Optional.ofNullable(openConnection().sync().get(key));
+            if (reachable.compareAndSet(false, true)) {
+                LOG.info("The hearing payload cache is answering again.");
+            }
         } catch (RedisException unreadable) {
             // Logged, because a cache outage should be read from a log rather than inferred from a
             // rise in query-side traffic — and logged by type, because the message may name the
             // address and the credentials the connection was attempted with.
+            //
+            // The per-hearing line stays, but on its own it is the wrong shape for the incident it
+            // reports: a total outage writes one of these per hearing, all identical, and none of
+            // them says "Redis is down" — that has to be inferred from the volume. So the
+            // transition is reported separately and once, which is what an on-call engineer can
+            // actually act on.
+            if (reachable.compareAndSet(true, false)) {
+                LOG.error("The hearing payload cache has become unreachable; every hearing read is "
+                                + "now falling through to the results query API. type={}",
+                        FaultSummary.typeChain(unreadable));
+            }
             LOG.warn("The hearing payload cache could not answer; treating the key as absent. "
-                    + "type={}", unreadable.getClass().getName());
+                    + "type={}", FaultSummary.typeChain(unreadable));
             value = Optional.empty();
         }
         return value;
@@ -109,8 +135,11 @@ public class LettuceHearingPayloadCache implements HearingPayloadCache, AutoClos
                     payload = Optional.of(tree);
                 }
             } catch (JacksonException unparseable) {
-                LOG.warn("A cached hearing payload could not be parsed; treating it as absent. "
-                        + "type={}", unparseable.getClass().getName());
+                // Deliberately worded apart from the unreachable-cache line above: this is a
+                // document that arrived and is malformed, which is the producer's defect, not the
+                // cache tier's. They used to be two WARNs a support engineer could not tell apart.
+                LOG.warn("A cached hearing payload arrived but could not be parsed; treating it as "
+                        + "absent. type={}", FaultSummary.typeChain(unparseable));
             }
         }
         return payload;

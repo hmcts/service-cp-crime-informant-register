@@ -481,6 +481,46 @@ class HearingDatesTest {
                     .isEqualTo("2019-02-26T00:00:00Z");
         }
 
+        /**
+         * The two-digit-year pivot on <em>this</em> path, not only the ordering one.
+         *
+         * <p>The pivot is a property of moment's tokeniser, not of either format string: it fires
+         * whenever the {@code YYYY} token consumes exactly two digits, and {@code DD/MM/YYYY} admits
+         * that as readily as {@code YYYY/MM/DD} does. Without it a producer's {@code "26/02/19"}
+         * ships as {@code 0019-02-26T00:00:00Z} — not a refusal, which would be visible, but a
+         * well-formed date two millennia out, onto the wire as a duration date.
+         *
+         * <p>Each expectation was taken from the {@code moment} 2.30.1 vendored with the function
+         * app, through {@code DateService.formatDateAndGetLocalDateTime}, not from a reading of what
+         * {@code parseTwoDigitYear} ought to do.
+         */
+        @Test
+        @DisplayName("reads a two-digit year the way moment reads one, mapping it into a century")
+        void reads_a_two_digit_year() {
+            assertThat(dates.formattedLocalDateTime("26/02/19"))
+                    .isEqualTo("2019-02-26T00:00:00Z");
+            // The century boundary moment uses: 68 goes forward, 69 goes back.
+            assertThat(dates.formattedLocalDateTime("1/2/68")).isEqualTo("2068-02-01T00:00:00Z");
+            assertThat(dates.formattedLocalDateTime("1/2/69")).isEqualTo("1969-02-01T00:00:00Z");
+        }
+
+        /**
+         * The other side of the same rule, and the reason the fix is a token-width test rather than
+         * a magnitude one: moment maps <em>exactly two</em> digits into a century and leaves every
+         * other width as written. A year of 9 or 019 really does mean the ninth and nineteenth
+         * centuries here, absurd as that is, and a port that "corrected" them would diverge just as
+         * surely as one that leaves 19 alone.
+         */
+        @Test
+        @DisplayName("leaves a one- or three-digit year as written, as moment leaves them")
+        void leaves_other_year_widths_as_written() {
+            assertThat(dates.formattedLocalDateTime("26/02/9")).isEqualTo("0009-02-26T00:00:00Z");
+            assertThat(dates.formattedLocalDateTime("26/02/019"))
+                    .isEqualTo("0019-02-26T00:00:00Z");
+            assertThat(dates.formattedLocalDateTime("26/02/0019"))
+                    .isEqualTo("0019-02-26T00:00:00Z");
+        }
+
         @Test
         @DisplayName("D11 — an ISO date is not read, and ships as the literal 'Invalid dateZ'")
         void an_iso_date_ships_as_the_literal_invalid_date() {

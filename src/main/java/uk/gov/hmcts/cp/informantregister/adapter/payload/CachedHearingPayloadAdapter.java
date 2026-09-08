@@ -59,20 +59,30 @@ public class CachedHearingPayloadAdapter implements HearingPayloadSource {
 
     @Override
     public JsonNode fetch(final DistributionCommand command) {
+        // Which of the three sources answered is not recoverable after the fact — they all return
+        // the same tree — and it is the first thing to establish when registers are slow or wrong:
+        // a service running entirely on the query fallback has a dead cache tier and is putting
+        // every hearing read onto the Results query API, while reporting perfect health.
+        String source = "cache-day";
         Optional<JsonNode> payload = cache.read(
                 HearingPayloadCacheKey.cacheKey(keyPrefix, command.hearingId(),
                         command.hearingDay()));
         if (payload.isEmpty()) {
+            source = "cache-nullday";
             payload = cache.read(
                     HearingPayloadCacheKey.cacheKey(keyPrefix, command.hearingId(), null));
         }
         if (payload.isEmpty()) {
+            source = "query";
             LOG.info("Hearing payload not cached; querying the results query API. "
                             + "requestId={} hearingId={} hearingDay={}",
                     command.requestId(), command.hearingId(), command.hearingDay());
             payload = query.fetch(command);
         }
-        return payload.orElseThrow(() -> unavailable(command));
+        final JsonNode fetched = payload.orElseThrow(() -> unavailable(command));
+        LOG.info("Hearing payload sourced. requestId={} hearingId={} payloadSource={}",
+                command.requestId(), command.hearingId(), source);
+        return fetched;
     }
 
     /**

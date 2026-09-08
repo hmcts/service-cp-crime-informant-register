@@ -72,6 +72,7 @@ public class ResultsRegisterSubmissionClient implements RegisterSubmissionClient
     public void submit(final AuthoritySubmission submission) {
         final byte[] body = objectMapper.writeValueAsBytes(submission.document());
         final String digest = digestOf(body);
+        final CommandCorrelation correlation = correlationOf(submission);
 
         final boolean maySend = outputs.claimPending(
                 UUID.randomUUID(),
@@ -81,14 +82,13 @@ public class ResultsRegisterSubmissionClient implements RegisterSubmissionClient
                 digest);
 
         if (!maySend) {
-            LOG.info("Authority already posted for this request; skipping. source={} requestId={} "
-                            + "authority={}",
-                    submission.source(), submission.requestId(), submission.prosecutionAuthorityId());
+            LOG.info("Authority already posted for this request; skipping. {}",
+                    correlation.logFields());
             return;
         }
 
         try {
-            gateway.post(body, submission.identity());
+            gateway.post(body, submission.identity(), correlation);
         } catch (SubmissionFailedException failure) {
             // Caught to record, never to absorb: the row is moved to FAILED and the same exception
             // continues, carrying the classification the pipeline settles the delivery on.
@@ -101,8 +101,24 @@ public class ResultsRegisterSubmissionClient implements RegisterSubmissionClient
         recorded(outputs.recordPosted(
                 submission.source(), submission.requestId(), submission.prosecutionAuthorityId()),
                 "POSTED", submission);
-        LOG.info("Authority submitted. source={} requestId={} authority={}",
-                submission.source(), submission.requestId(), submission.prosecutionAuthorityId());
+        LOG.info("Authority submitted. {}", correlation.logFields());
+    }
+
+    /**
+     * What this submission's lines are traced back to.
+     *
+     * <p>The hearing id is the addition: these lines already named {@code source} and
+     * {@code requestId}, which identify the <em>request</em>, and a support question is far more
+     * often asked about a hearing — "was this hearing's register filed?" — than about the request id
+     * that happens to carry it. The document is where it lives, because the hearing is what the
+     * document is a register of.
+     */
+    private static CommandCorrelation correlationOf(final AuthoritySubmission submission) {
+        return new CommandCorrelation(
+                submission.source(),
+                submission.requestId(),
+                submission.document().hearingId(),
+                submission.prosecutionAuthorityId());
     }
 
     /**
@@ -124,9 +140,8 @@ public class ResultsRegisterSubmissionClient implements RegisterSubmissionClient
             final boolean written, final String status, final AuthoritySubmission submission) {
         if (!written) {
             LOG.error("Outcome write affected no row; an overlapping delivery reached it first. "
-                            + "source={} requestId={} authority={} intendedStatus={}",
-                    submission.source(), submission.requestId(),
-                    submission.prosecutionAuthorityId(), status);
+                            + "{} intendedStatus={}",
+                    correlationOf(submission).logFields(), status);
         }
     }
 

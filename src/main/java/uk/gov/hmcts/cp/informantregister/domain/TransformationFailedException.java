@@ -56,4 +56,26 @@ public class TransformationFailedException extends RuntimeException {
     public ReasonCode reason() {
         return reasonCode;
     }
+
+    /**
+     * What could not be transformed, in this service's own words.
+     *
+     * <p>Every construction of this exception supplies a description written here, in the
+     * vocabulary of the register being built — "hearing field 'defendants' is not an array",
+     * "the register date cannot date the now-subscriptions query". The throw sites interpolate
+     * field and component <em>names</em>, which are this service's own, and never the values,
+     * which are the producer's and may be defendant detail. Each of them says so.
+     *
+     * <p>The accessor exists so that logging it is a deliberate, reviewable act rather than an
+     * incidental {@code getMessage()}: {@link ReasonCode#TRANSFORMATION_FAILED} alone collapses
+     * sixteen distinct refusals into one code, which tells support that the transformation failed
+     * and nothing about which part of it refused. {@code TelemetryPrivacyTest} drives a
+     * transformation failure over a payload full of personal data and asserts that none of it is
+     * written, which is what keeps the claim above true as the throw sites change.
+     *
+     * @return the bounded description; never payload content
+     */
+    public String detail() {
+        return getMessage();
+    }
 }

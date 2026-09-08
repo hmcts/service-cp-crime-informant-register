@@ -217,12 +217,17 @@ class DeliveryExhaustionIT {
      * <p>Read from the listener's own receipt line, filtered by the correlation identifier it puts
      * in place, so it counts deliveries rather than runs: a delivery that arrived and did no work
      * would still be counted here, and this suite's claim is about the broker's budget.
+     *
+     * <p>Taken from the correlation map rather than from the line's argument array. The count is an
+     * MDC field, because it qualifies every line a delivery writes and not only the receipt; and
+     * reading it by name rather than by argument position means adding or reordering an argument on
+     * that line cannot silently change what this suite measures.
      */
     private List<Long> deliveryCounts() {
         return deliveryLog.events().stream()
                 .filter(event -> requestId.toString().equals(event.getMDCPropertyMap().get("requestId")))
                 .filter(event -> event.getFormattedMessage().startsWith(DELIVERY_RECEIVED))
-                .map(event -> (Long) event.getArgumentArray()[2])
+                .map(event -> Long.valueOf(event.getMDCPropertyMap().get("deliveryCount")))
                 .toList();
     }
 

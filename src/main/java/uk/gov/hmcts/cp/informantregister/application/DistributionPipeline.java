@@ -22,6 +22,7 @@ import uk.gov.hmcts.cp.informantregister.domain.RequestOutcome;
 import uk.gov.hmcts.cp.informantregister.domain.RunClaim;
 import uk.gov.hmcts.cp.informantregister.domain.SubmissionFailedException;
 import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
+import uk.gov.hmcts.cp.informantregister.observability.FaultSummary;
 
 /**
  * One request, from the guard admitting it to the guard recording what happened.
@@ -138,6 +139,11 @@ public class DistributionPipeline {
         } catch (PayloadUnavailableException unavailable) {
             outcome = failed(claim, unavailable.classification(), unavailable.reason(), lastChance);
         } catch (TransformationFailedException unreadable) {
+            // The detail is the only thing that distinguishes one transformation refusal from
+            // another: the reason code is TRANSFORMATION_FAILED for all sixteen of them. It is
+            // written by this service, in this service's vocabulary — see the accessor's comment.
+            LOG.error("Hearing could not be transformed. source={} requestId={} detail={}",
+                    claim.source(), claim.requestId(), unreadable.detail());
             outcome = failed(claim, unreadable.classification(), unreadable.reason(), lastChance);
         } catch (ReferenceDataUnavailableException unaddressable) {
             // The register was built; what is missing is who it goes to. The legacy answers that
@@ -153,7 +159,7 @@ public class DistributionPipeline {
         } catch (RuntimeException unexpected) {
             LOG.error("Run failed unexpectedly; recording it so the claim is released. "
                             + "source={} requestId={} type={}",
-                    claim.source(), claim.requestId(), unexpected.getClass().getName());
+                    claim.source(), claim.requestId(), FaultSummary.typeChain(unexpected));
             outcome = failed(claim, FailureClassification.TRANSIENT,
                     ReasonCode.UNEXPECTED_FAILURE, lastChance);
         }
@@ -162,7 +168,18 @@ public class DistributionPipeline {
 
     private GuardDecision runToOutcome(
             final DistributionCommand command, final RunClaim claim, final boolean lastChance) {
-        final Instant deadline = clock.instant().plus(processingDeadline);
+        // Two readings, and the log is built from those rather than taking its own.
+        //
+        // Instrumentation that reads the clock again is instrumentation that perturbs what it
+        // measures: the deadline branch below is decided on a clock reading, and a timing call
+        // placed between the two would report a different elapsed time from the one the decision
+        // was made on — and, under a clock that advances per read, would change the decision. The
+        // per-phase durations that this costs are recoverable anyway, because every line in the
+        // log carries a timestamp; what timestamps cannot give is the relationship to the
+        // deadline, which is why elapsed and remaining are stated explicitly at the point the
+        // deadline is tested.
+        final Instant startedAt = clock.instant();
+        final Instant deadline = startedAt.plus(processingDeadline);
 
         final JsonNode payload = payloadSource.fetch(command);
         LOG.info("Hearing payload obtained. source={} requestId={} hearingId={} topLevelFields={}",
@@ -170,20 +187,95 @@ public class DistributionPipeline {
 
         final List<AuthoritySubmission> submissions = submissionsFor(command, payload);
 
+        final Instant transformedAt = clock.instant();
+        final long elapsedMs = Duration.between(startedAt, transformedAt).toMillis();
+
         final GuardDecision outcome;
         // Strictly before, so the deadline is a bound that is *reached* rather than passed: a run
         // standing exactly on it has already used the time its claim guarantees and may not write a
         // completion. `isAfter` on the other side of this branch would let that one instant through.
-        if (clock.instant().isBefore(deadline)) {
-            for (final AuthoritySubmission submission : submissions) {
-                submissionClient.submit(submission);
-            }
-            outcome = completed(claim, submissions);
+        if (transformedAt.isBefore(deadline)) {
+            // The budget left when the submissions start is the leading indicator for a run
+            // creeping toward the deadline: by the time PROCESSING_DEADLINE_EXCEEDED is recorded
+            // the run is already lost, and this is the line that saw it coming.
+            LOG.info("Submitting registers. source={} requestId={} authorities={} "
+                            + "elapsedMs={} deadlineRemainingMs={}",
+                    claim.source(), claim.requestId(), submissions.size(), elapsedMs,
+                    Duration.between(transformedAt, deadline).toMillis());
+            outcome = submitWithin(claim, submissions, deadline, elapsedMs, lastChance);
         } else {
+            // Said separately from the generic failure line below, because "how far over, and with
+            // how much work still outstanding" is the whole question and the bounded reason code
+            // cannot carry it.
+            LOG.error("The processing deadline passed before any register was submitted. "
+                            + "source={} requestId={} authorities={} elapsedMs={} deadlineMs={}",
+                    claim.source(), claim.requestId(), submissions.size(), elapsedMs,
+                    processingDeadline.toMillis());
             outcome = failed(claim, FailureClassification.TRANSIENT,
                     ReasonCode.PROCESSING_DEADLINE_EXCEEDED, lastChance);
         }
         return outcome;
+    }
+
+    /**
+     * POSTs each authority's register, stopping if the deadline arrives part-way through.
+     *
+     * <p>The deadline is tested before <em>every</em> submission, not once before the loop. One
+     * authority can legitimately spend {@code results.max-attempts} x (connect + read) plus its
+     * capped back-offs, and the payload fetch and the now-subscriptions read may already have
+     * consumed most of the budget before the first POST is even attempted — so a loop entered with
+     * seconds to spare can run minutes past the deadline and, with it, past the claim lease. That
+     * is not a slow run: it is <em>two</em> runs. Once the lease lapses a redelivery reclaims the
+     * request and is granted every authority not yet {@code POSTED}, so both runners POST, and
+     * {@code add-informant-register} is not idempotent. The duplicate register row stops being the
+     * rare crash-window case the delivery guarantee owns and becomes load-dependent.
+     *
+     * <p>Stopping is therefore the safe outcome and not a lost one. It is transient: the
+     * authorities already POSTed are recorded as such and skipped on the redelivery, so only the
+     * outstanding ones are repeated, and the run that resumes them starts with a full budget.
+     *
+     * <p>The first iteration re-reads a clock the caller has just read. That is deliberate rather
+     * than redundant: the caller's test guards the phase — including a run that produced no
+     * authorities at all, which has nothing to iterate and must still not record a completion it no
+     * longer holds the claim to write — while this one guards each POST.
+     *
+     * @param claim       the claim this run holds
+     * @param submissions the authorities to POST, in the order they are to be made
+     * @param deadline    the instant the run must have finished by
+     * @param elapsedMs   time spent up to the end of the transformation, for the completion line
+     * @param lastChance  whether the queue's delivery budget ends with this delivery
+     * @return the recorded outcome — a completion, or the transient failure that stopped it
+     */
+    private GuardDecision submitWithin(
+            final RunClaim claim,
+            final List<AuthoritySubmission> submissions,
+            final Instant deadline,
+            final long elapsedMs,
+            final boolean lastChance) {
+
+        int submitted = 0;
+        for (final AuthoritySubmission submission : submissions) {
+            final Instant beforeSubmission = clock.instant();
+            // Strictly before, on the same reasoning as the phase test above: a run standing
+            // exactly on its deadline has used the time its claim guarantees and may not spend more.
+            if (!beforeSubmission.isBefore(deadline)) {
+                // Said separately from the generic failure line, and separately from the
+                // never-started case: how many registers are already out is what decides whether
+                // this hearing can have produced a duplicate, and the bounded reason code cannot
+                // carry it.
+                LOG.error("The processing deadline passed part-way through submission. "
+                                + "source={} requestId={} submitted={} outstanding={} "
+                                + "elapsedMs={} overrunMs={}",
+                        claim.source(), claim.requestId(), submitted,
+                        submissions.size() - submitted, elapsedMs,
+                        Duration.between(deadline, beforeSubmission).toMillis());
+                return failed(claim, FailureClassification.TRANSIENT,
+                        ReasonCode.PROCESSING_DEADLINE_EXCEEDED, lastChance);
+            }
+            submissionClient.submit(submission);
+            submitted++;
+        }
+        return completed(claim, submissions, elapsedMs);
     }
 
     /**
@@ -302,16 +394,17 @@ public class DistributionPipeline {
      * for the other case would make "nothing was sent" and "everything was sent" the same row to
      * anybody reading the processed log.
      */
-    private GuardDecision completed(
-            final RunClaim claim, final List<AuthoritySubmission> submissions) {
+    private GuardDecision completed(final RunClaim claim,
+            final List<AuthoritySubmission> submissions, final long elapsedMs) {
 
         final CompletionReason reason = submissions.isEmpty()
                 ? CompletionReason.NO_AUTHORITIES
                 : CompletionReason.AUTHORITIES_SUBMITTED;
         final GuardDecision outcome = guard.recordCompletion(claim, reason);
         if (outcome instanceof GuardDecision.Complete) {
-            LOG.info("Run finished. source={} requestId={} authorities={} reason={}",
-                    claim.source(), claim.requestId(), submissions.size(), reason.value());
+            LOG.info("Run finished. source={} requestId={} authorities={} reason={} elapsedMs={}",
+                    claim.source(), claim.requestId(), submissions.size(), reason.value(),
+                    elapsedMs);
             metrics.requestSettled(RequestOutcome.COMPLETED);
         }
         return outcome;

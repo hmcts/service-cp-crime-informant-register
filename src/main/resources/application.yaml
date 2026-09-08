@@ -49,6 +49,12 @@ informantregister:
     # Mirrors the broker queue's own setting. Used to recognise the final permitted delivery, so it
     # must be changed here and on the queue together.
     max-delivery-count: 5
+    # Mirrors the broker queue's own LockDuration, which this service cannot read. The claim lease
+    # must be strictly shorter, so a dead runner's claim has always lapsed by the time the broker
+    # redelivers; validated at startup. 5m is the ASB maximum, and like max-delivery-count above it
+    # must be changed here and on the queue together — moving the queue alone voids the rule
+    # silently and a crashed pod's message starts burning its delivery budget again.
+    lock-duration: 5m
     # Must be at least the processing deadline plus the fixed 30s renewal margin, so the broker lock
     # always outlives a legitimate run. Validated at startup.
     max-auto-lock-renew-duration: 5m
@@ -57,8 +63,14 @@ informantregister:
     health-staleness: 60s
 
   claim:
-    # How long an acquired claim stays live, written as now() + lease by the database.
-    lease: 5m
+    # How long an acquired claim stays live, written as now() + lease by the database. Strictly
+    # shorter than lock-duration above, by a 30s margin: a redelivery arriving on lock expiry must
+    # find a crashed runner's claim already lapsed, or it abandons and — abandon having no back-off
+    # — the remaining deliveries are consumed back-to-back into a broker-reasoned dead-letter.
+    # Compound durations must be ISO-8601: Spring's simple format takes one value and one unit, so
+    # `4m30s` will not bind. The repository renders this with toString() and Postgres reads the
+    # ISO-8601 form as an interval.
+    lease: PT4M30S
     # The enforced bound on a run. Strictly shorter than the lease, so a slow runner stops itself
     # before its claim can be reclaimed. Validated at startup.
     processing-deadline: 4m
@@ -168,6 +180,17 @@ informantregister:
 # Application Insights is configured by the Java agent (lib/applicationinsights.json).
 # The per-environment connection string is supplied as APPLICATIONINSIGHTS_CONNECTION_STRING,
 # mounted from Key Vault via the Secrets Store CSI driver; there is nothing to set here.
+#
+# Worth knowing, because it cannot be commented in JSON: the agent applies its own log threshold on
+# top of whatever Logback emits, and it defaults to INFO. So if a future story ever lowers
+# `logging.level` for a package to chase something, the agent's `instrumentation.logging.level`
+# has to come down with it or the extra lines will reach container stdout and stop there. Raising a
+# level and receiving nothing in Log Analytics is a worse failure than not being able to raise it.
+#
+# The transformation-tracing switch, when that is needed, is
+# `uk.gov.hmcts.cp.informantregister.pipeline` at DEBUG: it turns on per-authority subscription
+# matching and the reason each subscription was rejected. It needs a redeploy, deliberately —
+# see the `loggers` note under `management.endpoints.web.exposure` below.
 
 management:
   endpoints:
@@ -175,9 +198,32 @@ management:
       base-path: /actuator
       # The whole HTTP surface of this service. There is no business API (spec FR-014).
       exposure:
+        # `loggers` is deliberately NOT here, and HttpSurfaceTest enforces that. It is tempting —
+        # it would let support raise a level during an incident instead of redeploying — but it is
+        # a *write* surface on an actuator with no authentication, and the privacy rules this
+        # service is held to only govern this service's own loggers. Anyone who could reach the pod
+        # could raise io.lettuce or the JDBC logger to TRACE and put hearing payloads into the log
+        # index, which is precisely the exposure Principle VII exists to prevent. Revisit if and
+        # when the surface is authenticated.
+        #
+        # The support-critical facts are at INFO instead, which is the reason this stays closed
+        # without costing an incident: the transformation refusal detail, the subscription counts
+        # behind an unaddressed register, which source answered a payload read, the submission
+        # outcome per authority, and the cause of a store outage are all INFO. What remains at
+        # DEBUG is per-subscription rejection detail, and reaching that needs a redeploy.
         include: health,info,metrics,prometheus
   endpoint:
     health:
+      # Both custom indicators assemble detail that was unreachable while this defaulted to
+      # `never`: readiness spans db and intakeStartup and answered a bare {"status":"DOWN"} with
+      # no indication which of the two was down, while ServiceBusHealthIndicator's condition and
+      # timestamps and IntakeStartupHealthIndicator's started/awaiting-store distinction went
+      # nowhere. `always` rather than `when-authorized` because there is no authentication on this
+      # surface: `when-authorized` would treat every caller as unauthorized and change nothing.
+      # The values are bounded to condition names, state labels and timestamps — no PII, no
+      # secrets — and the surface is actuator-only and Istio-internal with no ingress. Revisit
+      # when Entra/JWT lands.
+      show-details: always
       probes:
         enabled: true   # enables liveness / readiness groups
       group:

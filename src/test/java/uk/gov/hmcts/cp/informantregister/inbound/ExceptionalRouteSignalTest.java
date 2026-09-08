@@ -58,6 +58,11 @@ class ExceptionalRouteSignalTest {
     private static final String REQUEST_ID = "requestId";
     private static final String HEARING_ID = "hearingId";
     private static final String HEARING_DAY = "hearingDay";
+    private static final String SEQUENCE_NUMBER = "sequenceNumber";
+    private static final String DELIVERY_COUNT = "deliveryCount";
+
+    /** Distinctive, so asserting the broker's handle is not satisfied by a mock's default zero. */
+    private static final long SEQUENCE = 4815162342L;
 
     private final UUID requestId = UUID.randomUUID();
     private final UUID hearingId = UUID.randomUUID();
@@ -98,11 +103,27 @@ class ExceptionalRouteSignalTest {
         when(message.getMessageId()).thenReturn("RESULTS:" + UUID.randomUUID());
         when(message.getLockToken()).thenReturn(UUID.randomUUID().toString());
         when(message.getDeliveryCount()).thenReturn(0L);
+        when(message.getSequenceNumber()).thenReturn(SEQUENCE);
 
         final ServiceBusReceivedMessageContext context =
                 mock(ServiceBusReceivedMessageContext.class);
         when(context.getMessage()).thenReturn(message);
         return context;
+    }
+
+    /**
+     * What the broker stamped, which every line carries whatever else it could not work out.
+     *
+     * <p>The request identifiers are the producer's to supply and a rejected body may carry none.
+     * These two are not: they are put in place before anything is judged, so they are the handle on
+     * precisely the lines that have no other one — which is the ERROR routes, the ones a support
+     * engineer reaches for first.
+     */
+    private static void assertJoinableToTheQueue(final ILoggingEvent line) {
+        assertThat(line.getMDCPropertyMap())
+                .as("line the broker's view cannot be joined to: %s", line.getFormattedMessage())
+                .containsEntry(SEQUENCE_NUMBER, Long.toString(SEQUENCE))
+                .containsEntry(DELIVERY_COUNT, "0");
     }
 
     private static List<ILoggingEvent> errorsIn(final CapturedLog log) {
@@ -134,6 +155,7 @@ class ExceptionalRouteSignalTest {
                     .containsEntry(REQUEST_ID, requestId.toString())
                     .containsEntry(HEARING_ID, hearingId.toString())
                     .containsEntry(HEARING_DAY, "2026-08-21");
+            assertJoinableToTheQueue(errors.getFirst());
             assertThat(errors.getFirst().getFormattedMessage())
                     .as("and the offending name is still not quoted")
                     .doesNotContain("courtCentreId");
@@ -151,6 +173,7 @@ class ExceptionalRouteSignalTest {
             assertThat(errors.getFirst().getMDCPropertyMap())
                     .as("absent is the honest answer; a placeholder would be searched for and found")
                     .doesNotContainKeys(SOURCE, REQUEST_ID, HEARING_ID, HEARING_DAY);
+            assertJoinableToTheQueue(errors.getFirst());
         }
     }
 
@@ -166,6 +189,10 @@ class ExceptionalRouteSignalTest {
         assertThat(MDC.get(REQUEST_ID)).isNull();
         assertThat(MDC.get(HEARING_ID)).isNull();
         assertThat(MDC.get(HEARING_DAY)).isNull();
+        assertThat(MDC.get(SEQUENCE_NUMBER))
+                .as("the broker's handle is this delivery's, and a stale one would be believed")
+                .isNull();
+        assertThat(MDC.get(DELIVERY_COUNT)).isNull();
     }
 
     @Test
@@ -218,6 +245,7 @@ class ExceptionalRouteSignalTest {
             assertThat(errorsIn(log))
                     .as("reported once")
                     .hasSize(1);
+            assertJoinableToTheQueue(errorsIn(log).getFirst());
             assertThat(transientFailures())
                     .as("and counted, so a dashboard cannot say the service was fine")
                     .isEqualTo(before + 1);
@@ -236,6 +264,7 @@ class ExceptionalRouteSignalTest {
             listener.onMessage(deliveryOf(validBody()));
 
             assertThat(errorsIn(log)).hasSize(1);
+            assertJoinableToTheQueue(errorsIn(log).getFirst());
             assertThat(transientFailures())
                     .as("a defect in this service is still a failure of the delivery")
                     .isEqualTo(before + 1);
@@ -255,6 +284,7 @@ class ExceptionalRouteSignalTest {
         when(message.getMessageId()).thenReturn("RESULTS:" + UUID.randomUUID());
         when(message.getLockToken()).thenReturn(UUID.randomUUID().toString());
         when(message.getDeliveryCount()).thenReturn(0L);
+        when(message.getSequenceNumber()).thenReturn(SEQUENCE);
         final ServiceBusReceivedMessageContext context =
                 mock(ServiceBusReceivedMessageContext.class);
         when(context.getMessage()).thenReturn(message);
@@ -267,6 +297,7 @@ class ExceptionalRouteSignalTest {
             assertThat(errorsIn(log))
                     .as("as accounted for as a body that cannot be parsed")
                     .hasSize(1);
+            assertJoinableToTheQueue(errorsIn(log).getFirst());
             assertThat(transientFailures()).isEqualTo(before + 1);
         }
         verify(context).abandon();

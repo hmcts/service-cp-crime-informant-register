@@ -49,6 +49,9 @@ public record InformantRegisterProperties(
      * @param queueName                 the inbound queue
      * @param maxConcurrentCalls        processor concurrency
      * @param maxDeliveryCount          mirrors the broker queue setting; recognises the final delivery
+     * @param lockDuration              mirrors the broker queue's {@code LockDuration}; the claim
+     *                                  lease must be strictly shorter, so a dead runner's claim has
+     *                                  always lapsed by the time the broker redelivers
      * @param maxAutoLockRenewDuration  must outlive any legitimate run
      * @param healthStaleness           age past which an unresolved error with no traffic stops
      *                                  being reported as an outage
@@ -59,6 +62,7 @@ public record InformantRegisterProperties(
             @DefaultValue("informantregister.requests") String queueName,
             @DefaultValue("2") int maxConcurrentCalls,
             @DefaultValue("5") int maxDeliveryCount,
+            @DefaultValue("5m") Duration lockDuration,
             @DefaultValue("5m") Duration maxAutoLockRenewDuration,
             @DefaultValue("60s") Duration healthStaleness) {
     }
@@ -70,7 +74,7 @@ public record InformantRegisterProperties(
      * @param processingDeadline enforced run bound, strictly shorter than the lease
      */
     public record Claim(
-            @DefaultValue("5m") Duration lease,
+            @DefaultValue("PT4M30S") Duration lease,
             @DefaultValue("4m") Duration processingDeadline) {
     }
 

@@ -25,11 +25,13 @@ import uk.gov.hmcts.cp.informantregister.application.HearingPayloadSource;
 import uk.gov.hmcts.cp.informantregister.application.IdempotencyGuard;
 import uk.gov.hmcts.cp.informantregister.application.RegisterSubmissionClient;
 import uk.gov.hmcts.cp.informantregister.domain.CompletionReason;
+import uk.gov.hmcts.cp.informantregister.domain.DeadLetterReason;
 import uk.gov.hmcts.cp.informantregister.domain.DeliveryIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
 import uk.gov.hmcts.cp.informantregister.domain.GuardDecision;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.RunClaim;
+import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
 import uk.gov.hmcts.cp.informantregister.inbound.DistributionCommandParser;
 import uk.gov.hmcts.cp.informantregister.inbound.InformantRegisterMessageListener;
 import uk.gov.hmcts.cp.informantregister.inbound.ServiceBusConsumerConfig;
@@ -73,9 +75,17 @@ import static org.mockito.Mockito.when;
  */
 class TelemetryPrivacyTest {
 
-    /** The correlation set every processing line must carry (spec FR-012, technical-rules MDC). */
-    private static final Set<String> CORRELATION =
-            Set.of("source", "requestId", "hearingId", "hearingDay");
+    /**
+     * The correlation set every processing line must carry (spec FR-012, technical-rules MDC).
+     *
+     * <p>Two layers, and the claim is service-wide rather than listener-local: the MDC is in place
+     * for the whole delivery, so the guard's, the pipeline's and the adapters' lines inherit it
+     * exactly as the transport adapter's own do. {@code sequenceNumber} and {@code deliveryCount}
+     * are what the <em>broker</em> stamped — not producer text, and about nobody — which is what
+     * makes them admissible here at all when {@code messageId} is not.
+     */
+    private static final Set<String> CORRELATION = Set.of(
+            "source", "requestId", "hearingId", "hearingDay", "sequenceNumber", "deliveryCount");
 
     private static final String PAYLOAD_MARKER = "PAYLOADMARKERZQX7";
     private static final String MESSAGE_ID_MARKER = "MESSAGEIDMARKERZQX7";
@@ -86,6 +96,8 @@ class TelemetryPrivacyTest {
     private static final String DEFENDANT_MARKER = "DEFENDANTMARKERZQX7";
     private static final String BODY_MARKER = "BODYMARKERZQX7";
     private static final String SECRET_MARKER = "SECRETMARKERZQX7";
+    private static final String FAULT_TEXT_MARKER = "FAULTTEXTMARKERZQX7";
+    private static final String SYSTEM_USER_MARKER = "0dd0dd0d-dead-beef-cafe-facade000002";
 
     /**
      * The sharing user, as a canonical uuid the eye can pick out of a log index. It has to be a real
@@ -96,6 +108,9 @@ class TelemetryPrivacyTest {
 
     private static final int MAX_DELIVERY_COUNT = 5;
     private static final Duration RUN_DEADLINE = Duration.ofMinutes(4);
+
+    /** The packaged lease: strictly shorter than the 5m lock, as the startup rules require. */
+    private static final Duration CLAIM_LEASE = Duration.ofMinutes(4).plusSeconds(30);
 
     private final UUID requestId = UUID.randomUUID();
     private final UUID hearingId = UUID.randomUUID();
@@ -153,6 +168,7 @@ class TelemetryPrivacyTest {
         when(message.getMessageId()).thenReturn(messageId);
         when(message.getLockToken()).thenReturn(UUID.randomUUID().toString());
         when(message.getDeliveryCount()).thenReturn(0L);
+        when(message.getSequenceNumber()).thenReturn(4815162342L);
 
         final ServiceBusReceivedMessageContext context =
                 mock(ServiceBusReceivedMessageContext.class);
@@ -354,8 +370,8 @@ class TelemetryPrivacyTest {
                 new InformantRegisterProperties.Consumer(true),
                 new InformantRegisterProperties.Servicebus(
                         connectionString, null, "informantregister.requests", 2, MAX_DELIVERY_COUNT,
-                        Duration.ofMinutes(5), Duration.ofSeconds(60)),
-                new InformantRegisterProperties.Claim(Duration.ofMinutes(5), RUN_DEADLINE),
+                        Duration.ofMinutes(5), Duration.ofMinutes(5), Duration.ofSeconds(60)),
+                new InformantRegisterProperties.Claim(CLAIM_LEASE, RUN_DEADLINE),
                 new InformantRegisterProperties.Store(Duration.ofSeconds(10)),
                 new InformantRegisterProperties.Stub(PayloadFailureMode.NONE),
                 new InformantRegisterProperties.Payload(
@@ -365,11 +381,13 @@ class TelemetryPrivacyTest {
                         new InformantRegisterProperties.Fallback(3, Duration.ofSeconds(1),
                                 Duration.ofSeconds(5), Duration.ofSeconds(30))),
                 new InformantRegisterProperties.Results(
-                        "http://localhost:8080", null, null, 4, Duration.ofMillis(500),
-                        Duration.ofSeconds(20), Duration.ofSeconds(5), Duration.ofSeconds(30)),
+                        "http://localhost:8080", SYSTEM_USER_MARKER, null, 4,
+                        Duration.ofMillis(500), Duration.ofSeconds(20), Duration.ofSeconds(5),
+                        Duration.ofSeconds(30)),
                 new InformantRegisterProperties.Referencedata(
-                        SubscriptionsSourceMode.STUB, "http://localhost:8080", null, null, 3,
-                        Duration.ofSeconds(1), Duration.ofSeconds(5), Duration.ofSeconds(30)));
+                        SubscriptionsSourceMode.STUB, "http://localhost:8080", SYSTEM_USER_MARKER,
+                        null, 3, Duration.ofSeconds(1), Duration.ofSeconds(5),
+                        Duration.ofSeconds(30)));
     }
 
     // --- the configuration that makes correlation reach the index ---------------------------------
@@ -482,6 +500,119 @@ class TelemetryPrivacyTest {
 
             assertThat(log.renderings())
                     .noneMatch(line -> line.contains(ADAPTER_MARKER));
+        }
+    }
+
+    // --- what a failure is allowed to say about itself -------------------------------------------
+
+    /**
+     * The summariser exists to give support the <em>shape</em> of a fault without its words, and
+     * this is what stops it quietly becoming a {@code getMessage()} wrapper.
+     *
+     * <p>The reason it is tested here rather than only in {@code FaultSummaryTest} is that this
+     * suite drives the real delivery path: what is proved is that the listener's own rendering of
+     * an adapter failure, on the route a live delivery takes, writes no part of the exception's
+     * text — including through the {@code exception} field {@code logback.xml} renders.
+     */
+    @Test
+    @DisplayName("a fault's cause chain is written by type, never by the words of any exception in it")
+    void should_never_log_the_text_of_a_cause_chain() {
+        final HearingPayloadSource payloads = mock(HearingPayloadSource.class);
+        // Wrapped, so the assertion covers the causes and not only the head: it is the nested
+        // exception that routinely carries the cache key and the bytes it choked on.
+        when(payloads.fetch(any(DistributionCommand.class)))
+                .thenThrow(new IllegalStateException("outer " + FAULT_TEXT_MARKER,
+                        new IllegalArgumentException("inner " + FAULT_TEXT_MARKER)));
+
+        try (CapturedLog log = CapturedLog.everything()) {
+            listenerOver(payloads).onMessage(deliveryOf(validBody()));
+
+            assertThat(log.renderings())
+                    .as("the chain names types; the words belong to whoever threw them")
+                    .noneMatch(line -> line.contains(FAULT_TEXT_MARKER));
+        }
+    }
+
+    /**
+     * The transformation detail is now logged, so the claim its throw sites make has to be tested.
+     *
+     * <p>Sixteen throw sites build a description by interpolating a field or component
+     * <em>name</em> — this service's own vocabulary — into a fixed sentence, and each says in a
+     * comment that the <em>value</em> is the producer's and is never quoted. That was a convention
+     * for as long as nothing logged it. It is a published fact now, and this is the assertion that
+     * keeps it true: the transformation is driven over the payload full of personal data, and the
+     * detail that reaches the log may carry none of it.
+     */
+    @Test
+    @DisplayName("a transformation refusal names what it could not read, never what it read")
+    void should_log_a_transformation_detail_without_the_payload_it_refused() {
+        final HearingPayloadSource payloads = mock(HearingPayloadSource.class);
+        when(payloads.fetch(any(DistributionCommand.class))).thenReturn(hearingPayload());
+
+        final IdempotencyGuard guard = mock(IdempotencyGuard.class);
+        final RunClaim claim = new RunClaim(
+                "RESULTS", requestId, "instance/lock", UUID.randomUUID(), "RESULTS:message");
+        when(guard.admit(any(DistributionCommand.class), any(DeliveryIdentity.class)))
+                .thenReturn(new GuardDecision.Run(claim));
+        when(guard.recordNonTransientFailure(any(RunClaim.class), any(ReasonCode.class)))
+                .thenReturn(new GuardDecision.DeadLetter(
+                        DeadLetterReason.NON_TRANSIENT, ReasonCode.TRANSFORMATION_FAILED));
+
+        // A transformer that refuses the way the ported mappers refuse: a bounded sentence naming
+        // a field of ours, thrown while holding a hearing full of the producer's data.
+        final DistributionPipeline pipeline = new DistributionPipeline(
+                guard, payloads,
+                (hearing, sharedTime, identity) -> {
+                    throw new TransformationFailedException("hearing field 'defendants' is not an array");
+                },
+                mock(RegisterSubmissionClient.class),
+                new ProcessingMetrics(new SimpleMeterRegistry()), Clock.systemUTC(), RUN_DEADLINE);
+
+        try (CapturedLog log = CapturedLog.everything()) {
+            new InformantRegisterMessageListener(
+                    new DistributionCommandParser(JacksonConfig.contractObjectMapper()),
+                    pipeline,
+                    new ProcessingMetrics(new SimpleMeterRegistry()),
+                    QueueHealthTestSupport.unwatched(),
+                    StoreGateTestSupport.open(),
+                    MAX_DELIVERY_COUNT)
+                    .onMessage(deliveryOf(validBody()));
+
+            assertThat(log.renderings())
+                    .as("the detail is the point of the line, so it has to actually be there")
+                    .anyMatch(line -> line.contains("hearing field 'defendants' is not an array"))
+                    .as("and none of the hearing it refused may travel with it")
+                    .noneMatch(line -> line.contains(PAYLOAD_MARKER))
+                    .noneMatch(line -> line.contains(DEFENDANT_MARKER));
+        }
+    }
+
+    /**
+     * The startup line that says what this pod is configured to do.
+     *
+     * <p>It exists because a pod pointed at the wrong environment, or running a stub source against
+     * real traffic, is otherwise invisible. That makes it a line that reads configuration wholesale
+     * and writes it out, which is exactly the shape that leaks a credential — so it is held to
+     * hosts, modes and durations, and away from the two values in that record that must never be
+     * written: the broker credential and the system user the service posts as.
+     */
+    @Test
+    @DisplayName("the startup configuration line names hosts and modes, never a credential or a user")
+    void should_announce_the_configuration_without_a_secret_or_a_user() {
+        final InformantRegisterProperties properties = credentialledWith(
+                "Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;"
+                        + "SharedAccessKey=" + SECRET_MARKER + ";UseDevelopmentEmulator=true;");
+
+        try (CapturedLog log = CapturedLog.everything()) {
+            new PropertiesValidator(properties).afterPropertiesSet();
+
+            assertThat(log.renderings())
+                    .as("the line has to have been written for its silence to mean anything")
+                    .anyMatch(line -> line.contains("Effective configuration"))
+                    .as("a connection string is a secret wherever it is read")
+                    .noneMatch(line -> line.contains(SECRET_MARKER))
+                    .as("the identity the service posts as names a person")
+                    .noneMatch(line -> line.contains(SYSTEM_USER_MARKER));
         }
     }
 

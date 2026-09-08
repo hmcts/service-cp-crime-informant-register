@@ -42,6 +42,14 @@ class ConfigurationValidationTest {
             "informantregister.servicebus.namespace=" + NAMESPACE;
 
     /**
+     * A lock duration above every lease the cases below use, so each timing case tests one rule
+     * only. Without it the packaged 5m lock makes a 5m lease break the lease rule as well, and a
+     * case meant to prove one relationship would pass on another's refusal.
+     */
+    private static final String ROOMY_LOCK_DURATION =
+            "informantregister.servicebus.lock-duration=6m";
+
+    /**
      * The identity the query-side fallback authorises with. Carried by every case here that is not
      * about it, because the live payload source cannot work without one and startup says so.
      */
@@ -89,11 +97,13 @@ class ConfigurationValidationTest {
                 assertThat(properties.servicebus().queueName()).isEqualTo("informantregister.requests");
                 assertThat(properties.servicebus().maxConcurrentCalls()).isEqualTo(2);
                 assertThat(properties.servicebus().maxDeliveryCount()).isEqualTo(5);
+                assertThat(properties.servicebus().lockDuration()).isEqualTo(Duration.ofMinutes(5));
                 assertThat(properties.servicebus().maxAutoLockRenewDuration())
                         .isEqualTo(Duration.ofMinutes(5));
                 assertThat(properties.servicebus().healthStaleness()).isEqualTo(Duration.ofSeconds(60));
 
-                assertThat(properties.claim().lease()).isEqualTo(Duration.ofMinutes(5));
+                assertThat(properties.claim().lease())
+                        .isEqualTo(Duration.ofMinutes(4).plusSeconds(30));
                 assertThat(properties.claim().processingDeadline()).isEqualTo(Duration.ofMinutes(4));
 
                 assertThat(properties.store().probeInterval()).isEqualTo(Duration.ofSeconds(10));
@@ -110,6 +120,7 @@ class ConfigurationValidationTest {
                     "informantregister.servicebus.queue-name=other.requests",
                     "informantregister.servicebus.max-concurrent-calls=8",
                     "informantregister.servicebus.max-delivery-count=3",
+                    "informantregister.servicebus.lock-duration=9m",
                     "informantregister.servicebus.max-auto-lock-renew-duration=9m",
                     "informantregister.servicebus.health-staleness=90s",
                     "informantregister.claim.lease=8m",
@@ -127,6 +138,8 @@ class ConfigurationValidationTest {
                         assertThat(properties.servicebus().queueName()).isEqualTo("other.requests");
                         assertThat(properties.servicebus().maxConcurrentCalls()).isEqualTo(8);
                         assertThat(properties.servicebus().maxDeliveryCount()).isEqualTo(3);
+                        assertThat(properties.servicebus().lockDuration())
+                                .isEqualTo(Duration.ofMinutes(9));
                         assertThat(properties.servicebus().maxAutoLockRenewDuration())
                                 .isEqualTo(Duration.ofMinutes(9));
                         assertThat(properties.servicebus().healthStaleness())
@@ -150,7 +163,7 @@ class ConfigurationValidationTest {
 
         @Test
         void a_deadline_equal_to_the_lease_should_fail_startup() {
-            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY, ROOMY_LOCK_DURATION,
                     "informantregister.claim.lease=5m",
                     "informantregister.claim.processing-deadline=5m").run(context -> {
                         assertThat(context).hasFailed();
@@ -162,7 +175,7 @@ class ConfigurationValidationTest {
 
         @Test
         void a_deadline_longer_than_the_lease_should_fail_startup() {
-            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY, ROOMY_LOCK_DURATION,
                     "informantregister.claim.lease=5m",
                     "informantregister.claim.processing-deadline=6m").run(context ->
                             assertThat(context).hasFailed());
@@ -172,7 +185,7 @@ class ConfigurationValidationTest {
         void a_deadline_shorter_than_the_lease_should_start() {
             // The renewal is raised alongside the deadline so this case tests one rule only: at
             // 4m59s the default 5m renewal would break the lock rule, which has its own cases below.
-            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY, ROOMY_LOCK_DURATION,
                     "informantregister.claim.lease=5m",
                     "informantregister.claim.processing-deadline=PT4M59S",
                     "informantregister.servicebus.max-auto-lock-renew-duration=PT5M29S").run(context ->
@@ -186,7 +199,7 @@ class ConfigurationValidationTest {
 
         @Test
         void a_renewal_shorter_than_the_deadline_plus_the_margin_should_fail_startup() {
-            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY, ROOMY_LOCK_DURATION,
                     "informantregister.claim.lease=5m",
                     "informantregister.claim.processing-deadline=4m",
                     "informantregister.servicebus.max-auto-lock-renew-duration=PT4M29S").run(context -> {
@@ -201,10 +214,47 @@ class ConfigurationValidationTest {
         @Test
         void a_renewal_exactly_the_deadline_plus_the_margin_should_start() {
             // The margin is a fixed 30 seconds, so this is the boundary the rule allows.
-            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY, ROOMY_LOCK_DURATION,
                     "informantregister.claim.lease=5m",
                     "informantregister.claim.processing-deadline=4m",
                     "informantregister.servicebus.max-auto-lock-renew-duration=PT4M30S").run(context ->
+                            assertThat(context).hasNotFailed());
+        }
+    }
+
+    @Nested
+    @DisplayName("the claim must lapse before the broker redelivers")
+    class LeaseAgainstLockDuration {
+
+        @Test
+        void a_lease_equal_to_the_lock_duration_should_fail_startup() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.servicebus.lock-duration=5m",
+                    "informantregister.claim.lease=5m").run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.claim.lease")
+                                .hasMessageContaining("informantregister.servicebus.lock-duration");
+                    });
+        }
+
+        @Test
+        void a_lease_longer_than_the_lock_duration_should_fail_startup() {
+            // The case the design names: a dead runner's claim outlives the lock, so the redelivery
+            // finds it live, abandons with CLAIM_NOT_ACQUIRED and — abandon having no back-off —
+            // burns the delivery budget back-to-back into a broker-reasoned dead-letter.
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.servicebus.lock-duration=1m",
+                    "informantregister.claim.lease=5m").run(context ->
+                            assertThat(context).hasFailed());
+        }
+
+        @Test
+        void a_lease_shorter_than_the_lock_duration_should_start() {
+            // The packaged values: 30s of margin between the claim lapsing and the redelivery.
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.servicebus.lock-duration=5m",
+                    "informantregister.claim.lease=PT4M30S").run(context ->
                             assertThat(context).hasNotFailed());
         }
     }
