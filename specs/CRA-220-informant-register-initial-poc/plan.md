@@ -12,7 +12,7 @@ only), port interfaces for payload fetch and register submission served by loggi
 actuator health with the agreed readiness policy, failure ERROR logs and metrics, and a container
 build — proving the delivery machinery end-to-end before any business logic is ported.
 
-Technical approach: the ports-and-adapters pipeline from `doc/TECHNICAL_DESIGN.md` — an inbound
+Technical approach: the ports-and-adapters pipeline from `.claude/rules/design_rules.md` — an inbound
 Service Bus adapter (raw `azure-messaging-servicebus` `ServiceBusProcessorClient`, explicit
 settlement) delegating to an application-core `DistributionPipeline` that consults the idempotency
 guard (Spring JDBC + Flyway, atomic conditional-update claim semantics with an owner/token/expiry
@@ -77,7 +77,7 @@ async assertions
   lease, and every outcome write is conditional on the claim token that acquired the claim
 - **single replica for CRA-220** — intake suspension is a per-pod decision, so a store outage is
   only provably non-destructive with one consumer pod. Cluster-safe suspension arrives with the
-  KEDA/scale-out story (research §7; `doc/TECHNICAL_DESIGN.md` "CRA-220 scope")
+  KEDA/scale-out story (research §7)
 - no PII at INFO+; metric labels are low-cardinality enumerations only; no AI attribution
 
 **Scale/Scope**: walking skeleton only — consumer, guard, stub ports, actuator, container, CI.
@@ -202,7 +202,7 @@ src/test/java/uk/gov/hmcts/cp/informantregister/
 ```
 
 **Structure Decision**: single-project layout following the package map in
-`doc/TECHNICAL_DESIGN.md`. `adapter/payload/`, `adapter/results/` and `pipeline/` are deliberately
+`.claude/rules/design_rules.md`. `adapter/payload/`, `adapter/results/` and `pipeline/` are deliberately
 absent — they arrive with the later stories; creating them empty now would misstate the increment.
 
 ### Port contracts (this increment)

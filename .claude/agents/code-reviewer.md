@@ -39,7 +39,7 @@ You are a senior Java / Spring Boot code reviewer for the Crime Common Platform 
 - Typed models forced onto the inbound hearing payload where it should stay `JsonNode`-canonical, or a `Map<String,Object>` used for the **outbound** document where it must be typed
 - Module-level / static mutable state carrying per-hearing data (the function app's `SetMDEVariants` trap — per-hearing state belongs on an execution-context object)
 - Liquibase changelog added instead of a Flyway `db/migration/V*__*.sql`
-- A REST controller, a new `/api/**` path in `doc/openapi.yaml`, or a replay endpoint (this service has no REST API — actuator only)
+- A REST controller, a new OpenAPI specification or `/api/**` path, or a replay endpoint (this service has no REST API — actuator only)
 - Hardcoded queue name, URL or port instead of typed `@ConfigurationProperties`
 - New dependency under `uk.gov.hmcts.cp.*` shipping `@Component` classes without a matching `excludeFilters` entry (component-scan clash)
 

@@ -18,13 +18,17 @@ the `informant_register` table, the 19:00 CSV sweep, GOV.UK Notify — is untouc
 | Package   | `uk.gov.hmcts.cp.informantregister`                   |
 | Ports     | 8082 local / 4550 Kubernetes                          |
 
-## Status — CRA-220 "Informant register — Initial POC"
+## Status
 
-The current increment is a **walking skeleton**: the Service Bus consumer with peek-lock settlement,
-the `(source, requestId)` idempotency guard, and the port interfaces with **stub adapters** (payload
-fetch and register submission as logging no-ops), plus actuator and a container build. The ported
-transformation pipeline, the Redis payload adapter and the Results submission adapter are later
-stories. A stub is not a defect here — it is the agreed shape of this increment.
+The pipeline is complete and runs end to end: the Service Bus consumer with peek-lock settlement and
+the `(source, requestId)` idempotency guard, the hearing payload fetch with its query-API fallback,
+the ported transformation — register fragments per prosecuting authority, subscription matching,
+outbound document mapping — and one `add-informant-register` POST per authority, each with retry and
+dead-lettering on exhaustion. The end-to-end flow has been tested in a lower environment against
+real hearing data. It is not yet in production.
+
+Register content is a bug-for-bug port of the function app; every intended difference is a named
+entry in [doc/DEVIATIONS.md](doc/DEVIATIONS.md) with its own assertion in the parity harness.
 
 This service exposes **no REST API**. The only HTTP surface is Spring Boot Actuator.
 
@@ -50,8 +54,8 @@ rather than a system Gradle.
 ./scripts/container-smoke.sh # Build the image and require it to report readiness within 60s
 ```
 
-**See the skeleton work end to end in one command** — it starts the Service Bus emulator and
-Postgres through Testcontainers, boots the whole application and drives a request through it:
+**See it work end to end in one command** — it starts the Service Bus emulator and Postgres
+through Testcontainers, boots the whole application and drives a request through it:
 
 ```bash
 ./gradlew test --tests '*WalkingSkeletonIT'
@@ -72,17 +76,19 @@ there are development defaults and must never be reused anywhere else.
 `bootRun` runs on the host and does **not** inherit the compose file's environment — that block
 configures the `app` container only — so pass the datasource and broker settings explicitly. The
 full sequence, the health endpoints to check and how to read the queue's state are in
-[the CRA-220 quickstart](specs/CRA-220-informant-register-initial-poc/quickstart.md).
+[the quickstart](specs/CRA-220-informant-register-initial-poc/quickstart.md).
 
 Checkstyle runs against `config/checkstyle/google_checks.xml` with `maxWarnings = 0` as part of
 `check`, alongside a JaCoCo coverage gate (`jacocoTestCoverageVerification`).
 
 ## Documentation
 
+Design is maintained on Confluence and that page is the single source of truth — the repository
+keeps only the documents that code and tests depend on directly.
+
 | Document                                 | Location                        |
 |------------------------------------------|---------------------------------|
-| Solution brief                           | [doc/SOLUTION_BRIEF.md](doc/SOLUTION_BRIEF.md)     |
-| Technical design                         | [doc/TECHNICAL_DESIGN.md](doc/TECHNICAL_DESIGN.md) |
+| Design (source of truth)                 | [Informant Register Service](https://tools.hmcts.net/confluence/spaces/CRA/pages/2004096218/Informant+Register+Service) (space CRA) |
 | Contracts (inbound message and outbound command) | [doc/API_CONTRACTS.md](doc/API_CONTRACTS.md) |
 | Deviations register (parity)             | [doc/DEVIATIONS.md](doc/DEVIATIONS.md)             |
 | Changelog                                | [doc/CHANGELOG.md](doc/CHANGELOG.md)               |

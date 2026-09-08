@@ -2,7 +2,7 @@
 
 Phase 0 output. Every decision below is settled; there are no open `NEEDS CLARIFICATION` items.
 Decisions 1–4 were fixed during the design/options work (18–20 Aug 2026, recorded on the live
-Confluence dev page and in `doc/TECHNICAL_DESIGN.md`); 5–12 are planning-level choices made here.
+Confluence dev page); 5–12 are planning-level choices made here.
 
 ## 1. Trigger transport: dedicated Azure Service Bus queue
 
@@ -139,8 +139,7 @@ Exact SQL for every guard statement is in `data-model.md` "Guard operations".
     a per-pod decision, so with multiple replicas a store outage could still burn deliveries on
     pods that have not yet noticed. Cluster-safe suspension (a shared suspension signal, or KEDA
     scaling the consumer to zero on store health) is deferred to the KEDA/scale-out story. The
-    constraint is recorded in plan.md Technical Context and in `doc/TECHNICAL_DESIGN.md`
-    "CRA-220 scope".
+    constraint is recorded in plan.md Technical Context.
 - **Rationale**: satisfies FR-015 — repeated abandon cycles would increment broker delivery counts
   and burn through `maxDeliveryCount` 5 (spec edge case); stopping intake is the only way to make
   a store outage non-destructive. Stop/start of the processor is a supported SDK operation, but it

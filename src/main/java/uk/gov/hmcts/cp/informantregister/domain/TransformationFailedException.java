@@ -6,8 +6,7 @@ package uk.gov.hmcts.cp.informantregister.domain;
  * <p>Non-transient by construction. A payload the transformation cannot read is the same payload on
  * every redelivery, so a retry spends a delivery to reach the same answer; the design's failure
  * table lists a transformation error among the failures that go straight to {@code FAILED} and the
- * dead-letter queue (`doc/TECHNICAL_DESIGN.md`, "Non-transient"; `design_rules.md`, "Processing
- * State Machine"). The classification is fixed rather than supplied so no throw site can quietly
+ * dead-letter queue (`design_rules.md`, "Processing State Machine", "Non-transient"). The classification is fixed rather than supplied so no throw site can quietly
  * ask for a retry that cannot help.
  *
  * <p>The legacy swallows these: {@code setInformantRegisterHandler} catches everything, logs, and
