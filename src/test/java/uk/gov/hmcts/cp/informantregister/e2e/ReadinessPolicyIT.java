@@ -35,7 +35,6 @@ import uk.gov.hmcts.cp.informantregister.config.ServiceBusHealthIndicator;
 import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
 import uk.gov.hmcts.cp.informantregister.support.AdjustableClock;
 import uk.gov.hmcts.cp.informantregister.support.PostgresTestSupport;
-import uk.gov.hmcts.cp.informantregister.support.ProcessedLogTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ServiceBusEmulatorTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ServiceTestSupport;
 

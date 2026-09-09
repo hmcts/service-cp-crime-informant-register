@@ -89,7 +89,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up JDK
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
           distribution: 'temurin'
           java-version: '25'
@@ -129,7 +129,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up JDK
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
           distribution: 'temurin'
           java-version: '25'
@@ -168,7 +168,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up JDK
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
           distribution: 'temurin'
           java-version: '25'
@@ -189,7 +189,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up JDK
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
           distribution: 'temurin'
           java-version: '25'
@@ -275,7 +275,16 @@ jobs:
         with:
           image-ref: ghcr.io/${{ github.repository }}:${{ needs.Artefact-Version.outputs.artefact_version }}
           format: 'table'
-          exit-code: '0'
+          # A finding fails the job. It was '0' -- report-only -- set that way in the sibling
+          # validator repo pending a Spring Boot 4.0.7 CVE fix, and inherited here by everything
+          # scaffolded from this repo; that reason expired when this service moved to 4.1.x. It
+          # could not be enforced while the job built on a JDK on Ubuntu 26.04, whose base layer
+          # carries a pebble binary with 14 fixable HIGH advisories that nothing we deploy
+          # contains. With the base now matching the deployed one, the scan is answerable:
+          # verified at 0 fixable HIGH/CRITICAL in the base image and 0 in the shipped
+          # dependencies. ignore-unfixed stays on, so an advisory with no available fix reports
+          # without blocking a release nobody could unblock.
+          exit-code: '1'
           ignore-unfixed: true
           severity: 'HIGH,CRITICAL'
 

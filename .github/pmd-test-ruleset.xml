@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="Custom Test Ruleset"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0
+         https://pmd.github.io/pmd-7.17.0/pmd-7.17.0.xsd">
+
+    <description>
+        src/test ruleset. Same base as .github/pmd-ruleset.xml (main), minus rules that are either
+        inapplicable to test code or that report against this project's own test conventions. Every
+        exclusion below names the reason it is here; a finding with no reason to be excluded should
+        be fixed instead. Rules that report nothing today are deliberately left in, so that the day
+        they start reporting is the day someone reads them.
+    </description>
+
+    <rule ref="category/java/codestyle.xml/MethodNamingConventions">
+        <properties>
+            <!-- This regex allows underscores in JUnit 5 test method names -->
+            <property name="junit5TestPattern" value="^[a-z][a-zA-Z0-9_]*$"/>
+        </properties>
+    </rule>
+
+    <rule ref="category/java/bestpractices.xml">
+        <exclude name="GuardLogStatement"/>
+        <exclude name="UnitTestAssertionsShouldIncludeMessage"/>
+        <exclude name="UnitTestContainsTooManyAsserts"/>
+        <exclude name="PreserveStackTrace"/>
+        <exclude name="ImplicitFunctionalInterface"/>
+        <!-- PMD's heuristic for "an assertion was made" recognises only JUnit/Hamcrest-style
+             assert calls; it does not recognise AssertJ's assertThat(...).isX() chains or
+             MockMvc's andExpect(...) chains, both used throughout this suite. Produces false
+             positives on every test that verifies exclusively via those APIs. -->
+        <exclude name="UnitTestShouldIncludeAssert"/>
+        <!-- A lambda implementing a port has to accept that port's parameters whether or not the
+             stub reads them: `(on, identity) -> parityCase.subscriptions()` is a
+             NowSubscriptionsSource that ignores both arguments on purpose, and the parameters
+             cannot be removed without ceasing to implement the interface. The rule does not
+             distinguish a functional-interface implementation from an ordinary method, so on a
+             suite built out of hand-written port stubs it reports code that cannot be changed. -->
+        <exclude name="UnusedFormalParameter"/>
+        <!-- 127.0.0.1 in a container test is the address the mapped port is reached on, not a
+             deployment detail that could leak into an environment. The rule is aimed at hard
+             coded addresses in production configuration, which the main ruleset still catches. -->
+        <exclude name="AvoidUsingHardCodedIP"/>
+    </rule>
+
+    <rule ref="category/java/codestyle.xml">
+        <exclude name="AtLeastOneConstructor"/>
+        <exclude name="CallSuperInConstructor"/>
+        <exclude name="LongVariable"/>
+        <exclude name="ShortVariable"/>
+        <exclude name="TooManyStaticImports"/>
+        <!-- Requiring every local variable/parameter to be declared final adds heavy noise in
+             test methods, which are short-lived, single-use, and never reassigned by mistake in
+             practice; the main ruleset already values final for production code. -->
+        <exclude name="LocalVariableCouldBeFinal"/>
+        <exclude name="MethodArgumentCouldBeFinal"/>
+        <!-- Package-private test classes/methods (no access modifier) are the idiomatic JUnit 5
+             style used throughout this project; requiring a comment justifying default access on
+             every one of them adds no value. -->
+        <exclude name="CommentDefaultAccessModifier"/>
+        <!-- Single-exit is not a property worth buying in test code. The 17 reports here are
+             guard-and-return helpers and fixture readers, where an early return states the
+             special case and leaves the body unindented; rewriting them to one exit adds nesting
+             and a mutable result variable to code whose whole job is to be obvious on sight. The
+             rule is deliberately still enforced on main sources, where a single exit does help
+             reason about state changes. -->
+        <exclude name="OnlyOneReturn"/>
+        <!-- Objects to `var`. In a test the initialiser is almost always a constructor call or a
+             fixture factory that names the type on the same line, so spelling the type again is
+             redundant; in production code, where a declaration is often far from its use, the
+             main ruleset still requires it. -->
+        <exclude name="UseExplicitTypes"/>
+        <!-- Assumes one flat field block per class. JUnit 5 suites are organised as @Nested
+             classes that declare their own fixtures next to the tests that use them, which reads
+             better than hoisting every field of every nested case to the top of the file. -->
+        <exclude name="FieldDeclarationsShouldBeAtStartOfClass"/>
+        <!-- A test DSL is read aloud in the test that calls it: CapturedLog.at(level),
+             JsonParity.of(...). Two- and three-letter names are the point, not an oversight. -->
+        <exclude name="ShortMethodName"/>
+        <exclude name="ShortClassName"/>
+        <!-- Fixture builders here are named after the legacy field they populate, so a builder
+             for the recording's `isCpsProsecuted` field is called isCpsProsecuted() and returns
+             the Vocabulary that field holds. The rule reads the `is` prefix as a broken boolean
+             getter. Renaming them would break the correspondence with the recorded legacy
+             payloads, which is the one thing a parity fixture exists to preserve. -->
+        <exclude name="LinguisticNaming"/>
+    </rule>
+
+    <rule ref="category/java/errorprone.xml">
+        <exclude name="InvalidLogMessageFormat"/>
+        <!-- Test fixture literals (short codes, offence/defendant ids, JSON snippets) are
+             deliberately repeated inline at each point of use for test readability, rather than
+             hoisted into shared constants: the opposite tradeoff from production code, where
+             the same rule catches genuine magic-string duplication. -->
+        <exclude name="AvoidDuplicateLiterals"/>
+        <!-- A test asserts against literal values on purpose; that is what makes the expectation
+             legible without chasing a constant. The rule's premise, that a bare literal in a
+             condition hides a magic number, inverts in a test. -->
+        <exclude name="AvoidLiteralsInIfCondition"/>
+        <!-- Assigning null is how a test says "this field is absent", which several of these
+             fixtures exist to exercise. Also excluded because the fixture readers here
+             deliberately return null to mean "the field was not present at all", a distinction
+             the register document cares about and an empty collection would silently erase. -->
+        <exclude name="NullAssignment"/>
+        <exclude name="ReturnEmptyCollectionRatherThanNull"/>
+        <!-- The fluent fixture builders here are the reason: a private Criteria holds a `nowId`
+             field and offers a `nowId(value)` method that sets it and returns this, which is how
+             every case in the parity suite is written. The rule is aimed at the confusion between
+             a field and a JavaBean getter of the same name; a fluent setter is not that, and
+             nothing reflects over these classes. 23 of the reports are in one parity test, whose
+             fixture names mirror the recorded legacy payload and should not be renamed. -->
+        <exclude name="AvoidFieldNameMatchingMethodName"/>
+        <!-- The rule's premise is a J2EE container's class-loader hierarchy, where a class's own
+             loader may not see deployed resources. These two calls read a JSON schema off the
+             test classpath in a plain JVM, where the class's own loader is the correct and
+             narrower choice; the context class loader would be a wider search for no reason, and
+             changing how a fixture resolves its resource risks breaking it under one runner and
+             not another. -->
+        <exclude name="UseProperClassLoader"/>
+        <!-- Mocking a type that happens to implement Closeable is not opening a resource. The
+             report here is against `mock(RedisClient.class)`, a Mockito stub that holds no
+             connection and whose close() would do nothing; the rule cannot tell it from a real
+             client. Tests that drive a genuine client already close it, in try-with-resources a
+             few lines below the report. -->
+        <exclude name="CloseResource"/>
+    </rule>
+
+    <rule ref="category/java/performance.xml">
+        <!-- Allocating inside a loop is how fixture data gets built. Nothing in a test suite is
+             hot, and hoisting the allocation would mean sharing one mutable object across the
+             cases the loop is there to keep separate. -->
+        <exclude name="AvoidInstantiatingObjectsInLoops"/>
+        <!-- Sizing a StringBuilder to its eventual content is a micro-optimisation with no
+             readable benefit in a test helper that builds one diff message per failing case. -->
+        <exclude name="InsufficientStringBufferDeclaration"/>
+    </rule>
+
+    <rule ref="category/java/security.xml"/>
+</ruleset>

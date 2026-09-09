@@ -17,6 +17,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
 import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterCaseOrApplication;
+import uk.gov.hmcts.cp.informantregister.domain.InformantRegisterOffence;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterDefendant;
 import uk.gov.hmcts.cp.informantregister.domain.RegisterFragment;
 import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
@@ -135,8 +136,8 @@ class CaseOrApplicationMapperTest {
                 assertThat(entry.offences()).hasSize(2);
                 assertThat(entry.offences())
                         .extracting(
-                                offence -> offence.offenceCode(),
-                                offence -> offence.originatingCaseUrn())
+                                InformantRegisterOffence::offenceCode,
+                                InformantRegisterOffence::originatingCaseUrn)
                         .containsExactly(
                                 tuple("PS90010", "TFL4359536"), tuple("PS90010", "TFL4359536"));
             }
@@ -174,8 +175,8 @@ class CaseOrApplicationMapperTest {
             for (final InformantRegisterCaseOrApplication entry : entries) {
                 assertThat(entry.offences())
                         .extracting(
-                                offence -> offence.offenceCode(),
-                                offence -> offence.originatingCaseUrn())
+                                InformantRegisterOffence::offenceCode,
+                                InformantRegisterOffence::originatingCaseUrn)
                         .containsExactly(
                                 tuple("AA00001", "URN-ONE"), tuple("BB00002", "URN-TWO"));
             }
