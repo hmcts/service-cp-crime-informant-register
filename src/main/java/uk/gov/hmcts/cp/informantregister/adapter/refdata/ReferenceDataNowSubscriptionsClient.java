@@ -16,6 +16,7 @@ import uk.gov.hmcts.cp.informantregister.application.NowSubscriptionsSource;
 import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.ReferenceDataUnavailableException;
+import uk.gov.hmcts.cp.informantregister.observability.FaultSummary;
 
 /**
  * The now-subscriptions read, against the reference-data query API.
@@ -136,7 +137,14 @@ public class ReferenceDataNowSubscriptionsClient implements NowSubscriptionsSour
         for (int attemptsLeft = maxAttempts; attemptsLeft > 0; attemptsLeft--) {
             final boolean lastAttempt = attemptsLeft <= LAST_ATTEMPT;
             try {
-                return content(get(on, caller));
+                final JsonNode answer = content(get(on, caller));
+                // Only the failures used to log, which left the two answers that matter most
+                // looking identical from outside: "reference data said nobody is subscribed" and
+                // "reference data was never successfully asked" both produced silence. An
+                // unaddressed register is the commonest support question this flow raises.
+                LOG.info("Now-subscriptions read. queryDate={} subscriptions={}",
+                        on, subscriptionCount(answer));
+                return answer;
             } catch (RestClientResponseException answered) {
                 final int status = answered.getStatusCode().value();
                 if (lastAttempt || status <= LEGACY_RETRY_CUT_OFF) {
@@ -225,11 +233,30 @@ public class ReferenceDataNowSubscriptionsClient implements NowSubscriptionsSour
                 // subscription body names organisations and email addresses (Principle VII).
                 LOG.warn("Reference data answered the now-subscriptions read with something that is "
                         + "not JSON, so the register cannot be addressed. type={}",
-                        notJson.getClass().getName());
+                        FaultSummary.typeChain(notJson));
                 throw unavailable();
             }
         }
         return answer;
+    }
+
+    /**
+     * How many subscriptions the answer carried, for the log line only.
+     *
+     * <p>A count, never the content: a subscription names organisations and email addresses. An
+     * answer with no {@code nowSubscriptions} member counts zero, which is what it means to the
+     * matching step.
+     *
+     * @param answer the body reference data answered with; may be {@code null}
+     * @return the number of subscriptions in the answer
+     */
+    private static int subscriptionCount(final JsonNode answer) {
+        int count = 0;
+        if (answer != null) {
+            final JsonNode nowSubscriptions = answer.path("nowSubscriptions");
+            count = nowSubscriptions.isArray() ? nowSubscriptions.size() : 0;
+        }
+        return count;
     }
 
     /** Waits out the retry interval; an interrupt ends the attempts rather than being dropped. */

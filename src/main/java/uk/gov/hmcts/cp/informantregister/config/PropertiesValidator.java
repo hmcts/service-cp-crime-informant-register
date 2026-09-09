@@ -1,6 +1,9 @@
 package uk.gov.hmcts.cp.informantregister.config;
 
+import java.net.URI;
 import java.time.Duration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -27,6 +30,8 @@ import org.springframework.stereotype.Component;
 @EnableConfigurationProperties(InformantRegisterProperties.class)
 public class PropertiesValidator implements InitializingBean {
 
+    private static final Logger LOG = LoggerFactory.getLogger(PropertiesValidator.class);
+
     /**
      * The fixed margin between the longest legitimate run and the broker's lock renewal, so the lock
      * is never the thing that ends a run.
@@ -48,6 +53,8 @@ public class PropertiesValidator implements InitializingBean {
     private static final String PROCESSING_DEADLINE = "informantregister.claim.processing-deadline";
     private static final String RENEW_DURATION =
             "informantregister.servicebus.max-auto-lock-renew-duration";
+    private static final String LOCK_DURATION = "informantregister.servicebus.lock-duration";
+    private static final String MAX_DELIVERY_COUNT = "informantregister.servicebus.max-delivery-count";
     private static final String CONNECTION_STRING =
             "informantregister.servicebus.connection-string";
     private static final String NAMESPACE = "informantregister.servicebus.namespace";
@@ -83,6 +90,73 @@ public class PropertiesValidator implements InitializingBean {
     @Override
     public void afterPropertiesSet() {
         validate(properties);
+        announce(properties);
+    }
+
+    /**
+     * States, once, what this pod is actually configured to do.
+     *
+     * <p>The settings are all {@code ${ENV_VAR:default}}, which means the effective values are a
+     * property of the environment and not of the build — and nothing wrote them down. A pod running
+     * {@code payload.mode=STUB} against real traffic answers every hearing with a placeholder, and
+     * the only present evidence is a per-call line from the stub adapter that reads like ordinary
+     * noise. "Why is this environment behaving differently from that one" is the first question of
+     * a great many incidents, and this is the line that answers it.
+     *
+     * <p>Hosts only, never whole URLs; no {@code systemUserId}, which names a person; and no
+     * credential — the Service Bus line already reports which credential <em>source</em> was
+     * chosen, which is the part that is safe and the part that is in doubt.
+     */
+    private static void announce(final InformantRegisterProperties properties) {
+        final InformantRegisterProperties.Servicebus servicebus = properties.servicebus();
+        LOG.info("Effective configuration. payloadMode={} payloadFailureMode={} "
+                        + "subscriptionsMode={} queue={} maxConcurrentCalls={} maxDeliveryCount={} "
+                        + "lockDuration={} lease={} processingDeadline={} storeProbeInterval={} "
+                        + "resultsHost={} referencedataHost={} redisHost={} redisSsl={}",
+                properties.payload().mode(),
+                properties.stub().payloadFailureMode(),
+                properties.referencedata().mode(),
+                servicebus.queueName(),
+                servicebus.maxConcurrentCalls(),
+                servicebus.maxDeliveryCount(),
+                servicebus.lockDuration(),
+                properties.claim().lease(),
+                properties.claim().processingDeadline(),
+                properties.store().probeInterval(),
+                hostOf(properties.results().baseUrl()),
+                hostOf(properties.referencedata().baseUrl()),
+                properties.payload().redis().host(),
+                properties.payload().redis().ssl());
+    }
+
+    /**
+     * The host of a configured endpoint, and nothing else about it.
+     *
+     * <p>A base URL is configuration rather than a secret, but it is not this line's job to prove
+     * that for every environment: a path or a query string can carry a token, and the host is the
+     * whole of what "which environment is this pointed at" needs.
+     *
+     * @param baseUrl the configured endpoint; may be {@code null} for a stubbed source
+     * @return the host, or a bounded label where there is none to report
+     */
+    private static String hostOf(final String baseUrl) {
+        String host;
+        if (baseUrl == null || baseUrl.isBlank()) {
+            host = "none";
+        } else {
+            try {
+                host = URI.create(baseUrl.trim()).getHost();
+                if (host == null) {
+                    host = "unparsed";
+                }
+            } catch (IllegalArgumentException notAUri) {
+                // Not rethrown: the rules above own whether a URL is acceptable, and this method
+                // exists only to describe one. Failing the boot over a log line would be worse
+                // than the line saying it could not read the value.
+                host = "unparsed";
+            }
+        }
+        return host;
     }
 
     /**
@@ -94,10 +168,24 @@ public class PropertiesValidator implements InitializingBean {
     public static void validate(final InformantRegisterProperties properties) {
         validateRunFinishesBeforeTheClaimExpires(properties);
         validateLockOutlivesTheRun(properties);
+        validateTheClaimLapsesBeforeTheBrokerRedelivers(properties);
+        validateTheDeliveryBudgetPermitsProcessing(properties);
         validateExactlyOneCredentialSource(properties);
         validateThePayloadSourceCanFetch(properties);
         validateTheSubscriptionsSourceCanFetch(properties);
         validateTheRetryPolicyCanPost(properties);
+    }
+
+    private static void validateTheDeliveryBudgetPermitsProcessing(
+            final InformantRegisterProperties properties) {
+        final int maxDeliveryCount = properties.servicebus().maxDeliveryCount();
+        if (maxDeliveryCount < MINIMUM_ATTEMPTS) {
+            throw new IllegalStateException(
+                    MAX_DELIVERY_COUNT + " (" + maxDeliveryCount + MUST_BE_AT_LEAST
+                            + MINIMUM_ATTEMPTS
+                            + ": a non-positive budget treats every delivery as final and parks"
+                            + " retryable failures without retrying");
+        }
     }
 
     /**
@@ -241,6 +329,40 @@ public class PropertiesValidator implements InitializingBean {
                     RENEW_DURATION + " (" + renewal + MUST_BE_AT_LEAST + PROCESSING_DEADLINE
                             + " plus the " + RENEWAL_MARGIN + " renewal margin (" + required
                             + "), so the broker lock outlives any legitimate run");
+        }
+    }
+
+    /**
+     * A dead runner's claim must have lapsed by the time the broker redelivers its message.
+     *
+     * <p>The rule that makes crash recovery work. A lease at or above {@code LockDuration} leaves
+     * {@code claim_expires_at} in the future when the redelivery arrives, so
+     * {@link uk.gov.hmcts.cp.informantregister.application.IdempotencyGuard} cannot reclaim and
+     * abandons with {@code CLAIM_NOT_ACQUIRED} — and Service Bus makes an abandoned message
+     * available <em>immediately</em>, with no back-off, so the remaining deliveries are consumed
+     * back-to-back in under a second. The broker then dead-letters under its own reason, leaving
+     * {@code processed_request} {@code RECEIVED} with a live claim, no failure reason and no
+     * {@code deadlettered} metric: precisely the silent parking the state machine exists to
+     * prevent. Raising {@code max-delivery-count} buys nothing, the delivery budget being a count
+     * and never a clock.
+     *
+     * <p>Strictly shorter, not merely shorter or equal: equality leaves no margin for the clock
+     * skew between the database that stamps the expiry and the broker that times the lock.
+     *
+     * <p>{@code lock-duration} is a queue setting this service cannot read, so the rule is enforced
+     * against the mirrored value. The two must be changed together — moving the queue alone voids
+     * this rule silently and restores the defect above.
+     */
+    private static void validateTheClaimLapsesBeforeTheBrokerRedelivers(
+            final InformantRegisterProperties properties) {
+        final Duration lease = properties.claim().lease();
+        final Duration lockDuration = properties.servicebus().lockDuration();
+        if (lease.compareTo(lockDuration) >= 0) {
+            throw new IllegalStateException(
+                    LEASE + " (" + lease + ") must be strictly shorter than " + LOCK_DURATION
+                            + " (" + lockDuration + "), so a dead runner's claim has lapsed by the "
+                            + "time the broker redelivers and the redelivery reclaims on its first "
+                            + "attempt instead of burning the delivery budget");
         }
     }
 

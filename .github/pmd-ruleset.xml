@@ -26,6 +26,10 @@
         <exclude name="LongVariable"/>
         <exclude name="ShortVariable"/>
         <exclude name="TooManyStaticImports"/>
+        <!-- OnlyOneReturn is deliberately NOT excluded here. The codebase suppresses it at the
+             34 sites where an early return is the clearer shape, each with its reason; excluding
+             it wholesale would make every one of those annotations redundant and trip
+             UnnecessaryWarningSuppression instead. Suppress at the site, not here. -->
     </rule>
     <rule ref="category/java/errorprone.xml">
         <exclude name="InvalidLogMessageFormat"/>

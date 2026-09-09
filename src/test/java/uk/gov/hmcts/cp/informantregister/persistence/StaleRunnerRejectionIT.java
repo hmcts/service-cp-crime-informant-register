@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 import uk.gov.hmcts.cp.informantregister.application.IdempotencyGuard;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
 import uk.gov.hmcts.cp.informantregister.domain.CompletionReason;
+import uk.gov.hmcts.cp.informantregister.domain.DeadLetterReason;
 import uk.gov.hmcts.cp.informantregister.domain.DeliveryIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
 import uk.gov.hmcts.cp.informantregister.domain.GuardDecision;
@@ -33,8 +34,16 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Every outcome write is predicated on the owner <em>and</em> the token that acquired the claim it
  * settles, so a superseded runner's write matches zero rows. It then does the only safe thing: it
- * discards its result, says so at WARN, counts itself, and hands the delivery back. Overwriting the
- * new owner's work instead is how a request gets submitted twice.
+ * discards its result, says so at WARN, counts itself, and settles the delivery without touching the
+ * record. Overwriting the new owner's work instead is how a request gets submitted twice.
+ *
+ * <p><strong>How it settles depends on the delivery budget.</strong> Ordinarily the delivery goes
+ * back: a redelivery meets the reclaiming runner's durable outcome and finishes in a moment. On the
+ * last delivery the message is entitled to there is no redelivery to meet anything, so the message is
+ * parked here, under this service's own reason. Both are asserted, and both against the real
+ * conditional SQL — the mocked-repository suite
+ * ({@code application/OutcomeWriteExhaustionTest}) proves the decision, but only Postgres can prove
+ * that the predicate actually refused the write and left the holder's row alone.
  *
  * <p>All three outcome writes are exercised, not one of them. The predicate has to be on each, and a
  * suite that checked completion alone would pass with the retry and park statements unguarded.
@@ -171,6 +180,111 @@ class StaleRunnerRejectionIT {
         assertThat(ProcessedLogTestSupport.requireRow(redelivered.source(), redelivered.requestId()))
                 .isEqualTo(before);
         assertThat(before.claimToken()).isEqualTo(retaken.token());
+    }
+
+    /**
+     * The same rejection, on a runner that has no delivery left to hand back to.
+     *
+     * <p><strong>How this happens.</strong> A runner holds the fifth and last delivery of a message
+     * and wedges. Its claim lapses at the lease, and a support resubmission — a fresh broker
+     * {@code messageId} carrying the same {@code requestId}, which is the supported way to recover a
+     * request — reclaims the request and starts running. The wedged runner then comes back and tries
+     * to write its outcome. The predicate refuses it, as it does for any superseded runner; what is
+     * different is that handing the delivery back would return a message the broker will immediately
+     * dead-letter under {@code MaxDeliveryCountExceeded}, with no reason of ours behind it and
+     * nothing in the log index naming a stale runner. A rise in stale runners is the signal that
+     * leases are too short for the pipeline, and this is the delivery where losing it costs most.
+     *
+     * <p>{@code EXHAUSTION} is the case this suite could not previously reach at all: every claim it
+     * built used the two-argument {@link DeliveryIdentity}, which defaults the budget to
+     * {@code false}, so {@code recordExhaustion} — a method only ever called <em>on</em> the final
+     * delivery — was asserted here under a budget it can never actually run with.
+     */
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(OutcomeWrite.class)
+    @DisplayName("a superseded runner on its final delivery parks the message with our own reason")
+    void a_stale_outcome_write_on_the_final_delivery_should_park_rather_than_abandon(
+            final OutcomeWrite outcome) {
+        final DistributionCommand request = ProcessedLogTestSupport.command();
+        final RunClaim wedged = runClaimOf(guard.admit(
+                request, new DeliveryIdentity("msg-1", "runner-1/delivery-5", true)));
+        ProcessedLogTestSupport.expireClaim(request.source(), request.requestId());
+        runClaimOf(guard.admit(request, new DeliveryIdentity("msg-2-resubmitted", CURRENT_OWNER)));
+        final Row before =
+                ProcessedLogTestSupport.requireRow(request.source(), request.requestId());
+
+        final GuardDecision decision = write(outcome, wedged);
+
+        assertThat(decision)
+                .as("handing it back would spend the message on the broker's own reason")
+                .isEqualTo(new GuardDecision.DeadLetter(
+                        DeadLetterReason.EXHAUSTED, ReasonCode.STALE_RUNNER));
+        assertThat(ProcessedLogTestSupport.requireRow(request.source(), request.requestId()))
+                .as("the parking is attribution, not state: the row belongs to the current holder")
+                .isEqualTo(before);
+    }
+
+    /**
+     * The row the parking must not touch, named field by field rather than compared wholesale.
+     *
+     * <p>A structural comparison passes if two fields change and cancel out in the reading; this
+     * says which values the reclaiming runner is entitled to still find when it writes its own
+     * outcome. It is the {@code EXHAUSTION} write specifically, because that is the one whose
+     * statement also stamps {@code exhausted_message_id} and {@code failure_reason} — the two
+     * columns a superseded runner could most plausibly corrupt.
+     */
+    @Test
+    @DisplayName("parking on the final delivery leaves the reclaiming runner's row untouched")
+    void a_parked_stale_write_should_leave_the_current_owners_row_exactly_as_it_was() {
+        final DistributionCommand request = ProcessedLogTestSupport.command();
+        final RunClaim wedged = runClaimOf(guard.admit(
+                request, new DeliveryIdentity("msg-1", "runner-1/delivery-5", true)));
+        ProcessedLogTestSupport.expireClaim(request.source(), request.requestId());
+        final RunClaim reclaimed = runClaimOf(
+                guard.admit(request, new DeliveryIdentity("msg-2-resubmitted", CURRENT_OWNER)));
+
+        write(OutcomeWrite.EXHAUSTION, wedged);
+
+        final Row row = ProcessedLogTestSupport.requireRow(request.source(), request.requestId());
+        assertThat(row.status())
+                .as("the reclaiming run is still in flight; nothing terminal was written")
+                .isEqualTo("RECEIVED");
+        assertThat(row.claimOwner()).isEqualTo(CURRENT_OWNER);
+        assertThat(row.claimToken()).isEqualTo(reclaimed.token());
+        assertThat(row.failureReason())
+                .as("the parking is the message's fate, never the request's")
+                .isNull();
+        assertThat(row.exhaustedMessageId())
+                .as("the superseded delivery must not stamp itself as the one that exhausted it")
+                .isNull();
+        assertThat(row.completionReason()).isNull();
+        // The wedged run still counted as a run start; it is only its outcome that is discarded.
+        assertThat(row.attempts()).isEqualTo(2);
+    }
+
+    /**
+     * The attribution the parking exists to buy, against the real store.
+     */
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(OutcomeWrite.class)
+    @DisplayName("a parked stale write says which request it parked and why")
+    void a_parked_stale_write_should_be_visible(final OutcomeWrite outcome) {
+        final DistributionCommand request = ProcessedLogTestSupport.command();
+        final RunClaim wedged = runClaimOf(guard.admit(
+                request, new DeliveryIdentity("msg-1", "runner-1/delivery-5", true)));
+        ProcessedLogTestSupport.expireClaim(request.source(), request.requestId());
+        runClaimOf(guard.admit(request, new DeliveryIdentity("msg-2-resubmitted", CURRENT_OWNER)));
+
+        write(outcome, wedged);
+
+        assertThat(rejections())
+                .as("a parked stale runner is still a stale runner and still counts as one")
+                .isEqualTo(1);
+        assertThat(captured.list)
+                .filteredOn(event -> event.getLevel() == Level.WARN)
+                .anySatisfy(event -> assertThat(event.getFormattedMessage())
+                        .contains(request.requestId().toString())
+                        .contains(ReasonCode.STALE_RUNNER.code()));
     }
 
     @Test

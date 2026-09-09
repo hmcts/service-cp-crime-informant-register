@@ -14,6 +14,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.DistributionCommand;
+import uk.gov.hmcts.cp.informantregister.observability.FaultSummary;
 
 /**
  * The results query API, read when the cache has nothing.
@@ -169,7 +170,7 @@ public class ResultsQueryHearingPayloadClient implements HearingPayloadQuery {
                 // truncated hearing response that token is a name, an address or a URN — which this
                 // line would then carry into a log index (constitution Principle VII).
                 LOG.warn("The results query API answered with something that is not JSON. type={}",
-                        notJson.getClass().getName());
+                        FaultSummary.typeChain(notJson));
             }
         }
         return payload;

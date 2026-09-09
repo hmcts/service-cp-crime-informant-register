@@ -103,8 +103,17 @@ as a guaranteed dead-letter here.
 
 **The identity is never logged.** It is a user identifier, and the no-PII gate applies to it exactly
 as it applies to the configured system identity, which is treated as a secret. MDC carries
-`requestId`, `hearingId` and `source`; it does not carry `userId`, and neither does any log line or
+`requestId`, `hearingId`, `hearingDay` and `source`, plus the `sequenceNumber` and `deliveryCount`
+the broker stamped on the delivery; it does not carry `userId`, and neither does any log line or
 dead-letter reason.
+
+*Which* of the two identities a run was made as **is** recorded, on the delivery's receipt line, as
+the bounded label `attributedTo=message-user|system-identity`. That is a different fact from the
+identity itself, and it is the only field that separates the two halves of an attribution complaint:
+a producer that named no user, and this service's documented fallback behaving as designed. The
+label is produced by `CallerIdentity#label()`, beside the `orSystem(...)` that fills the header, so
+one resolution feeds both and they cannot drift; `CallerIdentityTest` pins the agreement and
+`TelemetryPrivacyTest` pins the user id's absence at every level.
 
 **It is not part of the request fingerprint.** The fingerprint compares `hearingId`, `hearingDay`,
 `sharedTime` and `eventType`. A replay of the same request carrying no `userId` where the original
@@ -178,7 +187,7 @@ recorded — whether work is repeated:
 | `maxDeliveryCount` | 5 |
 | Duplicate detection | On (broker), backed by the `(source, requestId)` processed-log |
 | Concurrency | `maxConcurrentCalls` 2 initially (parity with the function app's Durable throttle) |
-| Dead-letter | Non-transient failures and exhausted retries; the service counts its own dead-lettering (`informantregister_deadlettered_total`), while DLQ **depth** is observed via Azure Monitor's native `DeadletteredMessages` broker metric (alert wiring is deferred to the operability story — see `doc/DEVIATIONS.md` #3) |
+| Dead-letter | Non-transient failures, exhausted runs, and a hand-back that arrives on its final permitted delivery. The service dead-letters these itself, retaining the path's bounded reason rather than leaving the broker to park it as `MaxDeliveryCountExceeded`; `informantregister_deadlettered_total` counts those settlements. DLQ **depth** is observed via Azure Monitor's native `DeadletteredMessages` broker metric (alert wiring is deferred to the operability story — see `doc/DEVIATIONS.md` #3). |
 | Health | ASB processor health is **never** in the readiness group — a broker blip must not restart the pod |
 
 ### Failure behaviour (contractual, tested)
@@ -196,9 +205,11 @@ delivery therefore gets **no `processed_request` record** — it may not even ca
 | `(source, requestId)` already `FAILED`, redelivered under the **same** `messageId` that exhausted the retries (e.g. dead-lettering did not settle and the lock expired) | Stays `FAILED`; the pipeline does not run; `deadLetter()` is attempted again. |
 | `(source, requestId)` already `FAILED`, resubmitted with a fresh `messageId` | Transitioned `FAILED` → `RECEIVED` with an audit note (attempts preserved) and reprocessed. (Skipping authorities already `POSTED` is deferred with `processed_output` — see the replay rule above.) |
 | `(source, requestId)` matches an existing record but the immutable fields (`hearingId`, `hearingDay`, `sharedTime`, `eventType`) differ | Idempotency collision → `deadLetter()` with a reason; the original record is never overwritten and the pipeline does not run. |
-| `(source, requestId)` is `RECEIVED`/`RETRYING` and the single-runner claim is held by a live runner | Competing delivery → `abandon()` (never `complete()`); no second pipeline run while a run is in flight. |
+| `(source, requestId)` is `RECEIVED`/`RETRYING` and the single-runner claim is held by a live runner | Competing delivery → `abandon()` (never `complete()`); no second pipeline run while a run is in flight. On the final permitted delivery, the service instead calls `deadLetter()` with detail `CLAIM_NOT_ACQUIRED`; it does not write the live holder's row. |
 | `(source, requestId)` is `RECEIVED`/`RETRYING` and the claim is absent or expired (e.g. a runner crashed mid-run) | The delivery atomically reclaims the request and the pipeline runs again. |
-| Processed-log store unavailable | `abandon()` (never `complete()`, never `deadLetter()`), and intake is suspended until the store recovers, so an outage cannot burn through `maxDeliveryCount`. Validation is not even attempted until the store returns. |
+| A runner loses its claim before recording its outcome | The stale runner writes nothing and normally `abandon()`s so redelivery can meet the reclaiming runner's durable outcome. On the final permitted delivery, the service instead calls `deadLetter()` with detail `STALE_RUNNER`; the reclaiming runner's row remains untouched. |
+| Processed-log store unavailable | `abandon()` and intake is suspended until the store recovers, so an outage normally cannot burn through `maxDeliveryCount`. On a final permitted delivery, the service instead calls `deadLetter()` with detail `STORE_UNAVAILABLE`; validation is still not attempted and no row is written. |
+| Unexpected listener failure | `abandon()` for redelivery. On a final permitted delivery, the service instead calls `deadLetter()` with detail `UNEXPECTED_FAILURE`. |
 | Transient downstream failure | `RETRYING` + `abandon()`; ASB redelivers with back-off. |
 
 ### JSON Schema

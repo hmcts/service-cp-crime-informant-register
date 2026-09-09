@@ -12,7 +12,7 @@
               "DuplicateDetectionHistoryTimeWindow": "PT5M",
               "ForwardDeadLetteredMessagesTo": "",
               "ForwardTo": "",
-              "LockDuration": "PT1M",
+              "LockDuration": "PT5M",
               "MaxDeliveryCount": 5,
               "RequiresDuplicateDetection": true,
               "RequiresSession": false

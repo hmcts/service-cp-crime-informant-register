@@ -18,6 +18,7 @@ import uk.gov.hmcts.cp.informantregister.domain.CallerIdentity;
 import uk.gov.hmcts.cp.informantregister.domain.FailureClassification;
 import uk.gov.hmcts.cp.informantregister.domain.ReasonCode;
 import uk.gov.hmcts.cp.informantregister.domain.SubmissionFailedException;
+import uk.gov.hmcts.cp.informantregister.observability.FaultSummary;
 
 /**
  * The one HTTP call this service makes outwards: {@code add-informant-register}, once per authority.
@@ -144,19 +145,30 @@ public class ResultsCommandGateway {
      * the identity is resolved once here so that every attempt of every authority in a run posts as
      * the same caller.
      *
-     * @param body     the serialised document, sent byte for byte
-     * @param identity who the command is posted as
+     * @param body        the serialised document, sent byte for byte
+     * @param identity    who the command is posted as
+     * @param correlation the request, hearing and authority this command belongs to, for the log
+     *                    only — see {@link CommandCorrelation} for why it is passed rather than
+     *                    inherited from the MDC
      * @throws SubmissionFailedException carrying {@code NON_TRANSIENT} when the command was refused,
      *                                   and {@code TRANSIENT} when the attempts ran out with the
      *                                   outcome still unresolved
      */
-    public void post(final byte[] body, final CallerIdentity identity) {
+    public void post(final byte[] body, final CallerIdentity identity,
+            final CommandCorrelation correlation) {
         Duration backoff = initialBackoff;
         final String caller = identity.orSystem(systemUserId);
+        final long startedAt = System.nanoTime();
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            final Outcome outcome = attempt(body, caller, attempt);
+            final Outcome outcome = attempt(body, caller, attempt, correlation);
             if (outcome.accepted()) {
+                // The accepted path used to say nothing at all, so "is Results accepting our
+                // registers, and how hard is it having to try?" could not be answered from the log
+                // — only the failures were visible, and a run that succeeded on its fourth attempt
+                // looked exactly like one that succeeded on its first.
+                LOG.info("Results accepted the command. {} status={} attempt={} elapsedMs={}",
+                        correlation.logFields(), ACCEPTED, attempt, elapsedMsSince(startedAt));
                 return;
             }
             if (outcome.refusal().isPresent()) {
@@ -170,9 +182,15 @@ public class ResultsCommandGateway {
         }
 
         LOG.error("Submission attempts exhausted with the outcome unresolved; the delivery is handed "
-                + "back. attempts={}", maxAttempts);
+                        + "back. {} attempts={} elapsedMs={}",
+                correlation.logFields(), maxAttempts, elapsedMsSince(startedAt));
         throw new SubmissionFailedException(
                 FailureClassification.TRANSIENT, ReasonCode.PIPELINE_TRANSIENT_FAILURE);
+    }
+
+    /** Wall-clock milliseconds since a {@code System.nanoTime()} reading, for a log line. */
+    private static long elapsedMsSince(final long startedAt) {
+        return Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
     }
 
     /**
@@ -182,7 +200,8 @@ public class ResultsCommandGateway {
      * non-2xx into an exception before the status can be read, and this class's whole job is to tell
      * three kinds of non-2xx apart.
      */
-    private Outcome attempt(final byte[] body, final String caller, final int attempt) {
+    private Outcome attempt(final byte[] body, final String caller, final int attempt,
+            final CommandCorrelation correlation) {
         Outcome outcome;
         try {
             outcome = restClient.post()
@@ -197,7 +216,8 @@ public class ResultsCommandGateway {
                         extraHeaders.forEach(headers::add);
                     })
                     .body(body)
-                    .exchange((request, response) -> classify(response, attempt), false);
+                    .exchange((request, response) ->
+                            classify(response, attempt, correlation));
         } catch (ResourceAccessException unreachable) {
             // Connect failure, read timeout, connection dropped: the request may or may not have been
             // applied. Unknown is not failed, and it is retried rather than written off.
@@ -210,14 +230,16 @@ public class ResultsCommandGateway {
             // evidence is a swallow with a log line in front of it. It is safe to keep: a transport
             // exception is raised instead of a response, so it carries the endpoint and the socket
             // error and never a register body.
-            LOG.warn("Submission attempt did not reach a verdict; retrying. attempt={}",
-                    attempt, unreachable);
+            LOG.warn("Submission attempt did not reach a verdict; retrying. {} attempt={} type={}",
+                    correlation.logFields(), attempt, FaultSummary.typeChain(unreachable),
+                    unreachable);
             outcome = Outcome.retryable(Optional.empty());
         }
         return outcome;
     }
 
-    private Outcome classify(final ClientHttpResponse response, final int attempt) throws IOException {
+    private Outcome classify(final ClientHttpResponse response, final int attempt,
+            final CommandCorrelation correlation) throws IOException {
         final HttpStatusCode status = response.getStatusCode();
         final Outcome outcome;
 
@@ -229,20 +251,22 @@ public class ResultsCommandGateway {
             // and calling it success would mark the authority POSTED for a command that was never
             // enqueued, which is the silently lost register this service exists to prevent.
             LOG.error("Results answered a success this contract does not define; the command cannot "
-                    + "be assumed enqueued. status={}", status.value());
+                            + "be assumed enqueued. {} status={}",
+                    correlation.logFields(), status.value());
             outcome = Outcome.NOT_ACCEPTED;
         } else if (status.value() == TOO_MANY_REQUESTS) {
-            LOG.warn("Results asked this service to slow down. attempt={}", attempt);
-            outcome = Outcome.retryable(retryAfter(response));
+            LOG.warn("Results asked this service to slow down. {} attempt={}",
+                    correlation.logFields(), attempt);
+            outcome = Outcome.retryable(retryAfter(response, correlation));
         } else if (status.is5xxServerError()) {
-            LOG.warn("Results could not process the command. attempt={} status={}",
-                    attempt, status.value());
+            LOG.warn("Results could not process the command. {} attempt={} status={}",
+                    correlation.logFields(), attempt, status.value());
             outcome = Outcome.retryable(Optional.empty());
         } else {
             // 4xx other than 429, and anything else that is not a success: the request was understood
             // and declined, so the same bytes will be declined again.
-            LOG.error("Results refused the command; no redelivery can change that. status={}",
-                    status.value());
+            LOG.error("Results refused the command; no redelivery can change that. {} status={}",
+                    correlation.logFields(), status.value());
             outcome = Outcome.REFUSED;
         }
         return outcome;
@@ -260,7 +284,8 @@ public class ResultsCommandGateway {
      * <p>Nothing here is caught, because nothing here throws: the form is recognised before it is
      * read, so an unusable header is classified rather than raised and absorbed.
      */
-    private static Optional<Duration> retryAfter(final ClientHttpResponse response) {
+    private static Optional<Duration> retryAfter(
+            final ClientHttpResponse response, final CommandCorrelation correlation) {
         final String header = response.getHeaders().getFirst(RETRY_AFTER_HEADER);
         final String asked = header == null ? "" : header.trim();
         final Optional<Duration> wait;
@@ -268,7 +293,10 @@ public class ResultsCommandGateway {
             wait = Optional.of(Duration.ofSeconds(Long.parseLong(asked)));
         } else {
             if (!asked.isEmpty()) {
-                LOG.warn("Retry-After was not a number of seconds; using the back-off instead.");
+                // Correlated like every other line here: an orphan warning about a header nobody
+                // can tie to a hearing is the exact complaint this class was carrying.
+                LOG.warn("Retry-After was not a number of seconds; using the back-off instead. {}",
+                        correlation.logFields());
             }
             wait = Optional.empty();
         }

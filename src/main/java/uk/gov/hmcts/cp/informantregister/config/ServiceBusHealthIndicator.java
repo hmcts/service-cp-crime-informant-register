@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
+import uk.gov.hmcts.cp.informantregister.observability.FaultSummary;
 
 /**
  * Whether the broker is reachable — reported loudly, and never allowed to gate readiness.
@@ -161,7 +162,7 @@ public class ServiceBusHealthIndicator implements HealthIndicator {
         // failure — whatever the credential layer felt like quoting. The type and the derived
         // condition are this service's own vocabulary and are enough to act on.
         LOG.error("Service Bus processor error. source={} entityPath={} type={} condition={}",
-                errorSource, entityPath, failure.getClass().getName(), condition.orElse(NONE));
+                errorSource, entityPath, FaultSummary.typeChain(failure), condition.orElse(NONE));
         condition.ifPresent(named -> lastFault.set(new Fault(named, clock.instant())));
     }
 

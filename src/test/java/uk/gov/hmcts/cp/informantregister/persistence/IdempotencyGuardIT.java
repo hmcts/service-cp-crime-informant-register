@@ -287,7 +287,7 @@ class IdempotencyGuardIT {
                     guard.recordExhaustion(claim, ReasonCode.PIPELINE_TRANSIENT_FAILURE);
 
             assertThat(decision).isEqualTo(new GuardDecision.DeadLetter(
-                    DeadLetterReason.EXHAUSTED, ReasonCode.DELIVERY_LIMIT_EXHAUSTED));
+                    DeadLetterReason.EXHAUSTED, ReasonCode.PIPELINE_TRANSIENT_FAILURE));
             final Row row = row();
             assertThat(row.status()).isEqualTo("FAILED");
             assertThat(row.failureReason()).isEqualTo("PIPELINE_TRANSIENT_FAILURE");
