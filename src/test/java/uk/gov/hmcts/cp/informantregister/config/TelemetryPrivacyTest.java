@@ -168,7 +168,7 @@ class TelemetryPrivacyTest {
         when(message.getMessageId()).thenReturn(messageId);
         when(message.getLockToken()).thenReturn(UUID.randomUUID().toString());
         when(message.getDeliveryCount()).thenReturn(0L);
-        when(message.getSequenceNumber()).thenReturn(4815162342L);
+        when(message.getSequenceNumber()).thenReturn(4_815_162_342L);
 
         final ServiceBusReceivedMessageContext context =
                 mock(ServiceBusReceivedMessageContext.class);

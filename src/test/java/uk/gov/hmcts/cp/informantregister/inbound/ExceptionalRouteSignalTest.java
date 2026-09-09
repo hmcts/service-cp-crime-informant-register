@@ -62,7 +62,7 @@ class ExceptionalRouteSignalTest {
     private static final String DELIVERY_COUNT = "deliveryCount";
 
     /** Distinctive, so asserting the broker's handle is not satisfied by a mock's default zero. */
-    private static final long SEQUENCE = 4815162342L;
+    private static final long SEQUENCE = 4_815_162_342L;
 
     private final UUID requestId = UUID.randomUUID();
     private final UUID hearingId = UUID.randomUUID();

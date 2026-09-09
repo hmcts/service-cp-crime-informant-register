@@ -55,7 +55,7 @@ class DeliveryReceiptLogTest {
     private static final String SEQUENCE_NUMBER = "sequenceNumber";
     private static final String DELIVERY_COUNT = "deliveryCount";
 
-    private static final long SEQUENCE = 4815162342L;
+    private static final long SEQUENCE = 4_815_162_342L;
     private static final OffsetDateTime ENQUEUED =
             OffsetDateTime.of(2026, 8, 21, 8, 0, 30, 0, ZoneOffset.UTC);
     private static final OffsetDateTime LOCKED_UNTIL =
