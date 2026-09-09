@@ -17,7 +17,7 @@ tasks.named("pmdMain").configure {
 }
 
 tasks.named("pmdTest").configure {
-  enabled = false
+  onlyIf { gradle.startParameter.taskNames.contains(name) }
 }
 
 tasks.withType(Pmd) {
