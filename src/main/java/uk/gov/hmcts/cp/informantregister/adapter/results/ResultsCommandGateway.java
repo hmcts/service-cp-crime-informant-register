@@ -217,7 +217,7 @@ public class ResultsCommandGateway {
                     })
                     .body(body)
                     .exchange((request, response) ->
-                            classify(response, attempt, correlation), false);
+                            classify(response, attempt, correlation));
         } catch (ResourceAccessException unreachable) {
             // Connect failure, read timeout, connection dropped: the request may or may not have been
             // applied. Unknown is not failed, and it is retried rather than written off.

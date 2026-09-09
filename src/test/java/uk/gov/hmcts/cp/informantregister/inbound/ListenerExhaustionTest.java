@@ -10,6 +10,8 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import uk.gov.hmcts.cp.informantregister.application.DistributionPipeline;
 import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
@@ -99,10 +101,6 @@ class ListenerExhaustionTest {
         return deliveryNumbered(MAX_DELIVERY_COUNT - 1L);
     }
 
-    private ServiceBusReceivedMessageContext deliveryWithBudgetRemaining() {
-        return deliveryNumbered(0L);
-    }
-
     private InformantRegisterMessageListener listenerOver(final StoreGate gate) {
         return new InformantRegisterMessageListener(
                 new DistributionCommandParser(JacksonConfig.contractObjectMapper()),
@@ -121,10 +119,12 @@ class ListenerExhaustionTest {
     @DisplayName("the processed log could not be reached")
     class StoreUnavailable {
 
-        @Test
-        @DisplayName("on the final permitted delivery the message is parked with our own reason")
-        void a_store_outage_on_the_final_delivery_should_park_rather_than_abandon() {
-            final ServiceBusReceivedMessageContext context = finalPermittedDelivery();
+        @ParameterizedTest
+        @ValueSource(longs = {MAX_DELIVERY_COUNT - 1L, MAX_DELIVERY_COUNT})
+        @DisplayName("on or beyond the final permitted delivery the message is parked with our own reason")
+        void a_store_outage_on_or_beyond_the_final_delivery_should_park_rather_than_abandon(
+                final long deliveryCount) {
+            final ServiceBusReceivedMessageContext context = deliveryNumbered(deliveryCount);
 
             listenerOver(StoreGateTestSupport.closed()).onMessage(context);
 
@@ -135,6 +135,7 @@ class ListenerExhaustionTest {
                             DeadLetterReason.EXHAUSTED.label(),
                             ReasonCode.STORE_UNAVAILABLE.code());
             verify(context, never()).abandon();
+            verify(context, never()).complete();
         }
 
         @Test
@@ -149,15 +150,18 @@ class ListenerExhaustionTest {
                     .isEqualTo(1);
         }
 
-        @Test
+        @ParameterizedTest
+        @ValueSource(longs = {0L, MAX_DELIVERY_COUNT - 2L})
         @DisplayName("with deliveries remaining the message still goes back untouched")
-        void a_store_outage_with_budget_remaining_should_hand_the_delivery_back() {
-            final ServiceBusReceivedMessageContext context = deliveryWithBudgetRemaining();
+        void a_store_outage_with_budget_remaining_should_hand_the_delivery_back(
+                final long deliveryCount) {
+            final ServiceBusReceivedMessageContext context = deliveryNumbered(deliveryCount);
 
             listenerOver(StoreGateTestSupport.closed()).onMessage(context);
 
             verify(context).abandon();
             verify(context, never()).deadLetter(any());
+            verify(context, never()).complete();
         }
     }
 
@@ -170,11 +174,13 @@ class ListenerExhaustionTest {
                     .thenThrow(new IllegalStateException("something nobody planned for"));
         }
 
-        @Test
-        @DisplayName("on the final permitted delivery the message is parked with our own reason")
-        void an_unexpected_fault_on_the_final_delivery_should_park_rather_than_abandon() {
+        @ParameterizedTest
+        @ValueSource(longs = {MAX_DELIVERY_COUNT - 1L, MAX_DELIVERY_COUNT})
+        @DisplayName("on or beyond the final permitted delivery the message is parked with our own reason")
+        void an_unexpected_fault_on_or_beyond_the_final_delivery_should_park_rather_than_abandon(
+                final long deliveryCount) {
             theRunFailsUnexpectedly();
-            final ServiceBusReceivedMessageContext context = finalPermittedDelivery();
+            final ServiceBusReceivedMessageContext context = deliveryNumbered(deliveryCount);
 
             listenerOver(StoreGateTestSupport.open()).onMessage(context);
 
@@ -185,18 +191,22 @@ class ListenerExhaustionTest {
                             DeadLetterReason.EXHAUSTED.label(),
                             ReasonCode.UNEXPECTED_FAILURE.code());
             verify(context, never()).abandon();
+            verify(context, never()).complete();
         }
 
-        @Test
+        @ParameterizedTest
+        @ValueSource(longs = {0L, MAX_DELIVERY_COUNT - 2L})
         @DisplayName("with deliveries remaining it is still handed back for another attempt")
-        void an_unexpected_fault_with_budget_remaining_should_hand_the_delivery_back() {
+        void an_unexpected_fault_with_budget_remaining_should_hand_the_delivery_back(
+                final long deliveryCount) {
             theRunFailsUnexpectedly();
-            final ServiceBusReceivedMessageContext context = deliveryWithBudgetRemaining();
+            final ServiceBusReceivedMessageContext context = deliveryNumbered(deliveryCount);
 
             listenerOver(StoreGateTestSupport.open()).onMessage(context);
 
             verify(context).abandon();
             verify(context, never()).deadLetter(any());
+            verify(context, never()).complete();
         }
     }
 }

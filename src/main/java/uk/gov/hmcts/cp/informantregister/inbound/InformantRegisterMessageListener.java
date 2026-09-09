@@ -192,11 +192,11 @@ public class InformantRegisterMessageListener {
      * how much of its delivery budget has the outage eaten. The delivery comes round again once the
      * store is back, and that one is fully correlated.
      */
-    private GuardDecision storeUnavailable(final ServiceBusReceivedMessage message) {
+    private GuardDecision storeUnavailable(final boolean finalDelivery) {
         LOG.error("The processed log could not be reached, so the delivery was not examined; "
                         + "asking for intake to stop. reason={}",
                 ReasonCode.STORE_UNAVAILABLE.code());
-        return handBackAndSuspend(message);
+        return handBackAndSuspend(finalDelivery);
     }
 
     /**
@@ -217,11 +217,11 @@ public class InformantRegisterMessageListener {
      * it — a probe that throws instead of answering is the same outage as one that answers "no", and
      * it reaches the same two-part outcome rather than escaping unsettled.
      */
-    private GuardDecision storeDiedMidRun(final ServiceBusReceivedMessage message) {
+    private GuardDecision storeDiedMidRun(final boolean finalDelivery) {
         LOG.error("The processed log went away during the run, so nothing was recorded; asking "
                         + "for intake to stop. reason={}",
                 ReasonCode.STORE_UNAVAILABLE.code());
-        return handBackAndSuspend(message);
+        return handBackAndSuspend(finalDelivery);
     }
 
     /**
@@ -231,9 +231,9 @@ public class InformantRegisterMessageListener {
      * not stop being true because this particular delivery turned out to be the message's last —
      * whereas what becomes of the delivery is decided by the budget, below.
      */
-    private GuardDecision handBackAndSuspend(final ServiceBusReceivedMessage message) {
+    private GuardDecision handBackAndSuspend(final boolean finalDelivery) {
         storeGate.suspendIntake();
-        return handBack(ReasonCode.STORE_UNAVAILABLE, message);
+        return handBack(ReasonCode.STORE_UNAVAILABLE, finalDelivery);
     }
 
     /**
@@ -266,9 +266,9 @@ public class InformantRegisterMessageListener {
      * rule instead of having to remember it.
      */
     private GuardDecision handBack(
-            final ReasonCode reason, final ServiceBusReceivedMessage message) {
+            final ReasonCode reason, final boolean finalDelivery) {
         final GuardDecision decision;
-        if (isFinalPermittedDelivery(message)) {
+        if (finalDelivery) {
             LOG.warn("No deliveries remain, so the message is parked with our own reason rather "
                             + "than handed back into nothing. reason={}", reason.code());
             decision = new GuardDecision.DeadLetter(DeadLetterReason.EXHAUSTED, reason);
@@ -292,10 +292,10 @@ public class InformantRegisterMessageListener {
      * five times, and the broker parks it under its own reason with no processed-request row and no
      * reason from this service — the silent loss the whole design exists to prevent. The
      * {@link #examine} javadoc records the same lesson for the body read. The broker's accessors
-     * earn the suspicion: {@code getDeliveryCount()} unboxes a {@code Long} that a header need not
-     * carry, and {@code getSequenceNumber()} casts an annotation whose type it does not check, so a
-     * message stamped unusually — a hand-built republish, a dead-letter resubmission — throws on
-     * being *described* rather than on being processed. Described or not, it gets settled.
+     * earn the suspicion: {@code getSequenceNumber()} casts an annotation whose type it does
+     * not check, so a message stamped unusually — a hand-built republish, a dead-letter
+     * resubmission — throws on being <em>described</em> rather than on being processed. Described
+     * or not, it gets settled.
      */
     @SuppressWarnings("PMD.AvoidCatchingGenericException")
     // Deliberate, and narrow: this is the boundary that owns the delivery's settlement. An exception
@@ -304,12 +304,14 @@ public class InformantRegisterMessageListener {
     // names a settlement: the body that can never be valid is parked, and the fault nothing
     // anticipated is handed back. It is a catch-and-settle, not a catch-and-ignore.
     private GuardDecision outcomeOf(final ServiceBusReceivedMessage message) {
+        final boolean finalDelivery = isFinalPermittedDelivery(message);
         GuardDecision decision;
         try {
             correlateDelivery(message);
-            decision = storeGate.storeAvailable() ? examine(message) : storeUnavailable(message);
+            decision = storeGate.storeAvailable()
+                    ? examine(message) : storeUnavailable(finalDelivery);
         } catch (ConcurrencyFailureException contention) {
-            decision = lostContentionRace(contention, message);
+            decision = lostContentionRace(contention, finalDelivery);
         } catch (TransientDataAccessException | RecoverableDataAccessException
                 | DataAccessResourceFailureException storeGone) {
             // The outage classes, and deliberately not the whole DataAccessException hierarchy.
@@ -319,9 +321,9 @@ public class InformantRegisterMessageListener {
             // or a broken statement is the store *answering*, over a connection that plainly
             // worked. Only the store-went-away classes may stop the queue; a per-statement fault
             // is handed back below without turning one poison message into an intake outage.
-            decision = storeDiedMidRun(message);
+            decision = storeDiedMidRun(finalDelivery);
         } catch (RuntimeException unexpected) {
-            decision = unexpectedFailure(unexpected, message);
+            decision = unexpectedFailure(unexpected, finalDelivery);
         }
         return decision;
     }
@@ -343,8 +345,8 @@ public class InformantRegisterMessageListener {
      * and moving it below the outage classes is the very thing this branch prevents.
      */
     private GuardDecision lostContentionRace(
-            final ConcurrencyFailureException contention, final ServiceBusReceivedMessage message) {
-        return unexpectedFailure(contention, message);
+            final ConcurrencyFailureException contention, final boolean finalDelivery) {
+        return unexpectedFailure(contention, finalDelivery);
     }
 
     /**
@@ -487,7 +489,7 @@ public class InformantRegisterMessageListener {
      * again to say whether it is still happening.
      */
     private GuardDecision unexpectedFailure(
-            final RuntimeException unexpected, final ServiceBusReceivedMessage message) {
+            final RuntimeException unexpected, final boolean finalDelivery) {
         LOG.error("Delivery failed unexpectedly. type={} reason={}",
                 FaultSummary.typeChain(unexpected), ReasonCode.UNEXPECTED_FAILURE.code());
         // Counted as well as reported. An ERROR nobody is watching for is how an incident is
@@ -501,7 +503,7 @@ public class InformantRegisterMessageListener {
         // message is recorded by the dead-letter counter, from the settlement that actually
         // happened.
         metrics.pipelineFailed(FailureClassification.TRANSIENT);
-        return handBack(ReasonCode.UNEXPECTED_FAILURE, message);
+        return handBack(ReasonCode.UNEXPECTED_FAILURE, finalDelivery);
     }
 
     /**

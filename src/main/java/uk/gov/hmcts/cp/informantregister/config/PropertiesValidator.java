@@ -54,6 +54,7 @@ public class PropertiesValidator implements InitializingBean {
     private static final String RENEW_DURATION =
             "informantregister.servicebus.max-auto-lock-renew-duration";
     private static final String LOCK_DURATION = "informantregister.servicebus.lock-duration";
+    private static final String MAX_DELIVERY_COUNT = "informantregister.servicebus.max-delivery-count";
     private static final String CONNECTION_STRING =
             "informantregister.servicebus.connection-string";
     private static final String NAMESPACE = "informantregister.servicebus.namespace";
@@ -168,10 +169,22 @@ public class PropertiesValidator implements InitializingBean {
         validateRunFinishesBeforeTheClaimExpires(properties);
         validateLockOutlivesTheRun(properties);
         validateTheClaimLapsesBeforeTheBrokerRedelivers(properties);
+        validateTheDeliveryBudgetPermitsProcessing(properties);
         validateExactlyOneCredentialSource(properties);
         validateThePayloadSourceCanFetch(properties);
         validateTheSubscriptionsSourceCanFetch(properties);
         validateTheRetryPolicyCanPost(properties);
+    }
+
+    private static void validateTheDeliveryBudgetPermitsProcessing(
+            final InformantRegisterProperties properties) {
+        final int maxDeliveryCount = properties.servicebus().maxDeliveryCount();
+        if (maxDeliveryCount < 1) {
+            throw new IllegalStateException(
+                    MAX_DELIVERY_COUNT + " (" + maxDeliveryCount + MUST_BE_AT_LEAST
+                            + "1: a non-positive budget treats every delivery as final and parks"
+                            + " retryable failures without retrying");
+        }
     }
 
     /**

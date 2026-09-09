@@ -335,7 +335,7 @@ class DeliveryExhaustionIT {
                 .peekFor(exhausting, SubQueue.DEAD_LETTER_QUEUE).orElseThrow();
         assertThat(parked.getDeadLetterReason()).isEqualTo(DeadLetterReason.EXHAUSTED.label());
         assertThat(parked.getDeadLetterErrorDescription())
-                .isEqualTo(ReasonCode.DELIVERY_LIMIT_EXHAUSTED.code());
+                .isEqualTo(ReasonCode.PIPELINE_TRANSIENT_FAILURE.code());
         assertThat(ServiceBusEmulatorTestSupport.peekFor(exhausting, SubQueue.NONE)).isEmpty();
     }
 

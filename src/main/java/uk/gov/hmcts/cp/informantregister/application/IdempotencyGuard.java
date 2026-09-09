@@ -213,7 +213,8 @@ public class IdempotencyGuard {
 
     /**
      * Records a run that failed on the final permitted delivery, parking the request with the
-     * identity of the delivery that exhausted it.
+     * identity of the delivery that exhausted it. The dead-letter retains the same failure reason
+     * as the row, so support can identify the cause directly from the queue.
      *
      * <p>That identity is the claim's own, not a parameter. The delivery that exhausts the retries is
      * by definition the one that was running, and a record parked under some other delivery's identity
@@ -225,7 +226,7 @@ public class IdempotencyGuard {
             LOG.info("Request parked after its final permitted delivery. source={} requestId={} reason={}",
                     claim.source(), claim.requestId(), reason.code());
             decision = new GuardDecision.DeadLetter(
-                    DeadLetterReason.EXHAUSTED, ReasonCode.DELIVERY_LIMIT_EXHAUSTED);
+                    DeadLetterReason.EXHAUSTED, reason);
         } else {
             decision = rejectStaleRunner(claim);
         }

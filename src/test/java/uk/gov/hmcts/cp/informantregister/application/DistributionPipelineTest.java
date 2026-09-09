@@ -557,7 +557,7 @@ class DistributionPipelineTest {
             when(guard.admit(command, lastChance)).thenReturn(new GuardDecision.Run(claim));
             when(payloadSource.fetch(command)).thenThrow(fault);
             final GuardDecision parked = new GuardDecision.DeadLetter(
-                    DeadLetterReason.EXHAUSTED, ReasonCode.DELIVERY_LIMIT_EXHAUSTED);
+                    DeadLetterReason.EXHAUSTED, ReasonCode.UNEXPECTED_FAILURE);
             when(guard.recordExhaustion(claim, ReasonCode.UNEXPECTED_FAILURE)).thenReturn(parked);
 
             final GuardDecision decision = pipeline.process(command, lastChance);
@@ -815,7 +815,7 @@ class DistributionPipelineTest {
         void should_park_an_unresolved_submission_on_the_final_permitted_delivery() {
             final DeliveryIdentity identity = theRunFailsWith(unresolved, true);
             final GuardDecision exhausted = new GuardDecision.DeadLetter(
-                    DeadLetterReason.EXHAUSTED, ReasonCode.DELIVERY_LIMIT_EXHAUSTED);
+                    DeadLetterReason.EXHAUSTED, ReasonCode.PIPELINE_TRANSIENT_FAILURE);
             when(guard.recordExhaustion(claim, ReasonCode.PIPELINE_TRANSIENT_FAILURE))
                     .thenReturn(exhausted);
 

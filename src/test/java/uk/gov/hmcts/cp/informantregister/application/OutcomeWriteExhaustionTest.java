@@ -8,6 +8,8 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import uk.gov.hmcts.cp.informantregister.config.ProcessingMetrics;
 import uk.gov.hmcts.cp.informantregister.domain.CompletionReason;
 import uk.gov.hmcts.cp.informantregister.domain.DeadLetterReason;
@@ -102,6 +104,22 @@ class OutcomeWriteExhaustionTest {
 
     private static GuardDecision parkedWith(final ReasonCode reason) {
         return new GuardDecision.DeadLetter(DeadLetterReason.EXHAUSTED, reason);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = ReasonCode.class, names = {
+        "PROCESSING_DEADLINE_EXCEEDED", "REFERENCE_DATA_UNAVAILABLE",
+        "PIPELINE_TRANSIENT_FAILURE", "UNEXPECTED_FAILURE"
+    })
+    void recordExhaustion_should_preserve_the_failure_reason_in_the_row_and_dead_letter(
+            final ReasonCode reason) {
+        final RunClaim claim = claimGrantedOn(finalPermittedDelivery());
+        when(repository.recordFailed(claim, reason.code())).thenReturn(true);
+
+        final GuardDecision decision = guard.recordExhaustion(claim, reason);
+
+        assertThat(decision).isEqualTo(parkedWith(reason));
+        verify(repository).recordFailed(claim, reason.code());
     }
 
     @Nested

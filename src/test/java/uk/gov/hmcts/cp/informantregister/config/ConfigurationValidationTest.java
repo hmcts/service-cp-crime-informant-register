@@ -5,6 +5,8 @@ import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -154,6 +156,32 @@ class ConfigurationValidationTest {
                         assertThat(properties.stub().payloadFailureMode())
                                 .isEqualTo(PayloadFailureMode.TRANSIENT);
                     });
+        }
+    }
+
+    @Nested
+    @DisplayName("the broker delivery budget must permit at least one delivery")
+    class DeliveryBudget {
+
+        @ParameterizedTest
+        @ValueSource(ints = {0, -1, Integer.MIN_VALUE})
+        void a_non_positive_delivery_budget_should_fail_startup(final int maxDeliveryCount) {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.servicebus.max-delivery-count=" + maxDeliveryCount)
+                    .run(context -> {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure())
+                                .hasMessageContaining("informantregister.servicebus.max-delivery-count")
+                                .hasMessageContaining("(" + maxDeliveryCount + ")")
+                                .hasMessageContaining("must be at least 1");
+                    });
+        }
+
+        @Test
+        void a_single_delivery_should_start_because_no_retry_is_a_valid_policy() {
+            runner.withPropertyValues(CONNECTION_STRING_PROPERTY,
+                    "informantregister.servicebus.max-delivery-count=1")
+                    .run(context -> assertThat(context).hasNotFailed());
         }
     }
 
