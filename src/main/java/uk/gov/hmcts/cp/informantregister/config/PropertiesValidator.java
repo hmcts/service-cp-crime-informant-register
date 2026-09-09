@@ -179,10 +179,11 @@ public class PropertiesValidator implements InitializingBean {
     private static void validateTheDeliveryBudgetPermitsProcessing(
             final InformantRegisterProperties properties) {
         final int maxDeliveryCount = properties.servicebus().maxDeliveryCount();
-        if (maxDeliveryCount < 1) {
+        if (maxDeliveryCount < MINIMUM_ATTEMPTS) {
             throw new IllegalStateException(
                     MAX_DELIVERY_COUNT + " (" + maxDeliveryCount + MUST_BE_AT_LEAST
-                            + "1: a non-positive budget treats every delivery as final and parks"
+                            + MINIMUM_ATTEMPTS
+                            + ": a non-positive budget treats every delivery as final and parks"
                             + " retryable failures without retrying");
         }
     }
