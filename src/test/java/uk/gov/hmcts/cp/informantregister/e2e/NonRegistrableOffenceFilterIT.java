@@ -81,7 +81,7 @@ import static org.awaitility.Awaitility.await;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@DisplayName("End to end: one registrable offence, one non-registrable — "
+@DisplayName("RQA-AD-02: one registrable offence, one non-registrable — "
         + "only the registrable offence carries results")
 class NonRegistrableOffenceFilterIT {
 
@@ -346,8 +346,8 @@ class NonRegistrableOffenceFilterIT {
     // --- the test ---------------------------------------------------------------------------------
 
     @Test
-    @DisplayName("offence 1 registrable (Absolute Discharge), offence 2 not registrable "
-            + "(publishedForNows) — only offence 1 carries results")
+    @DisplayName("RQA-AD-02: offence 1 registrable (Absolute Discharge), offence 2 not "
+            + "registrable (publishedForNows) — only offence 1 carries results")
     void registrable_offence_carries_results_and_non_registrable_offence_does_not() {
 
         ServiceTestSupport.publish(messageBody());

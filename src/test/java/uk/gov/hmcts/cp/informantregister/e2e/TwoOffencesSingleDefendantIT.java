@@ -75,7 +75,7 @@ import static org.awaitility.Awaitility.await;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@DisplayName("End to end: one case, one defendant, two offences with Absolute Discharge — "
+@DisplayName("RQA-AD-03: one case, one defendant, two offences with Absolute Discharge — "
         + "both offences in payload, no recipients")
 class TwoOffencesSingleDefendantIT {
 
@@ -317,8 +317,8 @@ class TwoOffencesSingleDefendantIT {
     // --- the test ---------------------------------------------------------------------------------
 
     @Test
-    @DisplayName("one case, one defendant, two offences with Absolute Discharge — payload has "
-            + "both offences with results, recipients absent")
+    @DisplayName("RQA-AD-03: one case, one defendant, two offences with Absolute Discharge — "
+            + "payload has both offences with results, recipients absent")
     void two_offences_absolute_discharge_should_produce_register_with_both_and_no_recipients() {
 
         ServiceTestSupport.publish(messageBody());
