@@ -29,10 +29,10 @@ dependencies {
   // Java core
   implementation 'net.logstash.logback:logstash-logback-encoder:9.0'
 
-  compileOnly 'org.projectlombok:lombok:1.18.46'
-  annotationProcessor 'org.projectlombok:lombok:1.18.46'
-  testCompileOnly 'org.projectlombok:lombok:1.18.46'
-  testAnnotationProcessor 'org.projectlombok:lombok:1.18.46'
+  compileOnly 'org.projectlombok:lombok:1.18.48'
+  annotationProcessor 'org.projectlombok:lombok:1.18.48'
+  testCompileOnly 'org.projectlombok:lombok:1.18.48'
+  testAnnotationProcessor 'org.projectlombok:lombok:1.18.48'
 
   // Spring boot core
   implementation 'org.springframework.boot:spring-boot-starter-web'
