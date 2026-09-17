@@ -1,48 +1,26 @@
 package uk.gov.hmcts.cp.informantregister.e2e;
 
-import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.verification.LoggedRequest;
-import io.lettuce.core.RedisClient;
-import io.lettuce.core.RedisURI;
-import io.lettuce.core.api.StatefulRedisConnection;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
-import uk.gov.hmcts.cp.informantregister.adapter.refdata.ReferenceDataNowSubscriptionsClient;
 import uk.gov.hmcts.cp.informantregister.adapter.results.ResultsCommandGateway;
-import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
 import uk.gov.hmcts.cp.informantregister.domain.CompletionReason;
 import uk.gov.hmcts.cp.informantregister.domain.RequestStatus;
-import uk.gov.hmcts.cp.informantregister.support.ParityCase;
-import uk.gov.hmcts.cp.informantregister.support.PostgresTestSupport;
+import uk.gov.hmcts.cp.informantregister.support.AbstractRqaIT;
 import uk.gov.hmcts.cp.informantregister.support.ProcessedLogTestSupport;
-import uk.gov.hmcts.cp.informantregister.support.RedisTestSupport;
-import uk.gov.hmcts.cp.informantregister.support.ServiceBusEmulatorTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ServiceTestSupport;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
-import static com.github.tomakehurst.wiremock.client.WireMock.get;
-import static com.github.tomakehurst.wiremock.client.WireMock.post;
-import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
-import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static uk.gov.hmcts.cp.informantregister.support.RegisterDocumentAssertions.allResultTexts;
+import static uk.gov.hmcts.cp.informantregister.support.RegisterDocumentAssertions.bodyForAuthority;
 
 /**
  * The amend-and-reshare flow, end to end: a hearing is resulted and shared, then a result on one
@@ -81,27 +59,9 @@ import static org.awaitility.Awaitility.await;
  * <p><strong>RQA-AD-07</strong> — Results QA acceptance scenario: amend and reshare with informant
  * register verification.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
-@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("RQA-AD-07")
 @DisplayName("RQA-AD-07: amend-and-reshare reflects the amended result in the register")
-class AmendAndReshareIT {
-
-    /** The base parity case whose hearing we modify for each share. */
-    private static final ParityCase BASE_CASE = ParityCase.load("recorded", "base__case-and-application");
-
-    private static final ObjectMapper MAPPER = JacksonConfig.contractObjectMapper();
-
-    private static final UUID HEARING_ID =
-            UUID.fromString(BASE_CASE.hearing().get("id").stringValue());
-
-    private static final String HEARING_DAY = "2021-03-11";
-
-    /** The user the message says shared the results — every outbound call must be made as them. */
-    private static final String SHARING_USER_ID = "3d5f7a91-2c4e-4b86-9f10-7ac5be3d2081";
-
-    /** Deliberately different from the sharing user so the identity assertion catches a mis-resolution. */
-    private static final String SYSTEM_USER_ID = "00000000-0000-4000-8000-0000000000ff";
+class AmendAndReshareIT extends AbstractRqaIT {
 
     /** The sharedTime for the initial share — the base case's own. */
     private static final String INITIAL_SHARED_TIME = BASE_CASE.sharedTime();
@@ -143,50 +103,25 @@ class AmendAndReshareIT {
 
     private static final int EXPECTED_AUTHORITIES = 3;
 
-    private static final Duration COMPLETED_WITHIN = Duration.ofSeconds(90);
-    private static final Duration POLL = Duration.ofSeconds(1);
+    // --- lifecycle override ---
 
-    private static WireMockServer results;
-    private static WireMockServer referenceData;
-    private static RedisClient cacheClient;
-    private static StatefulRedisConnection<String, String> cache;
-
-    @DynamicPropertySource
-    static void wireTheContainers(final DynamicPropertyRegistry registry) {
-        results = new WireMockServer(wireMockConfig().dynamicPort());
-        results.start();
-        referenceData = new WireMockServer(wireMockConfig().dynamicPort());
-        referenceData.start();
-        cacheClient = RedisClient.create(RedisURI.create(RedisTestSupport.uri()));
-        cache = cacheClient.connect();
-
-        registry.add("spring.datasource.url", PostgresTestSupport::jdbcUrl);
-        registry.add("spring.datasource.username", PostgresTestSupport::username);
-        registry.add("spring.datasource.password", PostgresTestSupport::password);
-        registry.add("informantregister.servicebus.connection-string",
-                ServiceBusEmulatorTestSupport::connectionString);
-        registry.add("informantregister.payload.mode", () -> "LIVE");
-        registry.add("informantregister.payload.redis.host", RedisTestSupport::host);
-        registry.add("informantregister.payload.redis.port", RedisTestSupport::port);
-        registry.add("informantregister.referencedata.mode", () -> "LIVE");
-        registry.add("informantregister.referencedata.base-url", referenceData::baseUrl);
-        registry.add("informantregister.referencedata.system-user-id", () -> SYSTEM_USER_ID);
-        registry.add("informantregister.results.base-url", results::baseUrl);
-        registry.add("informantregister.results.system-user-id", () -> SYSTEM_USER_ID);
-    }
-
-    @AfterAll
-    static void closeTheFixtures() {
-        cache.close();
-        cacheClient.shutdown();
-        referenceData.stop();
-        results.stop();
-    }
-
+    /**
+     * This test manages cache seeding and API stubbing across its two phases manually. Only reset
+     * stubs here — the test method handles everything else.
+     */
+    @Override
     @BeforeEach
-    void resetStubs() {
-        results.resetAll();
-        referenceData.resetAll();
+    protected void seedTheWorld() {
+        resetStubs();
+    }
+
+    /**
+     * Not called by the overridden lifecycle, but satisfies the abstract contract. Returns the
+     * initial-phase hearing.
+     */
+    @Override
+    protected JsonNode buildHearing() {
+        return hearingWithResult(INITIAL_RESULT_TEXT);
     }
 
     // --- fixture helpers -------------------------------------------------------------------------
@@ -225,113 +160,11 @@ class AmendAndReshareIT {
         return hearing;
     }
 
-    private static String cacheDocument(
-            final JsonNode hearing, final String sharedTime, final boolean isReshare) {
-        return """
-                {"isReshare":%s,"hearingDay":"%s","sharedTime":"%s","hearing":%s}\
-                """.formatted(
-                        isReshare,
-                        HEARING_DAY,
-                        sharedTime,
-                        MAPPER.writeValueAsString(hearing));
-    }
-
-    private static String cacheKey() {
-        return "INT_" + HEARING_ID + '_' + HEARING_DAY + "_result_";
-    }
-
-    private static String messageBody(final UUID requestId, final String sharedTime) {
-        return """
-                {
-                  "source": "RESULTS",
-                  "requestId": "%s",
-                  "hearingId": "%s",
-                  "hearingDay": "%s",
-                  "sharedTime": "%s",
-                  "eventType": "Hearing_Resulted",
-                  "userId": "%s"
-                }
-                """.formatted(requestId, HEARING_ID, HEARING_DAY, sharedTime, SHARING_USER_ID);
-    }
-
-    private void stubApis() {
-        results.stubFor(post(urlEqualTo(ResultsCommandGateway.INFORMANT_REGISTER_PATH))
-                .willReturn(aResponse().withStatus(202)));
-        referenceData.stubFor(get(urlPathEqualTo(ReferenceDataNowSubscriptionsClient.PATH))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", ReferenceDataNowSubscriptionsClient.ACCEPT)
-                        .withBody(MAPPER.writeValueAsString(BASE_CASE.subscriptions()))));
-    }
-
-    /**
-     * The commands Results received for this hearing since the last WireMock reset.
-     */
-    private static List<LoggedRequest> commandsForThisHearing() {
-        return results
-                .findAll(postRequestedFor(
-                        urlEqualTo(ResultsCommandGateway.INFORMANT_REGISTER_PATH)))
-                .stream()
-                .filter(request -> HEARING_ID.toString().equals(
-                        MAPPER.readTree(request.getBodyAsString())
-                                .path("hearingId").stringValue()))
-                .toList();
-    }
-
-    /**
-     * Waits for the given request to reach COMPLETED in the processed log.
-     */
-    private static void awaitCompleted(final UUID requestId) {
+    private static void awaitCompleted(final UUID reqId) {
         await().atMost(COMPLETED_WITHIN).pollInterval(POLL).until(() ->
-                ProcessedLogTestSupport.row(ProcessedLogTestSupport.SOURCE, requestId)
+                ProcessedLogTestSupport.row(ProcessedLogTestSupport.SOURCE, reqId)
                         .filter(row -> RequestStatus.COMPLETED.name().equals(row.status()))
                         .isPresent());
-    }
-
-    // --- assertions on outbound bodies -----------------------------------------------------------
-
-    /**
-     * Finds the outbound document for the given authority code.
-     */
-    private static JsonNode bodyForAuthority(
-            final List<LoggedRequest> commands, final String authorityCode) {
-        return commands.stream()
-                .map(request -> MAPPER.readTree(request.getBodyAsString()))
-                .filter(body -> authorityCode.equals(body.path("prosecutionAuthorityCode").stringValue()))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError(
-                        "no outbound document for authority " + authorityCode));
-    }
-
-    /**
-     * Collects every {@code resultText} from every offence in the document, across all defendants
-     * and all court sessions. A flat list that can be searched for the presence or absence of a
-     * specific result.
-     */
-    private static List<String> allResultTexts(final JsonNode document) {
-        final List<String> texts = new ArrayList<>();
-        for (final JsonNode session : iterable(document.path("hearingVenue").path("courtSessions"))) {
-            for (final JsonNode defendant : iterable(session.path("defendants"))) {
-                for (final JsonNode caseOrApp : iterable(defendant.path("prosecutionCasesOrApplications"))) {
-                    for (final JsonNode offence : iterable(caseOrApp.path("offences"))) {
-                        for (final JsonNode result : iterable(offence.path("offenceResults"))) {
-                            final String text = result.path("resultText").stringValue();
-                            if (text != null) {
-                                texts.add(text);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return texts;
-    }
-
-    /**
-     * Makes a possibly-missing {@code JsonNode} iterable without a null check at every level.
-     */
-    private static Iterable<JsonNode> iterable(final JsonNode node) {
-        return node.isMissingNode() || node.isNull() ? List.of() : node;
     }
 
     // --- the test ---------------------------------------------------------------------------------

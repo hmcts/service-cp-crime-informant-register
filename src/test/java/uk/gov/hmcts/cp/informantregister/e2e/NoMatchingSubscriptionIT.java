@@ -1,46 +1,21 @@
 package uk.gov.hmcts.cp.informantregister.e2e;
 
-import java.time.Duration;
 import java.util.List;
-import java.util.UUID;
 
-import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.verification.LoggedRequest;
-import io.lettuce.core.RedisClient;
-import io.lettuce.core.RedisURI;
-import io.lettuce.core.api.StatefulRedisConnection;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
-import uk.gov.hmcts.cp.informantregister.adapter.refdata.ReferenceDataNowSubscriptionsClient;
 import uk.gov.hmcts.cp.informantregister.adapter.results.ResultsCommandGateway;
-import uk.gov.hmcts.cp.informantregister.config.JacksonConfig;
 import uk.gov.hmcts.cp.informantregister.domain.CompletionReason;
 import uk.gov.hmcts.cp.informantregister.domain.RequestStatus;
-import uk.gov.hmcts.cp.informantregister.support.ParityCase;
-import uk.gov.hmcts.cp.informantregister.support.PostgresTestSupport;
+import uk.gov.hmcts.cp.informantregister.support.AbstractRqaIT;
 import uk.gov.hmcts.cp.informantregister.support.ProcessedLogTestSupport;
-import uk.gov.hmcts.cp.informantregister.support.RedisTestSupport;
-import uk.gov.hmcts.cp.informantregister.support.ServiceBusEmulatorTestSupport;
 import uk.gov.hmcts.cp.informantregister.support.ServiceTestSupport;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
-import static com.github.tomakehurst.wiremock.client.WireMock.get;
-import static com.github.tomakehurst.wiremock.client.WireMock.post;
-import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
-import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
@@ -72,99 +47,16 @@ import static org.awaitility.Awaitility.await;
  *
  * <p>Tracked as <strong>RQA-AD-06</strong> in the Results QA Absolute Discharge test matrix.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
-@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("RQA-AD-06")
 @DisplayName("RQA-AD-06: no matching NOW subscription — register produced without recipients")
-class NoMatchingSubscriptionIT {
+class NoMatchingSubscriptionIT extends AbstractRqaIT {
 
-    /**
-     * The parity case we derive from — chosen because it is {@code clockDependent: false} and its
-     * subscriptions already carry informant codes that do not match the hearing's prosecutors.
-     */
-    private static final ParityCase BASE_CASE =
-            ParityCase.load("recorded", "base__case-and-application");
+    // --- hearing builder ---
 
-    private static final ObjectMapper MAPPER = JacksonConfig.contractObjectMapper();
-
-    private static final UUID HEARING_ID =
-            UUID.fromString(BASE_CASE.hearing().get("id").stringValue());
-
-    private static final String HEARING_DAY = "2021-03-11";
-
-    private static final String SHARING_USER_ID = "3d5f7a91-2c4e-4b86-9f10-7ac5be3d2081";
-
-    /** Deliberately different from the sharing user — catches mis-resolution of the caller identity. */
-    private static final String SYSTEM_USER_ID = "00000000-0000-4000-8000-0000000000ff";
-
-    private static final String RESULT_TEXT = "Absolute discharge";
-
-    /**
-     * The prosecution authority code of the single case that remains after trimming. TFL does not
-     * match any of the base subscriptions' informant codes (CDE02–CDE05).
-     */
-    private static final String AUTHORITY_CODE = "TFL";
-
-    private static final Duration COMPLETED_WITHIN = Duration.ofSeconds(90);
-    private static final Duration POLL = Duration.ofSeconds(1);
-
-    private static WireMockServer results;
-    private static WireMockServer referenceData;
-    private static RedisClient cacheClient;
-    private static StatefulRedisConnection<String, String> cache;
-
-    private final UUID requestId = UUID.randomUUID();
-
-    @DynamicPropertySource
-    static void wireTheContainers(final DynamicPropertyRegistry registry) {
-        results = new WireMockServer(wireMockConfig().dynamicPort());
-        results.start();
-        referenceData = new WireMockServer(wireMockConfig().dynamicPort());
-        referenceData.start();
-        cacheClient = RedisClient.create(RedisURI.create(RedisTestSupport.uri()));
-        cache = cacheClient.connect();
-
-        registry.add("spring.datasource.url", PostgresTestSupport::jdbcUrl);
-        registry.add("spring.datasource.username", PostgresTestSupport::username);
-        registry.add("spring.datasource.password", PostgresTestSupport::password);
-        registry.add("informantregister.servicebus.connection-string",
-                ServiceBusEmulatorTestSupport::connectionString);
-        registry.add("informantregister.payload.mode", () -> "LIVE");
-        registry.add("informantregister.payload.redis.host", RedisTestSupport::host);
-        registry.add("informantregister.payload.redis.port", RedisTestSupport::port);
-        registry.add("informantregister.referencedata.mode", () -> "LIVE");
-        registry.add("informantregister.referencedata.base-url", referenceData::baseUrl);
-        registry.add("informantregister.referencedata.system-user-id", () -> SYSTEM_USER_ID);
-        registry.add("informantregister.results.base-url", results::baseUrl);
-        registry.add("informantregister.results.system-user-id", () -> SYSTEM_USER_ID);
+    @Override
+    protected JsonNode buildHearing() {
+        return singleCaseHearing();
     }
-
-    @AfterAll
-    static void closeTheFixtures() {
-        cache.close();
-        cacheClient.shutdown();
-        referenceData.stop();
-        results.stop();
-    }
-
-    @BeforeEach
-    void seedTheWorld() {
-        results.resetAll();
-        referenceData.resetAll();
-
-        cache.sync().set(cacheKey(), cacheDocument());
-
-        referenceData.stubFor(get(urlPathEqualTo(ReferenceDataNowSubscriptionsClient.PATH))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", ReferenceDataNowSubscriptionsClient.ACCEPT)
-                        .withBody(MAPPER.writeValueAsString(BASE_CASE.subscriptions()))));
-
-        results.stubFor(post(urlEqualTo(ResultsCommandGateway.INFORMANT_REGISTER_PATH))
-                .willReturn(aResponse().withStatus(202)));
-    }
-
-    // --- fixture helpers -------------------------------------------------------------------------
 
     /**
      * A hearing trimmed to one prosecution case, one defendant, one offence, with the surviving
@@ -209,45 +101,6 @@ class NoMatchingSubscriptionIT {
         targetResult.put("resultText", RESULT_TEXT);
 
         return hearing;
-    }
-
-    private static String cacheKey() {
-        return "INT_" + HEARING_ID + '_' + HEARING_DAY + "_result_";
-    }
-
-    private static String cacheDocument() {
-        return """
-                {"isReshare":false,"hearingDay":"%s","sharedTime":"%s","hearing":%s}\
-                """.formatted(
-                        HEARING_DAY,
-                        BASE_CASE.sharedTime(),
-                        MAPPER.writeValueAsString(singleCaseHearing()));
-    }
-
-    private String messageBody() {
-        return """
-                {
-                  "source": "RESULTS",
-                  "requestId": "%s",
-                  "hearingId": "%s",
-                  "hearingDay": "%s",
-                  "sharedTime": "%s",
-                  "eventType": "Hearing_Resulted",
-                  "userId": "%s"
-                }
-                """.formatted(requestId, HEARING_ID, HEARING_DAY, BASE_CASE.sharedTime(),
-                        SHARING_USER_ID);
-    }
-
-    private static List<LoggedRequest> commandsForThisHearing() {
-        return results
-                .findAll(postRequestedFor(
-                        urlEqualTo(ResultsCommandGateway.INFORMANT_REGISTER_PATH)))
-                .stream()
-                .filter(request -> HEARING_ID.toString().equals(
-                        MAPPER.readTree(request.getBodyAsString())
-                                .path("hearingId").stringValue()))
-                .toList();
     }
 
     // --- the test ---------------------------------------------------------------------------------
