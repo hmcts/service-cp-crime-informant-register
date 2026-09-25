@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%-5level] %logger{15} - %msg%n%rEx</pattern>
+        </encoder>
+        <immediateFlush>false</immediateFlush>
+    </appender>
+    <!-- Gatling internals -->
+    <logger name="io.gatling" level="WARN"/>
+    <logger name="io.gatling.jms" level="WARN"/>
+    <!-- Azure SDK noise -->
+    <logger name="com.azure" level="WARN"/>
+    <logger name="com.microsoft" level="WARN"/>
+    <!-- AMQP transport -->
+    <logger name="org.apache.qpid" level="WARN"/>
+    <!-- Simulation output at INFO -->
+    <logger name="uk.gov.hmcts.cp.simulation" level="INFO"/>
+    <root level="WARN">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>

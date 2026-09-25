@@ -6,8 +6,15 @@ plugins {
   id 'jacoco'
   id 'maven-publish'
   id 'com.github.ben-manes.versions' version '0.61.0'
-  id 'org.cyclonedx.bom' version '3.4.1'
+  id 'org.cyclonedx.bom' version '3.4.1' apply false
   id 'com.gorylenko.gradle-git-properties' version '4.0.1'
+  id 'io.gatling.gradle' version '3.15.1.3'
+}
+
+// Apply CycloneDX only when explicitly requested — it conflicts with the Gatling plugin's
+// configurations during dependency graph traversal (missing plexus-utils class).
+if (gradle.startParameter.taskNames.any { it.contains('cyclonedxBom') }) {
+  apply plugin: 'org.cyclonedx.bom'
 }
 
 group = 'uk.gov.hmcts.cp'
@@ -100,4 +107,58 @@ dependencies {
   // Security: pin transitive tomcat-embed-core to patched version (CVE-2026-41293, -43512, et al.)
   // Brought in transitively via spring-boot-starter-web; >=11.0.0-M1,<11.0.22 are vulnerable
   implementation 'org.apache.tomcat.embed:tomcat-embed-core:11.0.25'
+
+  // --- Gatling performance tests: JMS bridge to Azure Service Bus ---
+  // Gatling has its own compile classpath. Keep the Redis seeder's dependencies explicit;
+  // these versions match the service's Spring Boot-managed runtime dependencies.
+  gatlingImplementation 'io.lettuce:lettuce-core:7.5.2.RELEASE'
+  gatlingImplementation 'tools.jackson.core:jackson-databind:3.1.5'
+  // Qpid JMS: AMQP 1.0 transport for the SAS/emulator path.
+  gatlingImplementation 'org.apache.qpid:qpid-jms-client:2.10.0'
+  // Azure Service Bus JMS (Jakarta): CBS token auth for Entra-only namespaces.
+  // The 2.x line uses jakarta.jms (matching Gatling 3.15 and Qpid JMS 2.x).
+  gatlingImplementation 'com.azure:azure-servicebus-jms:2.1.0'
+}
+
+gatling {
+  def args = [
+    "-Dgatling.queueName=${System.getProperty('gatling.queueName', 'informantregister.requests')}",
+    "-Dgatling.wiremockUrl=${System.getProperty('gatling.wiremockUrl', 'http://localhost:8080')}",
+    "-Dgatling.actuatorUrl=${System.getProperty('gatling.actuatorUrl', 'http://localhost:8082/informantregister')}",
+    // Publish manifest read by src/gatling/scripts/verify-outputs.sh; absolute so it does not
+    // depend on the Gatling JVM's working directory
+    "-Dgatling.manifestPath=${System.getProperty('gatling.manifestPath', "${layout.buildDirectory.get().asFile}/nft/published-manifest.csv")}",
+    "-Dlogback.configurationFile=${projectDir}/src/gatling/resources/logback-gatling.xml",
+    "--add-opens", "java.base/java.lang=ALL-UNNAMED",
+    "--add-opens", "java.base/java.util=ALL-UNNAMED"
+  ]
+  // Emulator/SAS path: an explicit connection string wins; otherwise one is composed from the
+  // emulator key (-Dgatling.emulatorKey or ASB_EMULATOR_KEY). No key is ever committed here.
+  def connectionString = System.getProperty('gatling.connectionString')
+  def emulatorKey = System.getProperty('gatling.emulatorKey', System.getenv('ASB_EMULATOR_KEY'))
+  if (connectionString == null && emulatorKey != null) {
+    connectionString = "Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=${emulatorKey};UseDevelopmentEmulator=true;"
+  }
+  if (connectionString != null) {
+    args.add("-Dgatling.connectionString=${connectionString}")
+  }
+  // A namespace explicitly selects Entra auth in the factory and takes precedence over any
+  // connection string.
+  if (System.getProperty('gatling.asbNamespace') != null) {
+    args.add("-Dgatling.asbNamespace=${System.getProperty('gatling.asbNamespace')}")
+  }
+  if (System.getProperty('gatling.redisUri') != null) {
+    args.add("-Dgatling.redisUri=${System.getProperty('gatling.redisUri')}")
+  }
+  if (System.getProperty('gatling.redisHitPercent') != null) {
+    args.add("-Dgatling.redisHitPercent=${System.getProperty('gatling.redisHitPercent')}")
+  }
+  jvmArgs = args
+}
+
+tasks.matching { it.name == 'pmdGatling' }.configureEach {
+  enabled = false
+}
+tasks.matching { it.name == 'checkstyleGatling' }.configureEach {
+  enabled = false
 }

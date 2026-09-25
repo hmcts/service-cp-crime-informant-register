@@ -1,0 +1,83 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/results-query-api/query/api/rest/results/hearingDetails/internal/.*"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/vnd.results.hearing-details-internal+json"
+    },
+    "transformers": ["response-template"],
+    "jsonBody": {
+      "hearing": {
+        "id": "{{regexExtract request.url '[0-9a-fA-F-]+$'}}",
+        "courtCentre": {},
+        "hearingDays": [],
+        "prosecutionCases": [
+          {
+            "id": "perf-case-001",
+            "prosecutionCaseIdentifier": {
+              "prosecutionAuthorityId": "31af405e-7b60-4dd8-a244-c24c2d3fa595",
+              "prosecutionAuthorityCode": "TFL",
+              "prosecutionAuthorityOUCode": "GAFTL00"
+            },
+            "defendants": [
+              {
+                "id": "perf-def-001",
+                "masterDefendantId": "perf-def-001",
+                "offences": [
+                  {
+                    "id": "perf-off-001",
+                    "offenceTitle": "Public service vehicle offence",
+                    "judicialResults": [
+                      {
+                        "isAvailableForCourtExtract": true,
+                        "orderedDate": "2026-09-01",
+                        "label": "Fine",
+                        "isAdjournmentResult": false,
+                        "isFinancialResult": true,
+                        "isConvictedResult": false
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "perf-case-002",
+            "prosecutionCaseIdentifier": {
+              "prosecutionAuthorityId": "5d1f8a3e-6c0b-4f7e-9a2d-3b8c1e4f7a90",
+              "prosecutionAuthorityCode": "DVLA",
+              "prosecutionAuthorityOUCode": "GAFTL01"
+            },
+            "defendants": [
+              {
+                "id": "perf-def-002",
+                "masterDefendantId": "perf-def-002",
+                "offences": [
+                  {
+                    "id": "perf-off-002",
+                    "offenceTitle": "Keeping an unlicensed vehicle",
+                    "judicialResults": [
+                      {
+                        "isAvailableForCourtExtract": true,
+                        "orderedDate": "2026-09-01",
+                        "label": "Fine",
+                        "isAdjournmentResult": false,
+                        "isFinancialResult": true,
+                        "isConvictedResult": false
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sharedTime": "2026-09-01T12:00:00Z"
+    }
+  }
+}
