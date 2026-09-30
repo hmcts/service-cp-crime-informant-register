@@ -5,7 +5,7 @@ plugins {
   id 'io.spring.dependency-management' version '1.1.7'
   id 'jacoco'
   id 'maven-publish'
-  id 'com.github.ben-manes.versions' version '0.62.0'
+  id 'com.github.ben-manes.versions' version '0.63.1'
   id 'org.cyclonedx.bom' version '3.4.1'
   id 'com.gorylenko.gradle-git-properties' version '4.0.1'
 }
@@ -99,5 +99,5 @@ dependencies {
 
   // Security: pin transitive tomcat-embed-core to patched version (CVE-2026-41293, -43512, et al.)
   // Brought in transitively via spring-boot-starter-web; >=11.0.0-M1,<11.0.22 are vulnerable
-  implementation 'org.apache.tomcat.embed:tomcat-embed-core:11.0.25'
+  implementation 'org.apache.tomcat.embed:tomcat-embed-core:11.0.26'
 }
