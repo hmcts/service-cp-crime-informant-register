@@ -54,7 +54,7 @@ Consequences to respect:
 - Enabling or disabling a hook is a config change to `git-config.yml` — report it, don't do it silently.
 
 ### Hygiene
-- `.claude/settings.local.json`, `.claude/projects/`, `.claude/todos/`, `.claude/shell-snapshots/`, `.claude/worktrees/` are gitignored and must stay that way. The **team-shared** `.claude/agents/`, `.claude/rules/`, `.claude/skills/` **are** tracked.
+- The local-only entries under `.claude/` (the per-user settings file, `projects/`, `todos/`, `shell-snapshots/`, `worktrees/`) are gitignored, as `.gitignore` lists them, and must stay that way. The **team-shared** `.claude/agents/`, `.claude/rules/`, `.claude/skills/` **are** tracked.
 - Never commit `.env`, credentials, kubeconfigs, connection strings or Service Bus SAS keys.
 - Gradle wrapper stays committed (`gradlew`, `gradle/wrapper/*`) despite the broad `gradle` gitignore entry — check the `!gradle/` exceptions survive any `.gitignore` edit.
 

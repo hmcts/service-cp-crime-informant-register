@@ -1,0 +1,6 @@
+# False positives: the estate's `internal-urls` rule matches one `.gitignore` entry, the path of a
+# local-only tool settings file whose name carries a `.local.` infix, and the gitops agent note that
+# quoted the same path. A fingerprint is bound to its commit, so these cover only those lines in
+# history; new findings are not silenced by this file.
+a04894e1e4d6d6e13526d3445090bdd7f049f066:.gitignore:internal-urls:38
+34861398a7a7580a1c42aaed1d9b766530d88f10:.claude/agents/gitops.md:internal-urls:57
