@@ -23,6 +23,12 @@ apply {
   from("$rootDir/gradle/jar.gradle")
 }
 
+// CVE-2026-68497 (jackson-databind, unbounded numeric parsing), then CVE-2026-89407, -89425,
+// -91776 and -91777 (fixed in 3.1.7 / 2.21.7): Spring Boot 4.1.1 manages 3.1.5 and 2.21.5, and
+// the image scan refuses those. Remove once a Boot release manages these versions or later.
+ext['jackson-bom.version'] = '3.1.7'
+ext['jackson-2-bom.version'] = '2.21.7'
+
 // We MUST keep all dependencies in the build.gradle to allow dependabot to provide version updates
 // Sadly, dependabot does not track dependencies in the apply-from files
 dependencies {
