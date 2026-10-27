@@ -5,7 +5,7 @@ plugins {
   id 'io.spring.dependency-management' version '1.1.7'
   id 'jacoco'
   id 'maven-publish'
-  id 'com.github.ben-manes.versions' version '0.65.0'
+  id 'com.github.ben-manes.versions' version '0.66.0'
   id 'org.cyclonedx.bom' version '3.5.1'
   id 'com.gorylenko.gradle-git-properties' version '4.0.1'
 }
@@ -58,7 +58,7 @@ dependencies {
   // --- Messaging: Azure Service Bus consumer with explicit settlement ---
   // Spring Boot's BOM does not manage com.azure:*, so the vendor BOM supplies those versions and no
   // com.azure artefact is ever pinned individually.
-  implementation platform('com.azure:azure-sdk-bom:1.3.8')
+  implementation platform('com.azure:azure-sdk-bom:1.3.9')
   implementation 'com.azure:azure-messaging-servicebus'
   implementation 'com.azure:azure-identity'
 
@@ -105,5 +105,5 @@ dependencies {
 
   // Security: pin transitive tomcat-embed-core to patched version (CVE-2026-41293, -43512, et al.)
   // Brought in transitively via spring-boot-starter-web; >=11.0.0-M1,<11.0.22 are vulnerable
-  implementation 'org.apache.tomcat.embed:tomcat-embed-core:11.0.26'
+  implementation 'org.apache.tomcat.embed:tomcat-embed-core:11.0.27'
 }
