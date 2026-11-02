@@ -50,7 +50,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * asserted as the refusal the register records, not as the legacy's documents.
  *
  * <p>A seventh difference runs underneath {@link #matchesTheRecording}, on whichever of these cases
- * has a sitting day: {@code hearingStartTime} is now the London wall clock with London's true offset
+ * has a sitting day: {@code hearingStartTime} is now the London date-time with London's true offset
  * ({@code doc/DEVIATIONS.md} entry 15), while the goldens keep the oracle's D9 rendering. The
  * comparator reconciles the two by deriving the required value from the golden rather than by
  * ignoring the component — see {@code RegisteredFieldDeviations}. Note that the {@code d09} pin
