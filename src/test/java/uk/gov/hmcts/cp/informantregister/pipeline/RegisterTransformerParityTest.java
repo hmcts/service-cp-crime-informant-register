@@ -61,8 +61,8 @@ import static org.assertj.core.api.Assertions.fail;
  * <p><strong>One component is compared by derivation rather than by equality.</strong> The recorded
  * {@code expected.json} files are the oracle's truth and are never regenerated or edited, so their
  * {@code hearingStartTime} still carries the legacy's D9 rendering — a London wall-clock date-time
- * labelled {@code Z}. {@code doc/DEVIATIONS.md} entry 15 replaced that with the same wall clock
- * carrying London's true offset, so the comparator re-reads the wall clock out of the golden's own
+ * labelled {@code Z}. {@code doc/DEVIATIONS.md} entry 15 replaced that with the same date-time
+ * carrying London's true offset, so the comparator re-reads the date-time out of the golden's own
  * value, asks the {@code Europe/London} rules for the offset on that date, and requires exactly
  * that. Nothing is excluded and the check is no weaker: {@code JsonParityTest} pins what it rejects.
  *
