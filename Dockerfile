@@ -5,8 +5,10 @@
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE:-eclipse-temurin:25-jre}
 
-# install curl for debugging
+# apply pending OS security updates (the base image can lag behind Ubuntu's fixes, which the
+# Trivy gate in ci-build-publish.yml fails on), then install curl for debugging
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y curl \
     && rm -rf /var/lib/apt/lists/*
 
