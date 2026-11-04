@@ -77,16 +77,6 @@ class StoreOutageIT {
     /** Long enough that a service which had ignored the outage would have consumed by now. */
     private static final Duration LEFT_ALONE_FOR = Duration.ofSeconds(8);
 
-    /**
-     * How long a message handed back during the outage may take to be processed after resume: one
-     * full lock duration, plus margin.
-     *
-     * <p>The hand-back races intake being stopped and can be lost, leaving the message locked until
-     * the queue's {@code LockDuration} ({@code PT5M}) expires — nothing lost, no budget spent, just
-     * a wait. See {@code ProlongedStoreOutageIT.PROCESSED_AFTER_RESUME_WITHIN} for the evidence.
-     */
-    private static final Duration PROCESSED_AFTER_RESUME_WITHIN = Duration.ofMinutes(7);
-
     private final UUID requestId = UUID.randomUUID();
     private final UUID hearingId = UUID.randomUUID();
 
@@ -165,7 +155,7 @@ class StoreOutageIT {
 
             PostgresTestSupport.unpause();
 
-            await().atMost(PROCESSED_AFTER_RESUME_WITHIN).pollInterval(POLL).until(() ->
+            await().atMost(OBSERVED_WITHIN).pollInterval(POLL).until(() ->
                     row().filter(found -> RequestStatus.COMPLETED.name().equals(found.status()))
                             .isPresent());
             assertThat(gauge(registry, ProcessingMetrics.INTAKE_SUSPENDED))
@@ -203,7 +193,7 @@ class StoreOutageIT {
 
             PostgresTestSupport.unpause();
 
-            await().atMost(PROCESSED_AFTER_RESUME_WITHIN).pollInterval(POLL)
+            await().atMost(OBSERVED_WITHIN).pollInterval(POLL)
                     .until(() -> onDeadLetterQueue(messageId).isPresent());
             final ServiceBusReceivedMessage parked = onDeadLetterQueue(messageId).orElseThrow();
             assertThat(parked.getDeadLetterReason())
