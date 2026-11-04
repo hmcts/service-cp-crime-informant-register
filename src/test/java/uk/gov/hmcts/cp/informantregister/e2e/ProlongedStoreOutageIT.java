@@ -57,23 +57,6 @@ class ProlongedStoreOutageIT {
     private static final Duration OUTAGE = Duration.ofSeconds(30);
 
     /**
-     * How long processing on resume may take: one full lock duration, plus margin.
-     *
-     * <p>The delivery that discovered the outage is handed back while intake is being stopped, and
-     * that hand-back can be lost: the SDK reports the abandon as accepted, but the link it went out
-     * on is torn down before the broker applies it. Observed by peeking the queue after a failed
-     * run — the message ACTIVE, delivery count 1, locked until exactly its first delivery plus the
-     * queue's {@code LockDuration}. Nothing is lost and no budget is spent; the lock expiring is what
-     * returns the message, so a resume can wait out the rest of it. {@code LockDuration} is
-     * {@code PT5M} in {@code docker/servicebus-emulator/config.json}, matching the deployed queue.
-     *
-     * <p>Handing back before stopping is not the fix: the abandoned message comes straight back to
-     * the processor that is still running and spends a second delivery, which is what this suite's
-     * first assertion exists to forbid.
-     */
-    private static final Duration PROCESSED_AFTER_RESUME_WITHIN = Duration.ofMinutes(7);
-
-    /**
      * The one delivery an outage is allowed to cost: the one that discovered it and was handed
      * back. Spec FR-015 requires that delivery to be returned; suspension is what stops the other
      * four being spent behind it.
@@ -137,7 +120,7 @@ class ProlongedStoreOutageIT {
 
             PostgresTestSupport.unpause();
 
-            await().atMost(PROCESSED_AFTER_RESUME_WITHIN).pollInterval(POLL).until(() ->
+            await().atMost(OBSERVED_WITHIN).pollInterval(POLL).until(() ->
                     row().filter(found -> RequestStatus.COMPLETED.name().equals(found.status()))
                             .isPresent());
 
