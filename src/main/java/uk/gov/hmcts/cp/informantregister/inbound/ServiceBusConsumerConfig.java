@@ -65,6 +65,20 @@ public class ServiceBusConsumerConfig {
             .setTryTimeout(Duration.ofSeconds(30));
 
     /**
+     * How long {@code stop()} waits for in-flight handlers before tearing the receiver down: as
+     * near to not at all as the SDK allows.
+     *
+     * <p>From azure-messaging-servicebus 7.18.0 the processor drains in-flight handlers before it
+     * disposes the receiver, for up to thirty seconds by default, keeping the link live meanwhile.
+     * Intake is suspended from inside the handler that discovered a store outage, so during that
+     * window the delivery it hands back can return to the still-open receiver and spend a second
+     * delivery, which is what suspension exists to prevent. The SDK rejects zero, so one
+     * millisecond restores the teardown the suspension design and {@code ProlongedStoreOutageIT}
+     * were built on: the receiver goes at once, and the lock expiring is what returns the message.
+     */
+    private static final Duration NO_HANDLER_DRAIN = Duration.ofMillis(1);
+
+    /**
      * The broker's own health component — deliberately not in the readiness group.
      *
      * <p>Named so that Spring's contributor naming yields {@code servicebus}: the component name is
@@ -140,6 +154,7 @@ public class ServiceBusConsumerConfig {
                 .maxConcurrentCalls(settings.maxConcurrentCalls())
                 .maxAutoLockRenewDuration(settings.maxAutoLockRenewDuration())
                 .disableAutoComplete()
+                .drainTimeout(NO_HANDLER_DRAIN)
                 .processMessage(delivery -> handle(delivery, listener, health))
                 .processError(error -> reportProcessorError(error, health))
                 .buildProcessorClient();
