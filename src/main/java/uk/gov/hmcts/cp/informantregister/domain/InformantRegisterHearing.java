@@ -17,14 +17,18 @@ import java.util.List;
  * shapes, and for as long as the port reproduced the function app it filled this component with one
  * the declared format refuses.
  *
- * <p>That is settled as of 2026-08-23: the pipeline renders the London wall clock with London's true
- * offset on the day, so the value written here is a {@code full-time} and satisfies the schema.
- * {@code doc/DEVIATIONS.md} entry 15, and {@code CourtSessionMapper} is where it is produced. The
- * component stays a {@code String} — retyping it would be a change to a frozen, results-owned
- * contract rather than a change to what this service renders into it.
+ * <p>The function app's shape is the one that matters: Results stores the body as sent, the CPPI
+ * API ({@code results.prosecutor-results}) returns it, and its consumers read the hearing date out
+ * of this component. So the pipeline keeps the full date-time and corrects only the offset — the
+ * London wall clock with London's true offset on the day ({@code doc/DEVIATIONS.md} entry 15,
+ * produced by {@code CourtSessionMapper}). Like the function app's, that value does not satisfy the
+ * declared {@code format: time}. The component stays a {@code String} — retyping it would be a
+ * change to a frozen, results-owned contract rather than a change to what this service renders
+ * into it.
  *
  * @param courtRoom        the room the session sat in; required by the schema
- * @param hearingStartTime the session's start time as an RFC 3339 full-time; required by the schema
+ * @param hearingStartTime the session's start as a London date-time with its true offset;
+ *                         required by the schema
  * @param defendants       the defendants heard in the session; required by the schema
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)

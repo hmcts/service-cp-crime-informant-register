@@ -30,10 +30,10 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * so do the parity goldens. It is not corrected here; a correction is a change to what prosecuting
  * authorities ingest and belongs on the deviations register with business sign-off, not in a port.
  *
- * <p><strong>One component has that sign-off.</strong> {@link #localFullTime} renders the London
- * wall clock with London's true offset instead, and it is used by exactly one call site — the
- * {@code hearingStartTime} of the outbound document ({@code CourtSessionMapper}). That is
- * {@code doc/DEVIATIONS.md} entry 15, a project-owner decision of 2026-08-23, and its scope is that
+ * <p><strong>One component has that sign-off.</strong> {@link #localOffsetDateTime} renders the
+ * same London date-time with London's true offset in place of the literal {@code Z}, and it is used
+ * by exactly one call site — the {@code hearingStartTime} of the outbound document
+ * ({@code CourtSessionMapper}). That is {@code doc/DEVIATIONS.md} entry 15, and its scope is that
  * component alone. {@code registerDate}, {@code hearingDate} and every duration date still go out
  * through {@link #localDateTime} and {@link #formattedLocalDateTime} in the legacy's shape.
  *
@@ -77,15 +77,15 @@ public final class HearingDates {
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
     /**
-     * RFC 3339 {@code full-time}: a time of day with its offset, seconds always written.
+     * The legacy's date-time shape with a real offset in place of the literal {@code Z}.
      *
-     * <p>{@code XXX} is java.time's own offset rendering — the one {@code OffsetTime#toString()} and
-     * {@code DateTimeFormatter#ISO_OFFSET_TIME} produce — which writes a zero offset as the single
-     * character {@code Z}. The seconds are spelt out because {@code ISO_OFFSET_TIME} drops them when
-     * they are zero and RFC 3339 does not allow that. See {@link #localFullTime}.
+     * <p>{@code XXX} is java.time's own offset rendering — the one {@code OffsetDateTime#toString()}
+     * produces — which writes a zero offset as the single character {@code Z}, so a GMT value is
+     * byte-identical to the legacy's. The seconds are spelt out because {@code toString()} drops them
+     * when they are zero and the legacy never does. See {@link #localOffsetDateTime}.
      */
-    private static final DateTimeFormatter FULL_TIME =
-            DateTimeFormatter.ofPattern("HH:mm:ssXXX");
+    private static final DateTimeFormatter OFFSET_DATE_TIME =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
 
     /**
      * The leading year, month and day of a date-ish string, whatever separates them.
@@ -159,13 +159,12 @@ public final class HearingDates {
     }
 
     /**
-     * The London wall-clock time of day of the given value, carrying London's true offset.
+     * The London wall-clock date-time of the given value, carrying London's true offset.
      *
      * <p><strong>This is the one sanctioned departure from the legacy rendering</strong>, and it is
      * confined to the {@code hearingStartTime} component of the outbound document —
-     * {@code doc/DEVIATIONS.md} entry 15, decided by the project owner on 2026-08-23. Everything
-     * else this class renders, {@code registerDate} and {@code hearingDate} included, still goes out
-     * in D9's shape through {@link #localDateTime}.
+     * {@code doc/DEVIATIONS.md} entry 15. Everything else this class renders, {@code registerDate}
+     * and {@code hearingDate} included, still goes out in D9's shape through {@link #localDateTime}.
      *
      * <p><strong>The parse is untouched.</strong> This method resolves its value through exactly the
      * same {@link #toLondon} that {@link #localDateTime} uses, so every quirk of how the legacy reads
@@ -174,21 +173,12 @@ public final class HearingDates {
      *
      * <p><strong>What differs, and why.</strong> The legacy formats the resolved London time as
      * {@code YYYY-MM-DDTHH:mm:ss} and appends the character {@code Z}, which half the year labels a
-     * British Summer Time reading as if it were UTC and which is, in either season, a date-time in a
-     * component the contract types as a {@code time}
-     * ({@code informantRegisterHearing.json}: {@code "hearingStartTime": {"type": "string",
-     * "format": "time"}}). This renders the same wall clock — the digits are unchanged, which is the
-     * "visually correct" half — as an RFC 3339 {@code full-time} whose offset is read from the
-     * {@code Europe/London} rules on that date, which is the "semantically correct" half and the
-     * first rendering of this component the declared format accepts.
-     *
-     * <p><strong>The offset is java.time's own.</strong> {@link #FULL_TIME}'s {@code XXX} is the
-     * offset pattern {@code OffsetTime#toString()} and {@code DateTimeFormatter#ISO_OFFSET_TIME}
-     * use, so a zero offset comes out as the single character {@code Z} rather than as
-     * {@code +00:00} — a January sitting renders {@code 09:30:00Z} and a June one
-     * {@code 09:30:00+01:00}. Both are RFC 3339 full-times; this is the one java.time emits, and it
-     * is not hand-rolled. The seconds are the one thing forced: {@code ISO_OFFSET_TIME} elides a
-     * zero seconds field ({@code 09:30Z}) and RFC 3339 {@code full-time} requires it.
+     * British Summer Time reading as if it were UTC. This renders the same date and wall clock — the
+     * digits are unchanged, and the date is kept because it is the only hearing date the CPPI API
+     * ({@code results.prosecutor-results}) returns to its consumers — with the offset read from the
+     * {@code Europe/London} rules on that date. A 12:00 sitting is {@code 2026-10-23T12:00:00+01:00}
+     * in British Summer Time and {@code 2026-10-26T12:00:00Z} in GMT, the latter byte-identical to
+     * the legacy.
      *
      * <p><strong>An unreadable value is unchanged.</strong> It still renders the literal
      * {@code "Invalid dateZ"} that {@code moment} produces, appended {@code Z} and all. The decision
@@ -196,14 +186,14 @@ public final class HearingDates {
      * deviations-register entry 13's territory and is not quietly changed on the way past.
      *
      * @param value an instant, a local date-time, or a bare day; may be {@code null}
-     * @return the London time of day with its true offset, or the literal {@code "Invalid dateZ"}
+     * @return the London date-time with its true offset, or the literal {@code "Invalid dateZ"}
      */
-    public String localFullTime(final String value) {
+    public String localOffsetDateTime(final String value) {
         final ZonedDateTime resolved = toLondon(value);
         if (resolved == null) {
             return INVALID_DATE + "Z";
         }
-        return resolved.toOffsetDateTime().toOffsetTime().format(FULL_TIME);
+        return resolved.format(OFFSET_DATE_TIME);
     }
 
     /**

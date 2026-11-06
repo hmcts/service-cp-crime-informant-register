@@ -60,9 +60,10 @@ class InformantRegisterDocumentTest {
      * A {@code hearingStartTime} in the shape {@code informantRegisterHearing.json} declares —
      * RFC 3339 {@code full-time}, which is a time with an offset.
      *
-     * <p>Since {@code doc/DEVIATIONS.md} entry 15 this is also the shape the pipeline renders, so
-     * the documents below are built from what the service actually sends rather than from a shape
-     * only the schema wanted.
+     * <p>It is <em>not</em> the shape the pipeline renders: neither the function app nor this port
+     * sends a bare time (see {@link #RENDERED_FORM_HEARING_START_TIME}). The bracketing documents
+     * below use it so that every other component is validated against a body the schema accepts
+     * whole; the rendered form is held to the schema separately, in {@link OpenQuestions}.
      */
     private static final String CONTRACT_FORM_HEARING_START_TIME = "10:00:00Z";
 
@@ -76,6 +77,14 @@ class InformantRegisterDocumentTest {
      * Mapper/CourtSessionMapper.js} and {@code NowsHelper/service/DateService.js} in the function app.
      */
     private static final String PARITY_FORM_HEARING_START_TIME = "2020-06-19T10:08:03Z";
+
+    /**
+     * A {@code hearingStartTime} in the shape this port renders — {@code doc/DEVIATIONS.md} entry 15.
+     *
+     * <p>The function app's date and wall clock, carrying London's true offset in place of its
+     * literal {@code Z}: the same summer sitting as {@link #PARITY_FORM_HEARING_START_TIME}.
+     */
+    private static final String RENDERED_FORM_HEARING_START_TIME = "2020-06-19T10:08:03+01:00";
 
     // --- documents -------------------------------------------------------------------------
 
@@ -305,37 +314,48 @@ class InformantRegisterDocumentTest {
     class OpenQuestions {
 
         @Test
-        @DisplayName("hearingStartTime as this port now renders it satisfies the declared format")
-        void the_rendered_form_of_hearing_start_time_should_satisfy_the_declared_format() {
-            // DECIDED, 2026-08-23, and this is the assertion that records it. The schema declares
-            // format: time, so an RFC 3339 full-time — a time of day with an offset. The function
-            // app renders a full date-time labelled Z (D9) and every example body in the results
-            // repository carries a bare date; neither is a full-time, so for as long as the port
-            // reproduced the function app it POSTed a component the schema refuses.
+        @DisplayName("hearingStartTime as this port renders it is refused by the declared format")
+        void the_rendered_form_of_hearing_start_time_should_be_refused_by_the_declared_format() {
+            // The schema declares format: time, an RFC 3339 full-time. Nothing has ever sent one:
+            // the function app sends a full date-time labelled Z (D9), Results accepts it, stores
+            // it, and the CPPI API (results.prosecutor-results) serves it to consumers who read the
+            // hearing date out of it — it is the only hearing date in that response. A time-only
+            // rendering satisfied the schema and broke those consumers, so doc/DEVIATIONS.md entry 15
+            // keeps the legacy's date-time shape and corrects only its offset.
             //
-            // doc/DEVIATIONS.md entry 15 ends that: the sitting day is rendered as the London wall
-            // clock with London's true offset on the day, which is the first rendering of this
-            // component that the declared format accepts. Both seasons are asserted, because a
-            // schema that accepted one offset and not the other would leave half the year invalid.
+            // That leaves this component in the same relation to the declared format as the legacy:
+            // refused by a validator that enforces format, accepted by the consumer that receives it.
+            // Pinned here so that the gap stays visible rather than being mistaken for compliance.
+            // Both seasons, because the winter rendering is byte-identical to the legacy's.
             final InformantRegisterDocument document = minimal();
-            assertThat(violations(serialised(withHearingStartTime(document, "14:30:00+01:00"))))
-                    .isEmpty();
-            assertThat(violations(serialised(withHearingStartTime(document, "14:30:00Z"))))
-                    .isEmpty();
+            assertThat(violations(serialised(
+                    withHearingStartTime(document, RENDERED_FORM_HEARING_START_TIME))))
+                    .anySatisfy(violation -> assertThat(violation).contains("hearingStartTime"));
+            assertThat(violations(serialised(
+                    withHearingStartTime(document, "2020-01-20T10:00:00Z"))))
+                    .anySatisfy(violation -> assertThat(violation).contains("hearingStartTime"));
         }
 
         @Test
         @DisplayName("hearingStartTime as the function app renders it is refused by the declared format")
         void the_parity_form_of_hearing_start_time_should_be_refused_by_the_declared_format() {
-            // The negative control that keeps the case above honest, and the reason the deviation
-            // was worth taking: the shape the port used to emit does not satisfy the schema the
-            // consumer publishes. Left asserting the refusal so that a port which quietly reverted
-            // to the function app's rendering is caught here as well as in the parity harness.
+            // The legacy's own rendering, refused for the same reason: the declared format has
+            // never matched what this component carries on the wire.
             final InformantRegisterDocument asTheFunctionAppRendersIt =
                     withHearingStartTime(minimal(), PARITY_FORM_HEARING_START_TIME);
 
             assertThat(violations(serialised(asTheFunctionAppRendersIt)))
                     .anySatisfy(violation -> assertThat(violation).contains("hearingStartTime"));
+        }
+
+        @Test
+        @DisplayName("a bare time satisfies the declared format, so the refusals above are live")
+        void the_contract_form_of_hearing_start_time_should_satisfy_the_declared_format() {
+            // The control: without it, a schema that refused every string would make the two
+            // refusals above pass for the wrong reason.
+            assertThat(violations(serialised(
+                    withHearingStartTime(minimal(), CONTRACT_FORM_HEARING_START_TIME))))
+                    .isEmpty();
         }
 
         @Test

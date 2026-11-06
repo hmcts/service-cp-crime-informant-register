@@ -58,6 +58,13 @@ Anything that changes register **content** must also have an entry in
   back, and how much of its budget has the outage eaten" is exactly what an outage raises.
 
 ### Fixed
+- 2026-11-02 — **`hearingStartTime` is a full date-time again, with London's true offset.** The
+  court session's start had been sent as a time of day only (`12:00:00+01:00`), which removed the
+  only hearing date the CPPI API (`results.prosecutor-results`) returns from the stored
+  `add-informant-register` payload and would break consumers integrated against the legacy shape
+  (`2026-10-23T12:00:00Z`). It is now the legacy's London date-time with the real offset in place
+  of the literal `Z`: `2026-10-23T12:00:00+01:00` in BST, `2026-10-26T10:00:00Z` in GMT. Amends
+  [DEVIATIONS.md](DEVIATIONS.md) entry 15.
 - 2026-09-08 — **The last three hand-backs no longer end as broker-reasoned dead-letters.** Service
   Bus makes an abandoned message available again immediately with no back-off, so a hand-back that
   keeps recurring spends the whole delivery budget back-to-back and the broker parks the message
