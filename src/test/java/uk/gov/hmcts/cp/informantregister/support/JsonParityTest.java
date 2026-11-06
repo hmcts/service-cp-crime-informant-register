@@ -107,7 +107,7 @@ class JsonParityTest {
      *
      * <p>{@code doc/DEVIATIONS.md} entry 15 changed how {@code hearingStartTime} is rendered, and the
      * recorded golden files still carry the Node oracle's rendering — they are the oracle's truth and
-     * are never edited. So the comparator <em>derives</em>: it re-reads the golden's own wall clock,
+     * are never edited. So the comparator <em>derives</em>: it re-reads the golden's own date and wall clock,
      * asks the {@code Europe/London} rules what the offset was on that date, and requires the port to
      * have written exactly that. It is a stricter check than equality on everything except the label,
      * and it is emphatically not an exemption — which is what the rejections below exist to prove.
@@ -117,19 +117,21 @@ class JsonParityTest {
     class RegisteredFieldDeviation {
 
         @Test
-        @DisplayName("accepts the golden's own wall clock re-rendered with the summer offset")
+        @DisplayName("accepts the golden's own date and wall clock re-rendered with the summer offset")
         void accepts_the_derived_summer_rendering() {
             assertMatches(
                     "{\"hearingStartTime\":\"2021-09-29T11:00:00Z\"}",
-                    "{\"hearingStartTime\":\"11:00:00+01:00\"}");
+                    "{\"hearingStartTime\":\"2021-09-29T11:00:00+01:00\"}");
         }
 
         @Test
-        @DisplayName("accepts the golden's own wall clock re-rendered with the winter zero offset")
+        @DisplayName("accepts the golden's own date and wall clock with the winter zero offset")
         void accepts_the_derived_winter_rendering() {
+            // In GMT the legacy's literal Z happens to be the truth, so the derivation is the
+            // identity and the port writes exactly what the oracle recorded.
             assertMatches(
                     "{\"hearingStartTime\":\"2021-03-11T00:00:00Z\"}",
-                    "{\"hearingStartTime\":\"00:00:00Z\"}");
+                    "{\"hearingStartTime\":\"2021-03-11T00:00:00Z\"}");
         }
 
         @Test
@@ -139,7 +141,7 @@ class JsonParityTest {
             // and a hard-coded "+01:00" in the renderer would ship every winter hearing an hour out.
             assertDiffers(
                     "{\"hearingStartTime\":\"2021-03-11T00:00:00Z\"}",
-                    "{\"hearingStartTime\":\"00:00:00+01:00\"}",
+                    "{\"hearingStartTime\":\"2021-03-11T00:00:00+01:00\"}",
                     "/hearingStartTime");
         }
 
@@ -151,16 +153,25 @@ class JsonParityTest {
             // still a change to what an authority receives.
             assertDiffers(
                     "{\"hearingStartTime\":\"2021-09-29T11:00:00Z\"}",
-                    "{\"hearingStartTime\":\"10:00:00Z\"}",
+                    "{\"hearingStartTime\":\"2021-09-29T10:00:00Z\"}",
                     "/hearingStartTime");
         }
 
         @Test
-        @DisplayName("rejects the legacy rendering itself, so a silent revert cannot pass")
+        @DisplayName("rejects the legacy summer rendering itself, so a silent revert cannot pass")
         void rejects_the_legacy_rendering_itself() {
             assertDiffers(
                     "{\"hearingStartTime\":\"2021-09-29T11:00:00Z\"}",
                     "{\"hearingStartTime\":\"2021-09-29T11:00:00Z\"}",
+                    "/hearingStartTime");
+        }
+
+        @Test
+        @DisplayName("rejects a time of day without its date, which drops the CPPI hearing date")
+        void rejects_a_time_of_day_without_its_date() {
+            assertDiffers(
+                    "{\"hearingStartTime\":\"2021-09-29T11:00:00Z\"}",
+                    "{\"hearingStartTime\":\"11:00:00+01:00\"}",
                     "/hearingStartTime");
         }
 
@@ -181,7 +192,7 @@ class JsonParityTest {
                     "{\"hearingStartTime\":\"Invalid dateZ\"}");
             assertDiffers(
                     "{\"hearingStartTime\":\"Invalid dateZ\"}",
-                    "{\"hearingStartTime\":\"00:00:00Z\"}",
+                    "{\"hearingStartTime\":\"2021-03-11T00:00:00Z\"}",
                     "/hearingStartTime");
         }
 
@@ -190,7 +201,7 @@ class JsonParityTest {
         void names_the_deviation_in_the_failure() {
             assertDiffers(
                     "{\"hearingStartTime\":\"2021-03-11T00:00:00Z\"}",
-                    "{\"hearingStartTime\":\"00:00:00+01:00\"}",
+                    "{\"hearingStartTime\":\"2021-03-11T00:00:00+01:00\"}",
                     "DEVIATIONS.md entry 15");
         }
 

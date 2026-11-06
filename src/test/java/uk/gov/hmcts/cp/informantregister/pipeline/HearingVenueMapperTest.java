@@ -28,10 +28,9 @@ import uk.gov.hmcts.cp.informantregister.domain.TransformationFailedException;
  * <p>The fourth session twin is the one that matters most. It carries the rendering of
  * {@code hearingStartTime}, and that rendering is the <strong>one sanctioned departure</strong> from
  * the legacy in this mapper: {@code doc/DEVIATIONS.md} entry 15 replaces D9's
- * London-wall-clock-date-time-labelled-{@code Z} with London wall-clock time of day carrying
- * London's true offset — RFC 3339 {@code full-time}, which is what
- * {@code informantRegisterHearing.json} declares the component to be ({@code "format": "time"}).
- * The exact string is still what is asserted, for the reason the parity pack gives: comparing
+ * London-wall-clock-date-time-labelled-{@code Z} with the same London date and wall clock carrying
+ * London's true offset — a full date-time, as the legacy sends and CPPI consumers read, with an
+ * offset that is no longer a lie in British Summer Time. The exact string is still what is asserted, for the reason the parity pack gives: comparing
  * instants would pass for every rendering and pin nothing.
  *
  * <p>Note the boundary. Entry 15 covers this component and nothing else — the {@code registerDate}
@@ -117,9 +116,9 @@ class HearingVenueMapperTest {
 
             // The Jest case computes its expectation the same way the code does, and asserts
             // "2020-06-19T10:08:03Z" — London wall-clock time, an hour on from the instant in
-            // British Summer Time, labelled Z regardless. Deviation 15 keeps the wall clock the
-            // Jest case names and replaces the misleading label with London's real offset.
-            assertThat(session(hearing).hearingStartTime()).isEqualTo("10:08:03+01:00");
+            // British Summer Time, labelled Z regardless. Deviation 15 keeps the date and wall clock
+            // the Jest case names and replaces the misleading label with London's real offset.
+            assertThat(session(hearing).hearingStartTime()).isEqualTo("2020-06-19T10:08:03+01:00");
         }
     }
 
@@ -132,25 +131,25 @@ class HearingVenueMapperTest {
          *
          * <p>Asserted as an exact string, and asserted <em>negatively</em> against all three of the
          * shapes somebody could reach for instead: the legacy's D9 string, the instant re-rendered
-         * as UTC, and the full date-time with the correct offset. Comparing parsed times would pass
-         * for every one of them.
+         * as UTC, and the time of day alone, which drops the only hearing date in the CPPI
+         * response. Comparing parsed times would pass for most of them.
          *
-         * <p>The wall clock is unchanged from what the legacy renders — 10:08:03, not the 09:08:03
-         * of the instant. That is the "visually correct" half of the decision: the digits are the
-         * ones a clerk read off the courtroom clock, exactly as before. What changed is the label.
+         * <p>The date and wall clock are unchanged from what the legacy renders — 10:08:03, not the
+         * 09:08:03 of the instant. The digits are the ones a clerk read off the courtroom clock,
+         * exactly as before. What changed is the label.
          */
         @Test
-        @DisplayName("deviation 15 — a summer sitting day keeps its wall clock and gains +01:00")
+        @DisplayName("deviation 15 — a summer sitting day keeps its date and wall clock, gains +01:00")
         void a_summer_sitting_day_is_london_local_with_the_true_offset() {
             final ObjectNode hearing = ModelObjects.hearing();
             hearing.set("hearingDays", ModelObjects.array(
                     ModelObjects.hearingDay("2020-06-19T09:08:03.001Z", "13:00:00")));
 
             assertThat(session(hearing).hearingStartTime())
-                    .isEqualTo("10:08:03+01:00")
+                    .isEqualTo("2020-06-19T10:08:03+01:00")
                     .isNotEqualTo("2020-06-19T10:08:03Z")
                     .isNotEqualTo("2020-06-19T09:08:03Z")
-                    .isNotEqualTo("2020-06-19T10:08:03+01:00");
+                    .isNotEqualTo("10:08:03+01:00");
         }
 
         /**
@@ -167,8 +166,8 @@ class HearingVenueMapperTest {
                     ModelObjects.hearingDay("2020-01-20T10:00:00.000Z", "10:00:00")));
 
             assertThat(session(hearing).hearingStartTime())
-                    .isEqualTo("10:00:00Z")
-                    .isNotEqualTo("10:00:00+01:00");
+                    .isEqualTo("2020-01-20T10:00:00Z")
+                    .isNotEqualTo("2020-01-20T10:00:00+01:00");
         }
 
         /**
@@ -177,9 +176,7 @@ class HearingVenueMapperTest {
          * order, so nothing there distinguishes the two readings; a hearing whose days arrive out of
          * order does. Sorting them would be a correction, not a port.
          *
-         * <p>Since deviation 15 the rendering no longer carries the date, so the two days are told
-         * apart by their times instead — 10:00:00 against 10:08:03. Both assertions are kept for
-         * that reason: the negative one is what fails a port that sorted the days.
+         * <p>Both assertions are kept: the negative one is what fails a port that sorted the days.
          */
         @Test
         @DisplayName("the first sitting day wins, not the earliest, despite the legacy test name")
@@ -190,8 +187,8 @@ class HearingVenueMapperTest {
                     ModelObjects.hearingDay("2020-06-19T09:08:03.001Z", "13:00:00")));
 
             assertThat(session(hearing).hearingStartTime())
-                    .isEqualTo("10:00:00+01:00")
-                    .isNotEqualTo("10:08:03+01:00");
+                    .isEqualTo("2020-06-21T10:00:00+01:00")
+                    .isNotEqualTo("2020-06-19T10:08:03+01:00");
         }
     }
 
