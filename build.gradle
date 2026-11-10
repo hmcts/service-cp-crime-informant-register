@@ -12,12 +12,12 @@ buildscript {
 plugins {
   id 'application'
   id 'java'
-  id 'org.springframework.boot' version '4.1.1'
+  id 'org.springframework.boot' version '4.1.2'
   id 'io.spring.dependency-management' version '1.1.7'
   id 'jacoco'
   id 'maven-publish'
-  id 'com.github.ben-manes.versions' version '0.61.0'
-  id 'org.cyclonedx.bom' version '3.4.1'
+  id 'com.github.ben-manes.versions' version '0.66.0'
+  id 'org.cyclonedx.bom' version '3.5.1'
   id 'com.gorylenko.gradle-git-properties' version '4.0.1'
   id 'io.gatling.gradle' version '3.15.1.3'
 }
@@ -34,6 +34,12 @@ apply {
   from("$rootDir/gradle/test.gradle")
   from("$rootDir/gradle/jar.gradle")
 }
+
+// CVE-2026-68497 (jackson-databind, unbounded numeric parsing), then CVE-2026-89407, -89425,
+// -91776 and -91777 (fixed in 3.1.7 / 2.21.7): Spring Boot 4.1.1 manages 3.1.5 and 2.21.5, and
+// the image scan refuses those. Remove once a Boot release manages these versions or later.
+ext['jackson-bom.version'] = '3.1.7'
+ext['jackson-2-bom.version'] = '2.21.7'
 
 // We MUST keep all dependencies in the build.gradle to allow dependabot to provide version updates
 // Sadly, dependabot does not track dependencies in the apply-from files
@@ -64,7 +70,7 @@ dependencies {
   // --- Messaging: Azure Service Bus consumer with explicit settlement ---
   // Spring Boot's BOM does not manage com.azure:*, so the vendor BOM supplies those versions and no
   // com.azure artefact is ever pinned individually.
-  implementation platform('com.azure:azure-sdk-bom:1.3.8')
+  implementation platform('com.azure:azure-sdk-bom:1.3.9')
   implementation 'com.azure:azure-messaging-servicebus'
   implementation 'com.azure:azure-identity'
 
@@ -107,17 +113,17 @@ dependencies {
   // Draft-07 validator for the dual-validation contract corpus (research §9).
   // testImplementation ONLY — it must never reach the runtime classpath. Not managed by any BOM on
   // this build, so the version is declared here for dependabot to track.
-  testImplementation 'com.networknt:json-schema-validator:3.0.7'
+  testImplementation 'com.networknt:json-schema-validator:3.0.8'
 
   // Security: pin transitive tomcat-embed-core to patched version (CVE-2026-41293, -43512, et al.)
   // Brought in transitively via spring-boot-starter-web; >=11.0.0-M1,<11.0.22 are vulnerable
-  implementation 'org.apache.tomcat.embed:tomcat-embed-core:11.0.25'
+  implementation 'org.apache.tomcat.embed:tomcat-embed-core:11.0.27'
 
   // --- Gatling performance tests: JMS bridge to Azure Service Bus ---
   // Gatling has its own compile classpath. Keep the Redis seeder's dependencies explicit;
   // these versions match the service's Spring Boot-managed runtime dependencies.
   gatlingImplementation 'io.lettuce:lettuce-core:7.5.2.RELEASE'
-  gatlingImplementation 'tools.jackson.core:jackson-databind:3.1.5'
+  gatlingImplementation 'tools.jackson.core:jackson-databind:3.1.7'
   // Qpid JMS: AMQP 1.0 transport for the SAS/emulator path.
   gatlingImplementation 'org.apache.qpid:qpid-jms-client:2.10.0'
   // Azure Service Bus JMS (Jakarta): CBS token auth for Entra-only namespaces.
