@@ -1,3 +1,13 @@
+// Plugin transitive dependencies (e.g. the Gatling plugin's gatling-shared-cli and
+// gatling-enterprise-plugin-commons) are published to Maven Central only; the portal just
+// redirects there. Resolve from Central directly so CI does not hinge on that redirect.
+pluginManagement {
+  repositories {
+    gradlePluginPortal()
+    mavenCentral()
+  }
+}
+
 // Explicit so the bootJar name (gradle/jar.gradle) and CI's app-jar upload path never depend on
 // the checkout directory name.
 rootProject.name = 'service-cp-crime-informant-register'

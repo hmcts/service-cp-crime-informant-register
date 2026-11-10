@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPath": "/referencedata-query-api/query/api/rest/referencedata/now-subscriptions"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/vnd.referencedata.query.get-now-subscriptions+json"
+    },
+    "jsonBody": {
+      "nowSubscriptions": []
+    }
+  }
+}

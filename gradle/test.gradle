@@ -42,13 +42,14 @@ tasks.named('jacocoTestCoverageVerification') {
     dir: layout.buildDirectory.dir("jacoco").get().asFile,
     include: ["*.exec"]
   )
+  // asFileTree keeps the source set's builtBy (compileJava/processResources); rebuilding the
+  // trees from plain paths drops it, and a `build -x test` then fails Gradle's
+  // implicit-dependency validation
   classDirectories.setFrom(
-    files(sourceSets.main.output.collect {
-      fileTree(dir: it, exclude: [
-        'uk/gov/hmcts/cp/Application.class',
-        'uk/gov/hmcts/cp/informantregister/config/**'
-      ])
-    })
+    sourceSets.main.output.asFileTree.matching {
+      exclude 'uk/gov/hmcts/cp/Application.class'
+      exclude 'uk/gov/hmcts/cp/informantregister/config/**'
+    }
   )
   violationRules {
     rule {
