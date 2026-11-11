@@ -109,6 +109,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
+      - name: Debug DNS (temporary)
+        run: |
+          echo "== host /etc/resolv.conf";            cat /etc/resolv.conf
+          echo "== host systemd upstream";            cat /run/systemd/resolve/resolv.conf || true
+          echo "== resolvectl";                       resolvectl status || true
+          echo "== host lookup";                      getent ahosts archive.ubuntu.com || true
+          echo "== docker info (version/driver)";     docker version --format '{{.Server.Version}}'; docker buildx ls
+          B=$(docker ps --filter name=buildx_buildkit -q)
+          echo "== buildkit container ($B) resolv.conf"; docker exec "$B" cat /etc/resolv.conf || true
+          echo "== buildkit container nslookup";      docker exec "$B" nslookup archive.ubuntu.com || true
+          echo "== plain docker run (default bridge)"
+          docker run --rm eclipse-temurin:25-jre sh -c 'cat /etc/resolv.conf; getent hosts archive.ubuntu.com' || true
+
       - name: DAST - Build and run containerised app
         run: |
           docker compose -f docker-compose.yml up -d
