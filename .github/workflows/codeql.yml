@@ -115,6 +115,11 @@ jobs:
           echo "== host systemd upstream";            cat /run/systemd/resolve/resolv.conf || true
           echo "== resolvectl";                       resolvectl status || true
           echo "== host lookup";                      getent ahosts archive.ubuntu.com || true
+          for h in archive.ubuntu.com security.ubuntu.com azure.archive.ubuntu.com ubuntu.com github.com registry-1.docker.io; do
+            echo "== host getent $h"; getent ahostsv4 "$h" | head -2 || echo "FAILED rc=$?"
+            echo "== resolvectl query $h"; resolvectl query "$h" 2>&1 | head -4 || true
+            echo "== dig @168.63.129.16 $h"; dig +time=3 +tries=1 +short "$h" @168.63.129.16 2>&1 | head -3 || true
+          done
           echo "== docker info (version/driver)";     docker version --format '{{.Server.Version}}'; docker buildx ls
           B=$(docker ps --filter name=buildx_buildkit -q)
           echo "== buildkit container ($B) resolv.conf"; docker exec "$B" cat /etc/resolv.conf || true
