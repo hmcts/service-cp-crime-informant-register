@@ -41,7 +41,7 @@ public class StressSimulation extends Simulation {
     private static final String WIREMOCK_URL =
             System.getProperty("gatling.wiremockUrl", "http://localhost:8080");
     private static final String ACTUATOR_URL =
-            System.getProperty("gatling.actuatorUrl", "http://localhost:8082/informantregister");
+            System.getProperty("gatling.actuatorUrl", "http://localhost:8082");
 
     private static final String SIMULATION = StressSimulation.class.getSimpleName();
 

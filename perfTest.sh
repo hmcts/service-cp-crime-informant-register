@@ -11,7 +11,7 @@ set -euo pipefail
 #                      (an explicit connectionString overrides ASB_EMULATOR_KEY)
 # ──────────────────────────────────────────────────────────────────────────────
 
-ACTUATOR_URL="${2:-http://localhost:8082/informantregister}"
+ACTUATOR_URL="${2:-http://localhost:8082}"
 WIREMOCK_URL="${3:-http://localhost:8080}"
 REPORT_DIR="build/reports/gatling"
 
