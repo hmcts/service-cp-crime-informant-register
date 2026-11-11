@@ -269,6 +269,12 @@ jobs:
           build-args: |
             BASE_IMAGE=eclipse-temurin:25-jre-noble@sha256:398f810215757dc1926390014272579fb0e57c41ef1c8aa4f64ae761613a168b
             JAR_FILENAME=${{ needs.Build.outputs.artefact_name }}.jar
+          # TEMPORARY, same pin as docker-compose.yml: Canonical DNS (ns1-3.canonical.com) not
+          # answering on 2026-11-11, so `apt-get update` gets SERVFAIL on GitHub runners.
+          # Remove once `dig archive.ubuntu.com @185.125.190.65` answers.
+          add-hosts: |
+            archive.ubuntu.com:91.189.91.81
+            security.ubuntu.com:185.125.190.81
 
       - name: Run Trivy vulnerability scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0

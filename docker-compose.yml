@@ -14,6 +14,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # TEMPORARY: Canonical DNS (ns1-3.canonical.com) not answering on 2026-11-11, so
+      # `apt-get update` gets SERVFAIL on GitHub runners and the Ubuntu mirrors are pinned for the
+      # image build only (amd64; ports.ubuntu.com for arm64 is not pinned). Same pin in
+      # ci-build-publish.yml Build-Docker. Remove both once `dig archive.ubuntu.com @185.125.190.65`
+      # answers.
+      extra_hosts:
+        - "archive.ubuntu.com:91.189.91.81"
+        - "security.ubuntu.com:185.125.190.81"
     ports:
       - "8082:8082"
     environment:
