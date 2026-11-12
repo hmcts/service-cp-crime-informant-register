@@ -48,7 +48,7 @@ import org.slf4j.LoggerFactory;
  *   ./gradlew gatlingRun --simulation=uk.gov.hmcts.cp.simulation.CapacitySimulation \
  *     -Dgatling.asbNamespace=sbdevccm01.servicebus.windows.net \
  *     -Dgatling.wiremockUrl=http://zwiremock:8080 \
- *     -Dgatling.actuatorUrl=http://service:8082/informantregister
+ *     -Dgatling.actuatorUrl=http://service:8082
  * </pre>
  */
 public class CapacitySimulation extends Simulation {
@@ -60,7 +60,7 @@ public class CapacitySimulation extends Simulation {
     private static final String WIREMOCK_URL =
             System.getProperty("gatling.wiremockUrl", "http://localhost:8080");
     private static final String ACTUATOR_URL =
-            System.getProperty("gatling.actuatorUrl", "http://localhost:8082/informantregister");
+            System.getProperty("gatling.actuatorUrl", "http://localhost:8082");
 
     private static final double PRODUCTION_PEAK_RPS = 1.51;
     private static final double HEADROOM_MULTIPLIER = 10.0;
