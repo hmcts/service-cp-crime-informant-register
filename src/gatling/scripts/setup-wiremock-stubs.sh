@@ -32,7 +32,7 @@ if [ -z "$WIREMOCK_POD" ]; then
 fi
 
 wiremock() {
-  kubectl exec "$WIREMOCK_POD" -n "$NAMESPACE" -c wildfly-app -- curl -sf "$@"
+  kubectl exec "$WIREMOCK_POD" -n "$NAMESPACE" -c wildfly-app -- curl -sSf "$@"
 }
 
 # Start from an empty journal so the verifier sees only this run's requests
@@ -50,9 +50,32 @@ done
 # If response templating is unavailable the service would POST a literal
 # "{{regexExtract ...}}" hearingId for every request and nothing could be
 # correlated — fail here, before load, rather than after a wasted run.
+#
+# No -f here: a 404 (stub not matched) or 500 (templating error) must surface its
+# status and body, not die as a bare "exit code 22". The status is appended on its
+# own line via -w rather than --fail-with-body, which the image's curl may predate.
 PROBE_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen | tr 'A-Z' 'a-z')
-ECHOED=$(wiremock "http://localhost:8080/results-query-api/query/api/rest/results/hearingDetails/internal/$PROBE_ID" \
-  | jq -r '.hearing.id')
+PROBE_PATH="/results-query-api/query/api/rest/results/hearingDetails/internal/$PROBE_ID"
+PROBE_RESPONSE=$(kubectl exec "$WIREMOCK_POD" -n "$NAMESPACE" -c wildfly-app -- \
+  curl -sS -w '\n%{http_code}' "http://localhost:8080$PROBE_PATH")
+PROBE_STATUS=$(printf '%s\n' "$PROBE_RESPONSE" | tail -n 1)
+PROBE_BODY=$(printf '%s\n' "$PROBE_RESPONSE" | sed '$d')
+
+if [ "$PROBE_STATUS" != "200" ]; then
+  echo "ERROR: hearing-payload preflight GET $PROBE_PATH returned HTTP $PROBE_STATUS."
+  echo "       404 = stub not matched (check for a conflicting mapping baked into the image);"
+  echo "       500 = WireMock failed rendering the stub (response-template transformer/helper)."
+  echo "------- response body -------"
+  printf '%s\n' "$PROBE_BODY" | head -c 4000
+  echo
+  echo "------- installed mappings matching results-query-api -------"
+  wiremock "http://localhost:8080/__admin/mappings" \
+    | jq -c '.mappings[] | select((.request | tostring) | test("results-query-api")) | {id, priority, request, transformers: .response.transformers}' \
+    || true
+  exit 1
+fi
+
+ECHOED=$(printf '%s\n' "$PROBE_BODY" | jq -r '.hearing.id' 2>/dev/null || echo "<non-JSON body>")
 if [ "$ECHOED" != "$PROBE_ID" ]; then
   echo "ERROR: hearing-payload stub returned hearing.id='$ECHOED', expected '$PROBE_ID'."
   echo "       WireMock response templating (regexExtract) is not rendering; outputs cannot be"
