@@ -55,6 +55,7 @@ public class StressSimulation extends Simulation {
     @Override
     public void before() {
         ServiceReadiness.verify(ACTUATOR_URL);
+        ServiceBusConnectionFactory.verifyCanSend(QUEUE_NAME);
 
         LOG.info("Configuring WireMock stubs at {}", WIREMOCK_URL);
         WireMockStubs.configure(WIREMOCK_URL);
