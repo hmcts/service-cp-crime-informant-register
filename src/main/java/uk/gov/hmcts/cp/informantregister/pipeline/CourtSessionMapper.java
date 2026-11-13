@@ -23,12 +23,10 @@ import uk.gov.hmcts.cp.informantregister.domain.RegisterFragment;
  *
  * <p><strong>That time is the one sanctioned deviation in this mapper.</strong> The legacy renders it
  * with {@code DateService.getLocalDateTime}, so a summer sitting day becomes a London wall-clock
- * <em>date-time</em> labelled {@code Z} — an hour on from the instant it names, and a date-time in a
- * component {@code informantRegisterHearing.json} declares to be a {@code time}. That is defect D9.
- * Here it is rendered by {@link HearingDates#localFullTime} instead: the same wall clock, carrying
- * London's true offset on the day, which is the RFC 3339 {@code full-time} the schema's
- * {@code "format": "time"} asks for. {@code doc/DEVIATIONS.md} entry 15, decided by the project
- * owner on 2026-08-23.
+ * date-time labelled {@code Z} — an hour on from the instant it names. That is defect D9. Here it
+ * is rendered by {@link HearingDates#localOffsetDateTime} instead: the same date and wall clock,
+ * carrying London's true offset on the day. The date stays because CPPI consumers read the hearing
+ * date from this component. {@code doc/DEVIATIONS.md} entry 15.
  *
  * <p>The scope is this component and no other. The parse is unchanged, an unreadable sitting day
  * still renders the literal {@code "Invalid dateZ"}, and D9's rendering survives untouched on the
@@ -94,7 +92,7 @@ final class CourtSessionMapper {
     }
 
     /**
-     * The first sitting day's start, rendered as an RFC 3339 {@code full-time}.
+     * The first sitting day's start, rendered as a London date-time with its true offset.
      *
      * @return the start time, or {@code null} when the hearing has no listed days
      */
@@ -109,7 +107,7 @@ final class CourtSessionMapper {
         // The legacy calls DateService.getLocalDateTime here (CourtSessionMapper.js:28); this is the
         // sanctioned re-rendering of that value — doc/DEVIATIONS.md entry 15.
         return Json.truthy(first, "sittingDay")
-                ? dates.localFullTime(Json.text(first, "sittingDay"))
+                ? dates.localOffsetDateTime(Json.text(first, "sittingDay"))
                 : null;
     }
 }

@@ -43,9 +43,9 @@ public final class RegisteredFieldDeviations {
     private static final DateTimeFormatter LEGACY_RENDERING =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
-    /** RFC 3339 {@code full-time}, rendered exactly as {@code HearingDates} renders it. */
-    private static final DateTimeFormatter FULL_TIME =
-            DateTimeFormatter.ofPattern("HH:mm:ssXXX");
+    /** The London date-time with its true offset, rendered exactly as {@code HearingDates} renders it. */
+    private static final DateTimeFormatter OFFSET_DATE_TIME =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
 
     /** What {@code moment} renders for a value it cannot read, and what this port renders too. */
     private static final String INVALID_DATE_Z = "Invalid dateZ";
@@ -102,9 +102,10 @@ public final class RegisteredFieldDeviations {
      *
      * <p>The oracle records {@code DateService.getLocalDateTime}'s output: a London wall-clock
      * date-time with the character {@code Z} appended, whatever the real offset was. The port now
-     * renders the same wall clock as an RFC 3339 {@code full-time} carrying London's true offset. So
-     * the derivation reads the wall clock straight back out of the oracle's own string, asks the
-     * {@code Europe/London} rules which offsets that wall clock had on that date, and renders it.
+     * renders the same date and wall clock carrying London's true offset. So the derivation reads the
+     * date-time straight back out of the oracle's own string, asks the {@code Europe/London} rules
+     * which offsets that wall clock had on that date, and renders it. In GMT that is the oracle's
+     * own string; in British Summer Time only the offset differs.
      *
      * <p><strong>It derives, it does not re-run the port.</strong> The wall clock comes from the
      * recording rather than from {@code HearingDates}, so a fault in this port's parsing cannot
@@ -141,7 +142,7 @@ public final class RegisteredFieldDeviations {
         }
         final List<ZoneOffset> offsets = LONDON.getRules().getValidOffsets(wallClock);
         return offsets.stream()
-                .map(offset -> wallClock.toLocalTime().atOffset(offset).format(FULL_TIME))
+                .map(offset -> wallClock.atOffset(offset).format(OFFSET_DATE_TIME))
                 .toList();
     }
 }
