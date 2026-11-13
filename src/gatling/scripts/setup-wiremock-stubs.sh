@@ -72,6 +72,33 @@ if [ "$PROBE_STATUS" != "200" ]; then
   wiremock "http://localhost:8080/__admin/mappings" \
     | jq -c '.mappings[] | select((.request | tostring) | test("results-query-api")) | {id, priority, request, transformers: .response.transformers}' \
     || true
+  # An HTML "Not Found" body is the servlet container's page, not WireMock's own
+  # "Request was not matched" diff, so it cannot tell "WireMock saw the request and
+  # matched nothing" apart from "the request never reached WireMock". The checks
+  # below settle which, so the next failing run names its own fix.
+  echo "------- control: static now-subscriptions stub (no templating) -------"
+  kubectl exec "$WIREMOCK_POD" -n "$NAMESPACE" -c wildfly-app -- \
+    curl -sS -o /dev/null -w '%{http_code}\n' \
+    "http://localhost:8080/referencedata-query-api/query/api/rest/referencedata/now-subscriptions" \
+    || true
+  echo "------- did WireMock see the probe? (unmatched request journal) -------"
+  wiremock "http://localhost:8080/__admin/requests/unmatched" \
+    | jq -c '.requests[] | {url, method}' \
+    || true
+  echo "------- near misses for the probe -------"
+  wiremock -X POST "http://localhost:8080/__admin/near-misses/request" \
+    -H "Content-Type: application/json" \
+    -d "{\"url\":\"$PROBE_PATH\",\"method\":\"GET\"}" \
+    | jq -c '.nearMisses[:3]' \
+    || true
+  echo "------- WireMock version (endpoint absent before 3.x) -------"
+  wiremock "http://localhost:8080/__admin/version" || true
+  echo
+  echo "Reading the above:"
+  echo "  probe absent from the unmatched journal + control 404 => WireMock is not serving"
+  echo "    non-admin paths in this WAR (context path / servlet mapping); fix the stack, not the stub."
+  echo "  probe in the journal with a near miss => path or prefix mismatch; adjust the mapping."
+  echo "  control 200 but hearing stub 404 => response-template extension missing from the image."
   exit 1
 fi
 
