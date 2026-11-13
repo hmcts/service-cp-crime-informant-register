@@ -80,12 +80,14 @@ public class StressSimulation extends Simulation {
         LOG.info("Configuring WireMock stubs at {}", WIREMOCK_URL);
         WireMockStubs.configure(WIREMOCK_URL);
         RedisPayloadSeeder.verifyReady();
+        FallbackHearingStubs.verifyReady();
     }
 
     @Override
     public void after() {
         PublishManifest.close();
         RedisPayloadSeeder.close();
+        FallbackHearingStubs.close();
         LOG.info("Stress test complete. Published {} messages total, recorded in {}. Outputs are "
                         + "verified by src/gatling/scripts/verify-outputs.sh.",
                 publishedCount.get(), PublishManifest.path());

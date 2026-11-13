@@ -109,12 +109,14 @@ public class CapacitySimulation extends Simulation {
         LOG.info("Configuring WireMock stubs at {}", WIREMOCK_URL);
         WireMockStubs.configure(WIREMOCK_URL);
         RedisPayloadSeeder.verifyReady();
+        FallbackHearingStubs.verifyReady();
     }
 
     @Override
     public void after() {
         PublishManifest.close();
         RedisPayloadSeeder.close();
+        FallbackHearingStubs.close();
         LOG.info("Simulation complete. Published {} messages, recorded in {}. Output completeness "
                         + "and publish-to-POST latency are verified by "
                         + "src/gatling/scripts/verify-outputs.sh once the pipeline drains.",
