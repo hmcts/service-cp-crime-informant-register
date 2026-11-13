@@ -26,9 +26,10 @@ import org.slf4j.LoggerFactory;
  * files {@code setup-wiremock-stubs.sh} installs in the pipeline, and the hearing payload is where
  * {@code verify-outputs.sh} reads the expected authorities from. Edit the files, not this class.
  *
- * <p>This path is for local runs. In the pipeline the Gatling process cannot reach WireMock (the
- * agent's istio sidecar routes localhost:8080 to the service pod), so these calls only log a
- * warning and the shell script is what configures the stubs.
+ * <p>This path is for local runs. In the pipeline {@code gatling.wiremockUrl} is left at its
+ * default, which the agent's istio sidecar routes to the service pod, so these calls only log a
+ * warning and the shell script is what configures the stubs. The pipeline's separate port-forward
+ * to WireMock ({@code gatling.wiremockAdminUrl}) is used only by {@link FallbackHearingStubs}.
  */
 public final class WireMockStubs {
 

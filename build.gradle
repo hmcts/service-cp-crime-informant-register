@@ -169,6 +169,10 @@ gatling {
   if (System.getProperty('gatling.redisHitPercent') != null) {
     args.add("-Dgatling.redisHitPercent=${System.getProperty('gatling.redisHitPercent')}")
   }
+  // Pipeline port-forward to the WireMock pod: per-hearing stubs for the query fallback
+  if (System.getProperty('gatling.wiremockAdminUrl') != null) {
+    args.add("-Dgatling.wiremockAdminUrl=${System.getProperty('gatling.wiremockAdminUrl')}")
+  }
   jvmArgs = args
 }
 

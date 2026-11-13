@@ -9,10 +9,6 @@ import static io.gatling.javaapi.jms.JmsDsl.jms;
 import io.gatling.javaapi.core.ScenarioBuilder;
 import io.gatling.javaapi.core.Simulation;
 import io.gatling.javaapi.jms.JmsProtocolBuilder;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
@@ -81,40 +77,20 @@ public class CapacitySimulation extends Simulation {
 
     @Override
     public void before() {
-        LOG.info("Sanity check: verifying service is healthy at {}", ACTUATOR_URL);
-        try (HttpClient client = HttpClient.newHttpClient()) {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(ACTUATOR_URL + "/actuator/health"))
-                    .GET()
-                    .build();
-            HttpResponse<String> response = client.send(request,
-                    HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) {
-                throw new RuntimeException(
-                        "ABORTING: Service health check returned " + response.statusCode()
-                        + ". Is the service running?");
-            }
-            String body = response.body();
-            if (body.contains("\"status\":\"DOWN\"")) {
-                throw new RuntimeException(
-                        "ABORTING: Service reports DOWN. Check consumer and database connectivity.");
-            }
-            LOG.info("Health check passed (HTTP {}).", response.statusCode());
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException("Health check failed: " + e.getMessage(), e);
-        }
+        ServiceReadiness.verify(ACTUATOR_URL);
+        ServiceBusConnectionFactory.verifyCanSend(QUEUE_NAME);
 
         LOG.info("Configuring WireMock stubs at {}", WIREMOCK_URL);
         WireMockStubs.configure(WIREMOCK_URL);
         RedisPayloadSeeder.verifyReady();
+        FallbackHearingStubs.verifyReady();
     }
 
     @Override
     public void after() {
         PublishManifest.close();
         RedisPayloadSeeder.close();
+        FallbackHearingStubs.close();
         LOG.info("Simulation complete. Published {} messages, recorded in {}. Output completeness "
                         + "and publish-to-POST latency are verified by "
                         + "src/gatling/scripts/verify-outputs.sh once the pipeline drains.",
