@@ -51,19 +51,36 @@ done
 # "{{regexExtract ...}}" hearingId for every request and nothing could be
 # correlated — fail here, before load, rather than after a wasted run.
 #
+# The probe goes the way the service's own calls go: to RESULTS_BASE_URL (the stack's
+# internal ingress), whose Istio VirtualService rewrites /results-query-api onto
+# WireMock's context root. Calling the pod directly at /results-query-api 404s in
+# WildFly — that context path exists only on the VirtualService — and would prove
+# nothing about whether the stubs match what the service actually sends. The URL is
+# read from the service Deployment so it cannot drift from what the service resolves.
+#
 # No -f here: a 404 (stub not matched) or 500 (templating error) must surface its
 # status and body, not die as a bare "exit code 22". The status is appended on its
 # own line via -w rather than --fail-with-body, which the image's curl may predate.
+RESULTS_BASE_URL=${RESULTS_BASE_URL:-$(kubectl get deployments -n "$NAMESPACE" \
+  -o jsonpath='{range .items[*].spec.template.spec.containers[*].env[?(@.name=="RESULTS_BASE_URL")]}{.value}{"\n"}{end}' \
+  | grep -m 1 . || true)}
+if [ -z "$RESULTS_BASE_URL" ]; then
+  echo "ERROR: no Deployment in $NAMESPACE sets RESULTS_BASE_URL; cannot probe the route the service uses."
+  exit 1
+fi
+
 PROBE_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen | tr 'A-Z' 'a-z')
 PROBE_PATH="/results-query-api/query/api/rest/results/hearingDetails/internal/$PROBE_ID"
 PROBE_RESPONSE=$(kubectl exec "$WIREMOCK_POD" -n "$NAMESPACE" -c wildfly-app -- \
-  curl -sS -w '\n%{http_code}' "http://localhost:8080$PROBE_PATH")
+  curl -sS -w '\n%{http_code}' "${RESULTS_BASE_URL%/}$PROBE_PATH")
 PROBE_STATUS=$(printf '%s\n' "$PROBE_RESPONSE" | tail -n 1)
 PROBE_BODY=$(printf '%s\n' "$PROBE_RESPONSE" | sed '$d')
 
 if [ "$PROBE_STATUS" != "200" ]; then
-  echo "ERROR: hearing-payload preflight GET $PROBE_PATH returned HTTP $PROBE_STATUS."
-  echo "       404 = stub not matched (check for a conflicting mapping baked into the image);"
+  echo "ERROR: hearing-payload preflight GET ${RESULTS_BASE_URL%/}$PROBE_PATH returned HTTP $PROBE_STATUS."
+  echo "       404 = the request never matched the stub: either the ingress did not route it to"
+  echo "             this namespace's WireMock, or WireMock saw a rewritten path the stub is not keyed on"
+  echo "             (see the unmatched requests below);"
   echo "       500 = WireMock failed rendering the stub (response-template transformer/helper)."
   echo "------- response body -------"
   printf '%s\n' "$PROBE_BODY" | head -c 4000
@@ -72,6 +89,13 @@ if [ "$PROBE_STATUS" != "200" ]; then
   wiremock "http://localhost:8080/__admin/mappings" \
     | jq -c '.mappings[] | select((.request | tostring) | test("results-query-api")) | {id, priority, request, transformers: .response.transformers}' \
     || true
+  echo "------- requests WireMock received but did not match (the path as WireMock saw it) -------"
+  wiremock "http://localhost:8080/__admin/requests/unmatched" \
+    | jq -c '.requests[] | {method, url}' \
+    || true
+  echo "------- WildFly deployments in the WireMock pod -------"
+  kubectl exec "$WIREMOCK_POD" -n "$NAMESPACE" -c wildfly-app -- \
+    ls /opt/jboss/wildfly/standalone/deployments || true
   exit 1
 fi
 
