@@ -4,6 +4,7 @@ import static io.gatling.javaapi.core.CoreDsl.scenario;
 import static io.gatling.javaapi.jms.JmsDsl.jms;
 
 import io.gatling.javaapi.core.ScenarioBuilder;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -31,7 +32,10 @@ final class PublishScenarios {
                         FallbackHearingStubs.register(message);
                     }
                     return session.set("message", message)
-                            .set("payload", message.body())
+                            // bytesMessage(String) below resolves the EL to the session value and
+                            // casts it straight to byte[] — it does not encode a String for you,
+                            // unlike textMessage. The payload has to already be bytes.
+                            .set("payload", message.body().getBytes(StandardCharsets.UTF_8))
                             .set("publishedAt", System.currentTimeMillis());
                 })
                 .exec(jms(requestName).send()
