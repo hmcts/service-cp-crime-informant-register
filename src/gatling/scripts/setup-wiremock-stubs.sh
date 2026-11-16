@@ -54,6 +54,15 @@ wiremock() {
 wiremock -X DELETE "http://localhost:8080/__admin/requests" >/dev/null
 echo "WireMock request journal reset"
 
+# The journal defaults to a bound well under a full run's POST volume (~50k, per
+# verify-outputs.sh), so it evicts oldest-first as it fills — losing early requests
+# long before verify-outputs.sh ever queries it at the end of the run. Raised here,
+# once, before Gatling starts; verify-outputs.sh still does a single end-of-run find.
+wiremock -X POST "http://localhost:8080/__admin/settings" \
+  -H "Content-Type: application/json" \
+  -d '{"maxRequestJournalEntries": 200000}' >/dev/null
+echo "WireMock request journal cap raised to 200000"
+
 for mapping in hearing-payload now-subscriptions informant-register; do
   wiremock -X POST "http://localhost:8080/__admin/mappings" \
     -H "Content-Type: application/json" \
