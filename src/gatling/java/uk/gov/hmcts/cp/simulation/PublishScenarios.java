@@ -36,7 +36,10 @@ final class PublishScenarios {
                 })
                 .exec(jms(requestName).send()
                         .queue(queueName)
-                        .textMessage("#{payload}"))
+                        // A JMS TextMessage encodes on the wire as an AMQP AmqpValue body, which
+                        // ServiceBusReceivedMessage#getBody() cannot read ("This body type not is
+                        // supported: VALUE"); a BytesMessage carries a Data section, which it can.
+                        .bytesMessage("#{payload}"))
                 .exitHereIfFailed()
                 .exec(session -> {
                     PublishManifest.record(simulation, scenarioName,
