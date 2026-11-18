@@ -58,6 +58,35 @@ Anything that changes register **content** must also have an entry in
   back, and how much of its budget has the outage eaten" is exactly what an outage raises.
 
 ### Fixed
+- 2026-11-18 — **Four settlement and re-park gaps closed in review of the sequence-number replay
+  feature.** A delivery whose body could not even be retrieved from the broker context escaped the
+  settlement boundary entirely — `context.getMessage()` ran ahead of `outcomeOf`'s catch, so a
+  failure there left the message locked with no settlement attempt. It is now read inside the same
+  boundary as every other broker fact. A delivery missing its `messageId` or lock token was admitted
+  into processing and could reach the FAILED-state write, which requires `messageId` non-null;
+  `captureDelivery` now validates both up front and abandons the delivery unconditionally if either
+  is absent, the same outcome as any other capture failure. A re-park whose stored `failure_reason`
+  is missing or unrecognised was reported under whatever `parking_category` happened to be recorded
+  — `non-transient` included — rather than FR-009's required `exhausted / UNEXPECTED_FAILURE`; the
+  recorded category is now only trusted once the reason itself is known good, and the earlier receipt
+  log line that names the prior failure reason no longer emits it raw when it does not resolve to a
+  declared `ReasonCode`. See `specs/001-replay-by-sequence-number/spec.md` (FR-009, FR-012) and its
+  "Rolling deployment" edge case, which now also documents the one gap left un-mitigated in code: an
+  older consumer re-parking a row a newer consumer already parked leaves `parking_sequence_number`/
+  `parking_category` stale rather than clearing them, which the rollout for this migration must
+  avoid by ensuring no older consumer remains able to re-park rows once any pod runs this version.
+- 2026-11-18 — **A parked request can now be recovered with the Azure portal's dead-letter
+  "Re-send", not just bespoke tooling.** The guard told a deliberate resubmission apart from the
+  delivery that exhausted the retries by comparing `messageId` — and the portal's "Re-send" copies
+  the message as it stands, `messageId` included, so every real resubmission was read as a
+  redelivery and re-parked, reporting the generic `DELIVERY_LIMIT_EXHAUSTED` instead of the
+  request's real failure. The decision now rests on the broker's own **sequence number**, which a
+  genuinely accepted re-send always changes and a redelivery never does; a re-park reports the
+  request's own recorded category and reason; and rows parked before this change recover via a
+  documented two-condition heuristic (`informantregister.replay.legacy-margin`, default 5 minutes).
+  See `specs/001-replay-by-sequence-number/spec.md`. Not a parity deviation — this is "transport
+  recovery," the one area the constitution already sanctions for behavioural change; `migration
+  V2` is additive and existing rows stay valid.
 - 2026-11-02 — **`hearingStartTime` is a full date-time again, with London's true offset.** The
   court session's start had been sent as a time of day only (`12:00:00+01:00`), which removed the
   only hearing date the CPPI API (`results.prosecutor-results`) returns from the stored

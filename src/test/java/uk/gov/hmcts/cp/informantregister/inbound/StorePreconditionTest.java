@@ -80,6 +80,7 @@ class StorePreconditionTest {
     private static ServiceBusReceivedMessage message() {
         final ServiceBusReceivedMessage message = mock(ServiceBusReceivedMessage.class);
         when(message.getMessageId()).thenReturn("RESULTS:" + UUID.randomUUID());
+        when(message.getLockToken()).thenReturn(UUID.randomUUID().toString());
         when(message.getDeliveryCount()).thenReturn(0L);
         return message;
     }

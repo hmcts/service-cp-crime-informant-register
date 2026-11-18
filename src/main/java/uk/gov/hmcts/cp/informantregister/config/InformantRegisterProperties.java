@@ -21,6 +21,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param payload    where the hearing payload is read from
  * @param results    the results context this service reads from and posts to
  * @param referencedata the reference-data context the register's recipients are looked up in
+ * @param replay     the legacy-record replay heuristic's own margin (spec 001-replay-by-sequence-number)
  */
 @ConfigurationProperties(prefix = "informantregister")
 public record InformantRegisterProperties(
@@ -31,7 +32,8 @@ public record InformantRegisterProperties(
         @DefaultValue Stub stub,
         @DefaultValue Payload payload,
         @DefaultValue Results results,
-        @DefaultValue Referencedata referencedata) {
+        @DefaultValue Referencedata referencedata,
+        @DefaultValue Replay replay) {
 
     /**
      * Master switch for the Service Bus consumer.
@@ -254,5 +256,22 @@ public record InformantRegisterProperties(
             @DefaultValue("1s") Duration retryInterval,
             @DefaultValue("5s") Duration connectTimeout,
             @DefaultValue("30s") Duration readTimeout) {
+    }
+
+    /**
+     * The legacy-record replay heuristic's own timing (spec FR-005).
+     *
+     * <p>A {@code FAILED} row with no recorded parking sequence number — one parked before this
+     * feature, or by an older consumer mid-rollout — has no exact identity test available, so the
+     * guard falls back to a two-condition heuristic: a delivery with count 0, enqueued later than
+     * the parking time by more than this margin, is treated as a resubmission. The default and the
+     * floor are both named in the spec's own assumptions: at least the queue's lock duration, so a
+     * release without a delivery-count increment (which the broker does not count, on a closed
+     * connection) cannot be mistaken for a resubmission within one lock's lifetime.
+     *
+     * @param legacyMargin how long after the parking time a legacy record's first delivery must be
+     *                     enqueued to be treated as a resubmission
+     */
+    public record Replay(@DefaultValue("5m") Duration legacyMargin) {
     }
 }

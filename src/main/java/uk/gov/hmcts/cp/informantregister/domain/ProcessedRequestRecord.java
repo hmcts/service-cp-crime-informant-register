@@ -17,10 +17,20 @@ import java.time.Instant;
  * @param status              the record's current state
  * @param fingerprint         the fingerprint written when the record was created; the collision comparison
  * @param failureReason       the last recorded failure reason code, or {@code null}
- * @param exhaustedMessageId  the identity of the delivery that exhausted the retries, or {@code null}
- * @param attempts            the lifetime count of pipeline-run starts
+ * @param exhaustedMessageId  the identity of the delivery that exhausted the retries, or {@code null};
+ *                            kept for audit, never consulted for the FAILED-branch decision
+ * @param attempts            the lifetime count of pipeline-run starts; also the generation a replay's
+ *                            compare-and-set is predicated on (spec FR-006)
  * @param claimOwner          the current claim's owner, or {@code null} when no claim is held
  * @param claimExpiresAt      the current claim's expiry, or {@code null} when no claim is held
+ * @param parkingSequenceNumber the broker sequence number of the delivery that parked this
+ *                            request's current FAILED generation, or {@code null} on a row parked
+ *                            before this feature, or by an older consumer mid-rollout
+ * @param parkingCategory     the dead-letter category ({@code EXHAUSTED} or {@code NON_TRANSIENT})
+ *                            the parking write used, or {@code null} exactly when
+ *                            {@code parkingSequenceNumber} is {@code null}
+ * @param updatedAt           when the row was last written; for a {@code FAILED} row, the time it
+ *                            was parked — nothing changes it while the row stays {@code FAILED}
  */
 public record ProcessedRequestRecord(
         RequestStatus status,
@@ -29,5 +39,8 @@ public record ProcessedRequestRecord(
         String exhaustedMessageId,
         int attempts,
         String claimOwner,
-        Instant claimExpiresAt) {
+        Instant claimExpiresAt,
+        Long parkingSequenceNumber,
+        String parkingCategory,
+        Instant updatedAt) {
 }

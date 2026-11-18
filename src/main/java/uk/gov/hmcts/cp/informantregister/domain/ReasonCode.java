@@ -1,5 +1,8 @@
 package uk.gov.hmcts.cp.informantregister.domain;
 
+import java.util.Arrays;
+import java.util.Optional;
+
 /**
  * The bounded reason codes the guard decides with and records.
  *
@@ -136,5 +139,24 @@ public enum ReasonCode {
      */
     public String code() {
         return storedCode;
+    }
+
+    /**
+     * The inverse of {@link #code()} — total, and never throwing.
+     *
+     * <p>Used by a re-park (spec FR-009) to turn a {@code processed_request.failure_reason} read
+     * back off the row into the reason it recorded. A row's stored text may be missing or may not
+     * match any declared code at all — written by a version of this service that has since removed
+     * one, or corrupted some other way — and that is a data anomaly to log, never a reason to crash
+     * the delivery that is only trying to re-park: an empty result is the total answer to "I do not
+     * recognise this," not a thrown exception.
+     *
+     * @param storedCode the text read back from {@code failure_reason}, or {@code null}
+     * @return the matching reason, or empty if {@code storedCode} is {@code null} or unrecognised
+     */
+    public static Optional<ReasonCode> fromCode(final String storedCode) {
+        return Arrays.stream(values())
+                .filter(reason -> reason.storedCode.equals(storedCode))
+                .findFirst();
     }
 }

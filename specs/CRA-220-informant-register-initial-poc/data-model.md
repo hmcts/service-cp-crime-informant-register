@@ -4,6 +4,14 @@ Phase 1 output. Authoritative narrative: the [Informant Register Service](https:
 (idempotency) and `.claude/rules/design_rules.md` (state machine);
 this file is the feature-scoped distillation the tasks and migrations are written from.
 
+**Superseded for the `FAILED` replay/re-park decision** by
+`specs/001-replay-by-sequence-number/data-model.md`: the `FAILED → RECEIVED` transition and the
+same-identity re-park case below are decided by the broker's **sequence number**
+(`parking_sequence_number`, added by migration `V2`), never by `exhausted_message_id`
+(`messageId`), which that migration keeps only for audit. Every `exhausted_message_id`-keyed
+description below (the V1 schema's own behaviour) is historical; read the V2 document for the
+current rule.
+
 ## Entities
 
 ### DistributionCommand (domain record — not persisted)

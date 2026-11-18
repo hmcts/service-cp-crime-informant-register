@@ -257,6 +257,13 @@ class StaleRunnerRejectionIT {
         assertThat(row.exhaustedMessageId())
                 .as("the superseded delivery must not stamp itself as the one that exhausted it")
                 .isNull();
+        assertThat(row.parkingSequenceNumber())
+                .as("spec FR-002: a stale runner's recordExhaustion must not stamp its own sequence "
+                        + "number onto a request it no longer holds the claim for")
+                .isNull();
+        assertThat(row.parkingCategory())
+                .as("spec FR-002: nor the category alongside it")
+                .isNull();
         assertThat(row.completionReason()).isNull();
         // The wedged run still counted as a run start; it is only its outcome that is discarded.
         assertThat(row.attempts()).isEqualTo(2);

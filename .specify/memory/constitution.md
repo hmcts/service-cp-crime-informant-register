@@ -1,8 +1,20 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.0.1 → 1.0.2
-Bump rationale: PATCH — Principle VIII's static-analysis facts brought back in
+Version change: 1.0.2 → 1.1.0
+Bump rationale: MINOR — the "Technology Stack & Deployment" section's replay rule is relaxed by
+                feature 001-replay-by-sequence-number: the guard now identifies the delivery that
+                parked a request by the broker's own sequence number, never by `messageId`, so a
+                support resubmission may re-send the dead-lettered body unchanged. This is new,
+                materially expanded guidance on an existing bullet, not a redefinition of any of
+                the eight NON-NEGOTIABLE Core Principles — none of them states the replay rule, and
+                none is touched by this amendment.
+
+Modified sections (this amendment):
+  - Technology Stack & Deployment, Messaging bullet — the replay rule rewritten to decide by
+    broker sequence number rather than `messageId` (see rationale above).
+
+Previous amendment (1.0.1 → 1.0.2): PATCH — Principle VIII's static-analysis facts brought back in
                 line with reality after an explicit user decision (21 Aug 2026)
                 adopted Checkstyle and a JaCoCo coverage gate as part of the
                 CI-policy alignment with service-cp-crime-hearing-results-
@@ -11,7 +23,7 @@ Bump rationale: PATCH — Principle VIII's static-analysis facts brought back in
                 suppressions — is unchanged; what changed is the tool set that
                 enforces it, and the build/merge checklist that names it.
 
-Modified principles (this amendment):
+Modified principles (1.0.2 amendment):
   - VIII. Estate Conventions — static-analysis bullet rewritten (Checkstyle
     google_checks maxWarnings 0 main-only in `check`; JaCoCo coverage
     verification LINE ≥ 0.88 / BRANCH ≥ 0.85 with named exclusions, ratchet
@@ -38,6 +50,9 @@ Modified principles:
     principle text changed in this amendment.
 
 History:
+  - 1.1.0 (2026-11-18) Replay rule relaxed: the guard decides a resubmission
+    by broker sequence number, never messageId (feature
+    001-replay-by-sequence-number).
   - 1.0.2 (2026-08-21) Principle VIII static-analysis reality sync: Checkstyle
     + coverage gate adopted by user decision; merge checklist updated.
   - 1.0.1 (2026-08-20) Principle IV Jackson coordinates made version-neutral.
@@ -355,8 +370,15 @@ them read it the same way they read everything else.
   `ServiceBusProcessorClient`.
   - Peek-lock, explicit settlement, **`maxDeliveryCount` 5**.
   - Broker **duplicate detection on**; `messageId` = `source:requestId`.
-  - **Replay tooling MUST always mint a fresh `messageId`** — deliberate replay
-    must not be silently discarded by duplicate detection.
+  - **A replay is decided by the broker's own sequence number, never by
+    `messageId`** (feature `001-replay-by-sequence-number`) — the guard
+    identifies the delivery that parked a request by the sequence number the
+    broker assigned it on accept, so a support resubmission MAY re-send the
+    dead-lettered body unchanged, `messageId` included; minting a fresh
+    `messageId` is no longer required, only still useful to bypass the
+    broker's duplicate-detection window immediately rather than waiting it
+    out. A same-`messageId` re-send made *inside* that window is still
+    silently discarded by the broker regardless of this rule.
   - `maxConcurrentCalls` starts at 2, matching the Durable Functions throttle
     it replaces.
 - **Idempotency**: PostgreSQL processed-log — `processed_request` keyed
@@ -468,4 +490,4 @@ retained as quick-reference material and MUST be kept in sync.
   merged without a register entry MUST be reverted or registered retrospectively
   with named approval.
 
-**Version**: 1.0.2 | **Ratified**: 2026-08-20 | **Last Amended**: 2026-08-21
+**Version**: 1.1.0 | **Ratified**: 2026-08-20 | **Last Amended**: 2026-11-18

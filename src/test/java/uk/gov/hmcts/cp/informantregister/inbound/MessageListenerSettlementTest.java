@@ -378,6 +378,68 @@ class MessageListenerSettlementTest {
         }
     }
 
+    // --- broker facts that cannot even be read -----------------------------------------------------
+
+    @Nested
+    @DisplayName("a delivery whose body cannot even be retrieved from the context")
+    class MessageRetrievalFailed {
+
+        @Test
+        void should_abandon_it_exactly_once_rather_than_escape_unsettled() {
+            final ServiceBusReceivedMessageContext context = mock(ServiceBusReceivedMessageContext.class);
+            when(context.getMessage()).thenThrow(new IllegalStateException("message already disposed"));
+
+            listener.onMessage(context);
+
+            verify(context).abandon();
+            verify(context, never()).complete();
+            assertSettledExactlyOnce(context);
+            verifyNoInteractions(pipeline);
+        }
+    }
+
+    @Nested
+    @DisplayName("a delivery missing a required broker identifier")
+    class MissingRequiredIdentifier {
+
+        private ServiceBusReceivedMessageContext deliveryMissing(
+                final String messageId, final String lockToken) {
+            final ServiceBusReceivedMessage message = mock(ServiceBusReceivedMessage.class);
+            when(message.getBody()).thenReturn(BinaryData.fromString(validBody()));
+            when(message.getMessageId()).thenReturn(messageId);
+            when(message.getLockToken()).thenReturn(lockToken);
+            when(message.getDeliveryCount()).thenReturn(1L);
+
+            final ServiceBusReceivedMessageContext context = mock(ServiceBusReceivedMessageContext.class);
+            when(context.getMessage()).thenReturn(message);
+            return context;
+        }
+
+        @Test
+        void should_abandon_a_null_messageId_without_running_the_pipeline() {
+            final ServiceBusReceivedMessageContext context = deliveryMissing(null, LOCK_TOKEN);
+
+            listener.onMessage(context);
+
+            verify(context).abandon();
+            verify(context, never()).complete();
+            assertSettledExactlyOnce(context);
+            verifyNoInteractions(pipeline);
+        }
+
+        @Test
+        void should_abandon_a_null_lock_token_without_running_the_pipeline() {
+            final ServiceBusReceivedMessageContext context = deliveryMissing(MESSAGE_ID, null);
+
+            listener.onMessage(context);
+
+            verify(context).abandon();
+            verify(context, never()).complete();
+            assertSettledExactlyOnce(context);
+            verifyNoInteractions(pipeline);
+        }
+    }
+
     // --- what the guard is told about the delivery -------------------------------------------------
 
     @Nested

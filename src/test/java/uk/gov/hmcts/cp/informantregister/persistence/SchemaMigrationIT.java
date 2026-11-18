@@ -187,7 +187,8 @@ class SchemaMigrationIT {
                     "source", "request_id", "hearing_id", "hearing_day", "shared_time", "event_type",
                     "request_fingerprint", "status", "attempts", "completion_reason", "failure_reason",
                     "exhausted_message_id", "audit_note", "claim_owner", "claim_token",
-                    "claim_expires_at", "created_at", "updated_at");
+                    "claim_expires_at", "created_at", "updated_at",
+                    "parking_sequence_number", "parking_category");
 
             assertThat(columns.get("source")).isEqualTo(new Column("text", false, null));
             assertThat(columns.get("request_id")).isEqualTo(new Column("uuid", false, null));
@@ -374,6 +375,137 @@ class SchemaMigrationIT {
                             + "'fingerprint', 'FAILED', 5, 'PIPELINE_TRANSIENT_FAILURE'")))
                     .isInstanceOf(SQLException.class)
                     .hasMessageContaining("processed_request_exhausted_id_chk");
+        }
+    }
+
+    /**
+     * V2 — {@code parking_sequence_number} and {@code parking_category} (spec FR-001, FR-014).
+     *
+     * <p>Both nullable, additive, and forward-only: a row written under V1 alone — the
+     * {@code exhausted_message_id} rule above is exactly such a row — never populates either and
+     * must stay valid under both new constraints, which is what the FR-014 "existing rows stay
+     * valid" gate asserts.
+     */
+    @Nested
+    @DisplayName("processed_request — V2 parking columns")
+    class ParkingColumns {
+
+        @Test
+        void columns_should_be_nullable_with_no_default() throws SQLException {
+            final Map<String, Column> columns = columnsOf(REQUEST_TABLE);
+            assertThat(columns.get("parking_sequence_number")).isEqualTo(new Column("bigint", true, null));
+            assertThat(columns.get("parking_category")).isEqualTo(new Column("text", true, null));
+        }
+
+        @Test
+        void parking_category_check_should_name_the_two_categories() throws SQLException {
+            final String definition =
+                    constraintsOf(REQUEST_TABLE).get("processed_request_parking_category_chk");
+            assertThat(definition).isNotNull().contains("EXHAUSTED", "NON_TRANSIENT");
+        }
+
+        @Test
+        void parking_category_check_should_reject_a_category_outside_the_enumeration() {
+            assertThatThrownBy(() -> inRolledBackTransaction(insertRequest(
+                    "source, request_id, hearing_id, hearing_day, shared_time, event_type, "
+                            + "request_fingerprint, status, attempts, parking_sequence_number, "
+                            + "parking_category",
+                    "'RESULTS', '" + UUID.randomUUID() + "', '" + UUID.randomUUID() + "', "
+                            + "DATE '2026-08-20', TIMESTAMPTZ '2026-08-20T09:00:00Z', 'Hearing_Resulted', "
+                            + "'fingerprint', 'RECEIVED', 1, 42, 'VALIDATION'")))
+                    .isInstanceOf(SQLException.class)
+                    .hasMessageContaining("processed_request_parking_category_chk");
+        }
+
+        @Test
+        void parking_pair_check_should_bind_both_columns_together() throws SQLException {
+            assertThat(constraintsOf(REQUEST_TABLE).get("processed_request_parking_pair_chk"))
+                    .isNotNull()
+                    .contains("parking_sequence_number", "parking_category");
+        }
+
+        @Test
+        void parking_pair_check_should_reject_a_sequence_number_with_no_category() {
+            assertThatThrownBy(() -> inRolledBackTransaction(insertRequest(
+                    "source, request_id, hearing_id, hearing_day, shared_time, event_type, "
+                            + "request_fingerprint, status, attempts, parking_sequence_number",
+                    "'RESULTS', '" + UUID.randomUUID() + "', '" + UUID.randomUUID() + "', "
+                            + "DATE '2026-08-20', TIMESTAMPTZ '2026-08-20T09:00:00Z', 'Hearing_Resulted', "
+                            + "'fingerprint', 'RECEIVED', 1, 42")))
+                    .isInstanceOf(SQLException.class)
+                    .hasMessageContaining("processed_request_parking_pair_chk");
+        }
+
+        @Test
+        void parking_pair_check_should_reject_a_category_with_no_sequence_number() {
+            assertThatThrownBy(() -> inRolledBackTransaction(insertRequest(
+                    "source, request_id, hearing_id, hearing_day, shared_time, event_type, "
+                            + "request_fingerprint, status, attempts, parking_category",
+                    "'RESULTS', '" + UUID.randomUUID() + "', '" + UUID.randomUUID() + "', "
+                            + "DATE '2026-08-20', TIMESTAMPTZ '2026-08-20T09:00:00Z', 'Hearing_Resulted', "
+                            + "'fingerprint', 'RECEIVED', 1, 'EXHAUSTED'")))
+                    .isInstanceOf(SQLException.class)
+                    .hasMessageContaining("processed_request_parking_pair_chk");
+        }
+
+        @Test
+        void parking_pair_check_should_accept_both_set_or_both_null() {
+            assertThatCode(() -> inRolledBackTransaction(insertRequest(
+                    "source, request_id, hearing_id, hearing_day, shared_time, event_type, "
+                            + "request_fingerprint, status, attempts, parking_sequence_number, "
+                            + "parking_category",
+                    "'RESULTS', '" + UUID.randomUUID() + "', '" + UUID.randomUUID() + "', "
+                            + "DATE '2026-08-20', TIMESTAMPTZ '2026-08-20T09:00:00Z', 'Hearing_Resulted', "
+                            + "'fingerprint', 'RECEIVED', 1, 42, 'EXHAUSTED'")))
+                    .doesNotThrowAnyException();
+        }
+
+        /**
+         * FR-014: a row written exactly as V1 would have written it — a {@code FAILED} row with
+         * only {@code exhausted_message_id} populated — stays valid under the V2 constraints and
+         * reads back with both new columns absent. This is the legacy-row shape spec User Story 3
+         * recovers.
+         */
+        @Test
+        void a_legacy_failed_row_with_no_parking_columns_should_remain_a_valid_state() throws SQLException {
+            final UUID requestId = UUID.randomUUID();
+            inRolledBackTransaction(insertRequest(
+                    "source, request_id, hearing_id, hearing_day, shared_time, event_type, "
+                            + "request_fingerprint, status, attempts, failure_reason, exhausted_message_id",
+                    "'RESULTS', '" + requestId + "', '" + UUID.randomUUID() + "', "
+                            + "DATE '2026-08-20', TIMESTAMPTZ '2026-08-20T09:00:00Z', 'Hearing_Resulted', "
+                            + "'fingerprint', 'FAILED', 5, 'PIPELINE_TRANSIENT_FAILURE', 'msg-5'"));
+            // inRolledBackTransaction always rolls back, so re-run the same insert in its own
+            // transaction and read it back before rolling that one back too — the point is only
+            // that the insert itself does not throw, which the first call already proved; reading
+            // it back here pins that parking_sequence_number/parking_category are absent rather
+            // than defaulted to something that looks populated.
+            try (Connection connection = connection()) {
+                connection.setAutoCommit(false);
+                try (Statement statement = connection.createStatement()) {
+                    statement.executeUpdate(insertRequest(
+                            "source, request_id, hearing_id, hearing_day, shared_time, event_type, "
+                                    + "request_fingerprint, status, attempts, failure_reason, "
+                                    + "exhausted_message_id",
+                            "'RESULTS', '" + requestId + "', '" + UUID.randomUUID() + "', "
+                                    + "DATE '2026-08-20', TIMESTAMPTZ '2026-08-20T09:00:00Z', "
+                                    + "'Hearing_Resulted', 'fingerprint', 'FAILED', 5, "
+                                    + "'PIPELINE_TRANSIENT_FAILURE', 'msg-5'"));
+                    try (PreparedStatement read = connection.prepareStatement(
+                            "SELECT parking_sequence_number, parking_category FROM " + REQUEST_TABLE
+                                    + " WHERE request_id = ?")) {
+                        read.setObject(1, requestId);
+                        try (ResultSet rows = read.executeQuery()) {
+                            final boolean hasRow = rows.next();
+                            assertThat(hasRow).isTrue();
+                            assertThat(rows.getObject("parking_sequence_number")).isNull();
+                            assertThat(rows.getObject("parking_category")).isNull();
+                        }
+                    }
+                } finally {
+                    connection.rollback();
+                }
+            }
         }
     }
 

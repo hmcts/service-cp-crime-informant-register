@@ -60,7 +60,8 @@ public class ProcessedLogConfig {
     /** The {@code (source, requestId)} idempotency guard. */
     @Bean
     public IdempotencyGuard idempotencyGuard(
-            final ProcessedRequestRepository repository, final ProcessingMetrics metrics) {
-        return new IdempotencyGuard(repository, metrics);
+            final ProcessedRequestRepository repository, final ProcessingMetrics metrics,
+            final InformantRegisterProperties properties) {
+        return new IdempotencyGuard(repository, metrics, properties.replay().legacyMargin());
     }
 }

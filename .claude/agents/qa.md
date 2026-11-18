@@ -69,7 +69,10 @@ Once the transformation pipeline lands (later stories — not CRA-220):
 - Null / missing input fields on the inbound message
 - Empty collections after court-extract filtering
 - Duplicate `(source, requestId)` delivery
-- A resubmit that reuses the original `messageId` (must be recognised as the footgun it is)
+- A resubmit that reuses the original `messageId` but carries a different broker sequence number —
+  must be recognised as a deliberate resubmission and replay (spec 001-replay-by-sequence-number);
+  a resubmit within the broker's duplicate-detection window of the same `messageId` is silently
+  discarded by the broker and never reaches the service at all
 - Hearing payload absent from both Redis and the query-API fallback (retryable, not a silent skip)
 - Multi-authority fan-out where one authority's POST fails and the others succeed
 

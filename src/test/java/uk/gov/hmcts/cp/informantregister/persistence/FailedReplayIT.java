@@ -2,6 +2,7 @@ package uk.gov.hmcts.cp.informantregister.persistence;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -70,7 +71,19 @@ class FailedReplayIT {
     private final DistributionCommand command = ProcessedLogTestSupport.command();
 
     private static DeliveryIdentity delivery(final int number) {
-        return new DeliveryIdentity("msg-" + number, "runner-1/delivery-" + number);
+        return new DeliveryIdentity(
+                "msg-" + number, "runner-1/delivery-" + number, false, number, 0L, null);
+    }
+
+    /**
+     * A re-send accepted and enqueued as a new message: same `messageId` as an earlier delivery
+     * (support's verbatim re-send), but a fresh sequence number — the broker's own proof that this
+     * is a different send, not the old message come round again (spec FR-004).
+     */
+    private static DeliveryIdentity resendOf(final int originalNumber, final long newSequenceNumber) {
+        return new DeliveryIdentity(
+                "msg-" + originalNumber, "runner-1/delivery-resend", false, newSequenceNumber, 0L,
+                null);
     }
 
     private static RunClaim runClaimOf(final GuardDecision decision) {
@@ -153,7 +166,7 @@ class FailedReplayIT {
         final GuardDecision decision = guard.admit(command, delivery(PERMITTED_DELIVERIES));
 
         assertThat(decision).isEqualTo(new GuardDecision.DeadLetter(
-                DeadLetterReason.EXHAUSTED, ReasonCode.DELIVERY_LIMIT_EXHAUSTED));
+                DeadLetterReason.EXHAUSTED, ReasonCode.PIPELINE_TRANSIENT_FAILURE));
         assertThat(row()).isEqualTo(before);
     }
 
@@ -186,7 +199,10 @@ class FailedReplayIT {
                                 "msg-5",
                                 5,
                                 null,
-                                null));
+                                null,
+                                500L,
+                                "EXHAUSTED",
+                                Instant.parse("2026-08-20T09:00:00Z")));
                     }
                 },
                 metrics);
@@ -195,6 +211,92 @@ class FailedReplayIT {
 
         assertThat(decision).isEqualTo(new GuardDecision.Abandon(ReasonCode.REPLAY_NOT_ADMITTED));
         assertThat(row()).isEqualTo(before);
+    }
+
+    /**
+     * A guard whose read always answers with the same fixed snapshot — for simulating a delivery
+     * that read the processed log at some instant and is only now acting on it, exactly as two
+     * deliveries racing to replay the same parked request would.
+     */
+    private IdempotencyGuard guardReadingAsFixed(final ProcessedRequestRecord fixed) {
+        return new IdempotencyGuard(
+                new ProcessedRequestRepository(ProcessedLogTestSupport.jdbcClient(), LEASE) {
+                    @Override
+                    public Optional<ProcessedRequestRecord> read(
+                            final String source, final UUID requestId) {
+                        return Optional.of(fixed);
+                    }
+                },
+                metrics);
+    }
+
+    /**
+     * Two accepted re-sends of the same parked message is not a hypothetical — a double click on
+     * "Re-send", or two operators recovering the same ticket — and exactly one of them may replay
+     * (spec FR-006, edge case "Two re-sends of the same parked message"; FR-015 "two concurrent
+     * re-sends admit one replay").
+     *
+     * <p>Simulated by having both readers observe the <em>same</em> stale snapshot of the parked
+     * generation, then racing their writes against the real row: the first's compare-and-set still
+     * matches it, the second's does not, because the first has already moved the generation on.
+     */
+    @Test
+    @DisplayName("two concurrent re-sends admit exactly one replay")
+    void two_concurrent_resends_should_admit_exactly_one_replay() {
+        exhaustEveryPermittedDelivery();
+        // Must match what exhaustEveryPermittedDelivery() actually wrote: delivery(PERMITTED_DELIVERIES)
+        // carries sequence number PERMITTED_DELIVERIES, so that is the real parking sequence number.
+        final ProcessedRequestRecord observed = new ProcessedRequestRecord(
+                RequestStatus.FAILED, RequestFingerprint.of(command),
+                ReasonCode.PIPELINE_TRANSIENT_FAILURE.code(), "msg-5", PERMITTED_DELIVERIES,
+                null, null, (long) PERMITTED_DELIVERIES, "EXHAUSTED",
+                Instant.parse("2026-08-20T09:00:00Z"));
+
+        final GuardDecision first = guardReadingAsFixed(observed)
+                .admit(command, resendOf(5, 601L));
+        final GuardDecision second = guardReadingAsFixed(observed)
+                .admit(command, resendOf(5, 602L));
+
+        assertThat(first).isInstanceOf(GuardDecision.Run.class);
+        assertThat(second).isEqualTo(new GuardDecision.Abandon(ReasonCode.REPLAY_NOT_ADMITTED));
+        assertThat(row().status()).isEqualTo("RECEIVED");
+        assertThat(row().attempts())
+                .as("exactly one replay was admitted, so the generation advanced exactly once")
+                .isEqualTo(PERMITTED_DELIVERIES + 1);
+    }
+
+    /**
+     * A delivery that read the parked generation before it was replayed, and only acts after that
+     * replay has run and failed again, must not replay the <em>newer</em> failure using what it read
+     * about the old one (spec FR-006; the edge case "A stale replay decision"; FR-015
+     * "the FAILED→RECEIVED→FAILED race cannot replay a newer failure").
+     */
+    @Test
+    @DisplayName("a stale read of an earlier generation cannot replay a newer failure")
+    void a_stale_read_of_an_earlier_generation_should_not_replay_a_newer_failure() {
+        exhaustEveryPermittedDelivery();
+        // As above: matches what exhaustEveryPermittedDelivery() actually wrote, so this read is
+        // genuinely of the first (now superseded) generation, not a mismatch from the very start.
+        final ProcessedRequestRecord staleGeneration = new ProcessedRequestRecord(
+                RequestStatus.FAILED, RequestFingerprint.of(command),
+                ReasonCode.PIPELINE_TRANSIENT_FAILURE.code(), "msg-5", PERMITTED_DELIVERIES,
+                null, null, (long) PERMITTED_DELIVERIES, "EXHAUSTED",
+                Instant.parse("2026-08-20T09:00:00Z"));
+
+        // The generation moves on without the stale reader's knowledge: replayed, then parked again.
+        final RunClaim replayed = runClaimOf(guard.admit(command, resendOf(5, 700L)));
+        guard.recordExhaustion(replayed, ReasonCode.PIPELINE_TRANSIENT_FAILURE);
+        final Row newerFailure = row();
+        assertThat(newerFailure.status()).isEqualTo("FAILED");
+        assertThat(newerFailure.parkingSequenceNumber()).isEqualTo(700L);
+
+        final GuardDecision decision =
+                guardReadingAsFixed(staleGeneration).admit(command, resendOf(5, 999L));
+
+        assertThat(decision).isEqualTo(new GuardDecision.Abandon(ReasonCode.REPLAY_NOT_ADMITTED));
+        assertThat(row())
+                .as("the newer failure the stale reader never saw must be exactly as it was")
+                .isEqualTo(newerFailure);
     }
 
     /**
@@ -354,6 +456,249 @@ class FailedReplayIT {
             verify(transformer).transform(any(), any(), eq(CallerIdentity.SYSTEM));
             assertThat(theIdentitiesEverythingWasSubmittedUnder(1))
                     .containsExactly(CallerIdentity.SYSTEM);
+        }
+
+        /**
+         * User Story 1's defect, proven through the full pipeline rather than the guard alone: the
+         * Azure portal's dead-letter "Re-send" copies the body <strong>verbatim, {@code messageId}
+         * included</strong>. Before this feature that identity was read as a redelivery of the
+         * message that exhausted the retries and re-parked without running; the only thing that
+         * changed between the parking delivery and this one is the broker's sequence number.
+         */
+        @Test
+        @DisplayName("a re-send under the SAME messageId still replays, once the broker assigns it "
+                + "a new sequence number")
+        void a_resend_under_the_same_message_id_should_still_replay() {
+            final String published = publishedBody();
+            exhaustEveryPermittedDelivery(parser.parse(published));
+            theReplayedRunProduces(List.of(document("CPS"), document("TVL")));
+
+            // Re-sent exactly as the dead-lettered body stood — same messageId as the delivery that
+            // exhausted the retries ("msg-5") — but the broker accepted and enqueued it as a new
+            // message, so it carries a fresh sequence number.
+            final GuardDecision decision =
+                    pipeline.process(parser.parse(published), resendOf(PERMITTED_DELIVERIES, 900L));
+
+            assertThat(decision).isEqualTo(new GuardDecision.Complete(ReasonCode.RUN_COMPLETED));
+            final Row row = replayedRow();
+            assertThat(row.status()).isEqualTo("COMPLETED");
+            assertThat(row.attempts())
+                    .as("the replay is a sixth run of the same request, not a fresh one")
+                    .isEqualTo(PERMITTED_DELIVERIES + 1);
+            assertThat(theIdentitiesEverythingWasSubmittedUnder(2))
+                    .containsExactly(
+                            new CallerIdentity(Optional.of(SHARING_USER)),
+                            new CallerIdentity(Optional.of(SHARING_USER)));
+        }
+    }
+
+    /**
+     * User Story 3: a {@code FAILED} row with no recorded parking sequence number — parked before
+     * this feature, or by an older consumer mid-rollout — has no exact identity test available, so
+     * the guard falls back to the documented two-condition heuristic (spec FR-005): a delivery
+     * whose broker delivery count is 0 <strong>and</strong> whose broker enqueue time is later than
+     * the parking time by more than the configured margin is treated as a resubmission; any
+     * delivery failing either condition is re-parked.
+     *
+     * <p>Every case here parks a request normally (so {@code updated_at} is a real, database-written
+     * parking time), then downgrades it to the legacy shape by nulling the two new columns directly
+     * — exactly the state a row parked before this migration is in.
+     */
+    @Nested
+    @DisplayName("a legacy FAILED record with no recorded parking sequence number")
+    class LegacyRecords {
+
+        /** Short and explicit, so boundary cases are expressed in seconds, not real-time waits. */
+        private static final Duration MARGIN = Duration.ofMinutes(1);
+
+        private final IdempotencyGuard legacyGuard =
+                ProcessedLogTestSupport.guard(LEASE, metrics, MARGIN);
+
+        /** Parks a request normally, then strips it down to the legacy shape, and returns its row. */
+        private Row parkedAsLegacy() {
+            exhaustEveryPermittedDelivery();
+            final int cleared = ProcessedLogTestSupport.jdbcClient()
+                    .sql("""
+                            UPDATE processed_request
+                               SET parking_sequence_number = NULL, parking_category = NULL
+                             WHERE source = :source AND request_id = :requestId
+                            """)
+                    .param("source", command.source())
+                    .param("requestId", command.requestId())
+                    .update();
+            assertThat(cleared).as("exactly the row just parked").isEqualTo(1);
+            final Row legacy = row();
+            assertThat(legacy.parkingSequenceNumber()).isNull();
+            assertThat(legacy.parkingCategory()).isNull();
+            return legacy;
+        }
+
+        private DeliveryIdentity legacyDelivery(final long deliveryCount, final Instant enqueueTime) {
+            return new DeliveryIdentity(
+                    "msg-resubmitted", "runner-1/delivery-legacy", false, 1234L, deliveryCount,
+                    enqueueTime);
+        }
+
+        @Test
+        @DisplayName("count 0, enqueued after the parking time plus the margin, replays")
+        void a_first_delivery_enqueued_well_after_parking_should_replay() {
+            final Row legacy = parkedAsLegacy();
+            final Instant wellAfter = legacy.updatedAt().plus(MARGIN).plusSeconds(5);
+
+            final GuardDecision decision =
+                    legacyGuard.admit(command, legacyDelivery(0L, wellAfter));
+
+            assertThat(decision).isInstanceOf(GuardDecision.Run.class);
+            assertThat(row().status()).isEqualTo("RECEIVED");
+        }
+
+        @Test
+        @DisplayName("a delivery count of 1 or more re-parks, however late it was enqueued")
+        void a_delivery_count_of_one_or_more_should_repark() {
+            final Row legacy = parkedAsLegacy();
+            final Instant wellAfter = legacy.updatedAt().plus(MARGIN).plusSeconds(5);
+
+            final GuardDecision decision =
+                    legacyGuard.admit(command, legacyDelivery(1L, wellAfter));
+
+            assertThat(decision).isEqualTo(new GuardDecision.DeadLetter(
+                    DeadLetterReason.EXHAUSTED, ReasonCode.PIPELINE_TRANSIENT_FAILURE));
+            assertThat(row()).isEqualTo(legacy);
+        }
+
+        @Test
+        @DisplayName("an enqueue time not later than the parking time plus the margin re-parks")
+        void an_enqueue_time_not_later_than_the_margin_should_repark() {
+            final Row legacy = parkedAsLegacy();
+            final Instant notLateEnough = legacy.updatedAt().plus(MARGIN).minusSeconds(1);
+
+            final GuardDecision decision =
+                    legacyGuard.admit(command, legacyDelivery(0L, notLateEnough));
+
+            assertThat(decision).isEqualTo(new GuardDecision.DeadLetter(
+                    DeadLetterReason.EXHAUSTED, ReasonCode.PIPELINE_TRANSIENT_FAILURE));
+            assertThat(row()).isEqualTo(legacy);
+        }
+
+        @Test
+        @DisplayName("an enqueue time exactly equal to the parking time plus the margin re-parks")
+        void an_enqueue_time_exactly_at_the_margin_should_repark() {
+            final Row legacy = parkedAsLegacy();
+            final Instant exactlyAtMargin = legacy.updatedAt().plus(MARGIN);
+
+            final GuardDecision decision =
+                    legacyGuard.admit(command, legacyDelivery(0L, exactlyAtMargin));
+
+            assertThat(decision)
+                    .as("strictly later than the margin is required; equal is not later")
+                    .isEqualTo(new GuardDecision.DeadLetter(
+                            DeadLetterReason.EXHAUSTED, ReasonCode.PIPELINE_TRANSIENT_FAILURE));
+            assertThat(row()).isEqualTo(legacy);
+        }
+
+        @Test
+        @DisplayName("an absent enqueue time re-parks — there is nothing to compare")
+        void an_absent_enqueue_time_should_repark() {
+            final Row legacy = parkedAsLegacy();
+
+            final GuardDecision decision = legacyGuard.admit(command, legacyDelivery(0L, null));
+
+            assertThat(decision).isEqualTo(new GuardDecision.DeadLetter(
+                    DeadLetterReason.EXHAUSTED, ReasonCode.PIPELINE_TRANSIENT_FAILURE));
+            assertThat(row()).isEqualTo(legacy);
+        }
+
+        /**
+         * The redelivery of the actual parking message, under this heuristic rather than an exact
+         * sequence-number test: released by a closed connection (so the broker never incremented
+         * its delivery count) and therefore still reading as count 0, but it was enqueued <em>before</em>
+         * the request was parked — enqueue time cannot be later than a parking time that had not
+         * happened yet. This is the case the spec calls out by name (FR-015).
+         */
+        @Test
+        @DisplayName("a parking-message redelivery released with count 0 but enqueued before "
+                + "parking re-parks")
+        void a_redelivery_enqueued_before_parking_should_repark() {
+            final Row legacy = parkedAsLegacy();
+            final Instant beforeParking = legacy.updatedAt().minusSeconds(30);
+
+            final GuardDecision decision =
+                    legacyGuard.admit(command, legacyDelivery(0L, beforeParking));
+
+            assertThat(decision).isEqualTo(new GuardDecision.DeadLetter(
+                    DeadLetterReason.EXHAUSTED, ReasonCode.PIPELINE_TRANSIENT_FAILURE));
+            assertThat(row()).isEqualTo(legacy);
+        }
+
+        /**
+         * A legacy resubmission handed back once — the store was unavailable, or a concurrent
+         * replay won the compare-and-set — is judged <strong>afresh</strong> on its next delivery,
+         * never remembered as rejected (spec User Story 3, Acceptance Scenario 3). Simulated with a
+         * guard whose read is deliberately stale, so the compare-and-set loses the race the first
+         * time regardless of how good the heuristic's answer was.
+         */
+        @Test
+        @DisplayName("a legacy resubmission handed back once is re-parked, and judged afresh next time")
+        void a_legacy_resubmission_handed_back_once_should_be_judged_afresh() {
+            final Row legacy = parkedAsLegacy();
+            final Instant wellAfter = legacy.updatedAt().plus(MARGIN).plusSeconds(5);
+            final DeliveryIdentity resubmission = legacyDelivery(0L, wellAfter);
+
+            final IdempotencyGuard staleReadingGuard = new IdempotencyGuard(
+                    new ProcessedRequestRepository(ProcessedLogTestSupport.jdbcClient(), LEASE) {
+                        @Override
+                        public Optional<ProcessedRequestRecord> read(
+                                final String source, final UUID requestId) {
+                            // Stale: attempts one lower than what is really stored, so the
+                            // compare-and-set cannot match the real row — standing in for "the
+                            // store was unavailable" or "a concurrent replay already won".
+                            return Optional.of(new ProcessedRequestRecord(
+                                    RequestStatus.FAILED, legacy.requestFingerprint(),
+                                    legacy.failureReason(), legacy.exhaustedMessageId(),
+                                    legacy.attempts() - 1, null, null, null, null,
+                                    legacy.updatedAt()));
+                        }
+                    },
+                    metrics, MARGIN);
+
+            final GuardDecision firstAttempt = staleReadingGuard.admit(command, resubmission);
+            assertThat(firstAttempt)
+                    .as("the heuristic admitted it, but the compare-and-set lost the race")
+                    .isEqualTo(new GuardDecision.Abandon(ReasonCode.REPLAY_NOT_ADMITTED));
+            assertThat(row())
+                    .as("a hand-back changes nothing: the record is exactly as it was")
+                    .isEqualTo(legacy);
+
+            // Judged afresh against the real, unmoved record: the same resubmission now succeeds.
+            final GuardDecision secondAttempt = legacyGuard.admit(command, resubmission);
+            assertThat(secondAttempt).isInstanceOf(GuardDecision.Run.class);
+            assertThat(row().status()).isEqualTo("RECEIVED");
+        }
+
+        /**
+         * The explicitly accepted residual risk (spec FR-005, the "Assumptions" section): a release
+         * without a delivery-count increment, combined with a broker clock running ahead of the
+         * database clock by more than the margin, is read as a resubmission even though nothing was
+         * actually resubmitted. Pinned here as an accepted case, not a defect — the heuristic cannot
+         * distinguish it from a genuine resubmission by construction, and the spec says so rather
+         * than hiding it.
+         */
+        @Test
+        @DisplayName("a simulated broker-clock lead greater than the margin demonstrates the "
+                + "accepted residual false-replay case")
+        void a_broker_clock_lead_beyond_the_margin_should_be_accepted_as_a_replay() {
+            final Row legacy = parkedAsLegacy();
+            // A broker enqueue time that is only this far ahead of the database's own clock would
+            // not occur under a synchronised clock; it stands in for the accepted skew case.
+            final Instant skewedEnqueueTime = legacy.updatedAt().plus(MARGIN).plusSeconds(10);
+
+            final GuardDecision decision =
+                    legacyGuard.admit(command, legacyDelivery(0L, skewedEnqueueTime));
+
+            assertThat(decision)
+                    .as("the heuristic cannot distinguish this from a genuine resubmission, and the "
+                            + "spec accepts that rather than hiding it")
+                    .isInstanceOf(GuardDecision.Run.class);
         }
     }
 }

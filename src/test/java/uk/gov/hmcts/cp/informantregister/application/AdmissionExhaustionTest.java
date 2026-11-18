@@ -23,6 +23,7 @@ import uk.gov.hmcts.cp.informantregister.persistence.ProcessedRequestRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -95,7 +96,8 @@ class AdmissionExhaustionTest {
 
     /** Nothing terminal was written, by any route. */
     private void assertNothingWasParked() {
-        verify(repository, never()).recordFailed(any(RunClaim.class), anyString());
+        verify(repository, never())
+                .recordFailed(any(RunClaim.class), anyString(), any(DeadLetterReason.class));
         verify(repository, never()).recordRetrying(any(RunClaim.class), anyString());
         verify(repository, never()).recordCompleted(any(RunClaim.class), anyString());
     }
@@ -113,7 +115,10 @@ class AdmissionExhaustionTest {
                     null,
                     1,
                     HELD_BY_ANOTHER,
-                    Instant.parse("2026-08-20T09:04:30Z")));
+                    Instant.parse("2026-08-20T09:04:30Z"),
+                    null,
+                    null,
+                    Instant.parse("2026-08-20T09:04:00Z")));
             when(repository.reclaimStaleClaim(any(RunClaim.class))).thenReturn(false);
         }
 
@@ -163,8 +168,16 @@ class AdmissionExhaustionTest {
                     "RESULTS:the-delivery-that-exhausted-the-budget",
                     5,
                     null,
-                    null));
-            when(repository.replayFailed(any(RunClaim.class), anyString())).thenReturn(false);
+                    null,
+                    // Different from the admitting delivery's own sequence number (derived from
+                    // MESSAGE_ID), so the decision is "different -> attempt replay", which the
+                    // mocked replayFailed below then refuses — simulating the record moving
+                    // underneath the decision.
+                    (long) MESSAGE_ID.hashCode() + 1,
+                    "EXHAUSTED",
+                    Instant.parse("2026-08-20T09:04:00Z")));
+            when(repository.replayFailed(any(RunClaim.class), anyInt(), any(), anyString()))
+                    .thenReturn(false);
         }
 
         @Test
