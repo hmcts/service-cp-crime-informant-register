@@ -55,6 +55,13 @@ import static org.mockito.Mockito.when;
  * that never held the claim is less entitled to write than a superseded one. What the budget buys is
  * therefore attribution, not state: the parking becomes ours, with a bounded reason, a metric and a
  * log line, and the row is left to whoever owns it.
+ *
+ * <p><strong>{@code REPLAY_NOT_ADMITTED} and spec FR-006.</strong> FR-006
+ * ({@code specs/001-replay-by-sequence-number/spec.md}) requires a lost replay compare-and-set to be
+ * handed back under {@code REPLAY_NOT_ADMITTED} — the escalation this suite predates and still
+ * applies unconditionally to that hand-back is the reconciliation FR-006 itself calls out: on the
+ * final permitted delivery it still becomes a dead-letter of this service's own, not a seventh
+ * abandon the broker has no budget left to grant. {@link ReplayNotAdmitted} is that proof.
  */
 class AdmissionExhaustionTest {
 
@@ -155,6 +162,12 @@ class AdmissionExhaustionTest {
         }
     }
 
+    /**
+     * Spec FR-006's own reconciliation: a lost replay compare-and-set is handed back under
+     * {@code REPLAY_NOT_ADMITTED}, but on the final permitted delivery that hand-back is still
+     * escalated to a dead-letter of this service's own — the pre-existing exhaustion rule above,
+     * unchanged by this story (data-model.md: "unchanged from today").
+     */
     @Nested
     @DisplayName("a parked record moved under the replay")
     class ReplayNotAdmitted {

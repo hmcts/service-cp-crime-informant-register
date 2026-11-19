@@ -251,7 +251,15 @@ trigger a re-park, and read the dead-letter reason and description on the re-par
 - **FR-006**: A replay MUST be a compare-and-set against the failure generation the delivery observed:
   it succeeds only if the record is still `FAILED` with the same attempt count and the same parking
   sequence number (compared null-safely, so "still none" matches for a legacy record) that were read.
-  If it does not succeed, the delivery MUST be handed back with `REPLAY_NOT_ADMITTED`.
+  If it does not succeed, the delivery MUST be handed back with `REPLAY_NOT_ADMITTED` — subject to the
+  pre-existing delivery-budget exhaustion rule this service already applies to every admission
+  hand-back (CRA-220, "leave no delivery unaccounted for"): on the **final** permitted delivery, the
+  hand-back is escalated to a dead-letter of this service's own, under `exhausted` /
+  `REPLAY_NOT_ADMITTED`, rather than left for a redelivery the broker will not grant. This is not a
+  new rule for this story — `REPLAY_NOT_ADMITTED` is simply the third reason code the existing
+  exhaustion rule was already written to carry alongside `CLAIM_NOT_ACQUIRED` and `RECORD_ABSENT` —
+  and it is unchanged by this change (data-model.md's state table says so explicitly). Proved by
+  `AdmissionExhaustionTest.ReplayNotAdmitted`.
 - **FR-007**: A replay MUST keep today's semantics: `FAILED → RECEIVED`, lifetime attempt count
   carried forward and incremented, audit note written, parking `messageId`, sequence number and
   category cleared, and already-submitted authorities skipped.
