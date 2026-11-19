@@ -387,7 +387,8 @@ class TelemetryPrivacyTest {
                 new InformantRegisterProperties.Referencedata(
                         SubscriptionsSourceMode.STUB, "http://localhost:8080", SYSTEM_USER_MARKER,
                         null, 3, Duration.ofSeconds(1), Duration.ofSeconds(5),
-                        Duration.ofSeconds(30)));
+                        Duration.ofSeconds(30)),
+                new InformantRegisterProperties.Replay(Duration.ofMinutes(5)));
     }
 
     // --- the configuration that makes correlation reach the index ---------------------------------

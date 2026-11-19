@@ -134,16 +134,91 @@ public class InformantRegisterMessageListener {
     }
 
     /**
+     * Every broker fact this class decides with or writes down, captured once per delivery.
+     *
+     * <p>Built in exactly one place ({@link #captureDelivery}), inside the boundary that guarantees
+     * a settlement attempt, so that no accessor on the SDK's own message type is ever called more
+     * than once per delivery (spec 001-replay-by-sequence-number, FR-011). Every later use in this
+     * class — correlation, the receipt log, the delivery identity the core decides with — reads this
+     * snapshot and never the raw message again.
+     *
+     * <p>{@code sequenceNumber}, {@code deliveryCount}, {@code messageId} and {@code lockToken} are
+     * required: a failure to read any of them is a failure to build the snapshot at all, handled by
+     * {@link #outcomeOf} before anything else is judged. {@code enqueueTime} is the one optional
+     * fact — {@code null} when the broker's annotation was absent, which is recorded as absent and
+     * never defaulted (FR-012).
+     *
+     * @param sequenceNumber         the broker's own identity for this delivery
+     * @param deliveryCount          the broker's delivery count, zero-based
+     * @param messageId              the broker's {@code messageId}, kept for audit only
+     * @param lockToken              this delivery's lock, the delivery half of {@code claim_owner}
+     * @param enqueueTime            when the broker accepted this delivery, or {@code null}
+     * @param finalPermittedDelivery whether the queue's delivery budget ends with this delivery
+     */
+    private record BrokerDeliverySnapshot(
+            long sequenceNumber,
+            long deliveryCount,
+            String messageId,
+            String lockToken,
+            OffsetDateTime enqueueTime,
+            boolean finalPermittedDelivery) {
+    }
+
+    /**
      * Handles one delivery, from receipt to its single settlement.
      *
      * @param context the delivery, and the settlement calls it permits
      */
     public void onMessage(final ServiceBusReceivedMessageContext context) {
         try {
-            settle(context, outcomeOf(context.getMessage()));
+            settle(context, outcomeOf(context));
         } finally {
             clearCorrelation();
         }
+    }
+
+    /**
+     * Reads every broker fact this class needs, once each, in place before anything is judged.
+     *
+     * <p>The broker's accessors earn the suspicion built into this method existing at all:
+     * {@code getSequenceNumber()} casts an annotation whose type it does not check, so a message
+     * stamped unusually — a hand-built republish, a dead-letter resubmission — throws on being
+     * <em>described</em> rather than on being processed. Reading all of them here, together, means
+     * that failure is caught in exactly one place ({@link #outcomeOf}) rather than scattered across
+     * every call site an unguarded accessor might have had.
+     *
+     * <p><strong>The delivery count is zero-based.</strong> The broker counts previous
+     * <em>unsuccessful</em> deliveries, so a first delivery has had none and the last delivery a
+     * message is entitled to carries {@code maxDeliveryCount - 1}. That is observed against a real
+     * broker in {@code QueueSettlementIT}, not assumed from the property's name, because both
+     * mistakes are quiet and both are damaging: reading it as {@code maxDeliveryCount} means this
+     * service parks nothing and the broker parks the message a delivery later under its own reason
+     * with no FAILED record behind it, while reading it a delivery early throws away a retry the
+     * queue was willing to give. The comparison is {@code >=} so that a message somehow arriving past
+     * the budget — a queue reconfigured downwards while messages were in flight — is still parked
+     * rather than never parked at all.
+     */
+    private BrokerDeliverySnapshot captureDelivery(final ServiceBusReceivedMessage message) {
+        final String messageId = message.getMessageId();
+        final String lockToken = message.getLockToken();
+        if (messageId == null || lockToken == null) {
+            // Required, per this record's own javadoc: a snapshot missing either cannot be built at
+            // all, so this is treated exactly like any other capture failure, below — abandoned
+            // unconditionally, never processed. Without this check a null messageId reaches
+            // processing and later fails the FAILED-state write, which requires it non-null, leaving
+            // the delivery stuck mid-run rather than rejected up front.
+            throw new IllegalStateException(
+                    "Broker delivery is missing a required identifier: messageIdMissing="
+                            + (messageId == null) + " lockTokenMissing=" + (lockToken == null));
+        }
+        final long deliveryCount = message.getDeliveryCount();
+        return new BrokerDeliverySnapshot(
+                message.getSequenceNumber(),
+                deliveryCount,
+                messageId,
+                lockToken,
+                message.getEnqueuedTime(),
+                deliveryCount >= (long) maxDeliveryCount - 1);
     }
 
     /**
@@ -158,9 +233,9 @@ public class InformantRegisterMessageListener {
      * <p>Both reads sit inside the caller's catch-and-settle boundary; see {@link #outcomeOf} for
      * why that is load-bearing rather than incidental.
      */
-    private static void correlateDelivery(final ServiceBusReceivedMessage message) {
-        MDC.put(DELIVERY_COUNT, Long.toString(message.getDeliveryCount()));
-        MDC.put(SEQUENCE_NUMBER, Long.toString(message.getSequenceNumber()));
+    private static void correlateDelivery(final BrokerDeliverySnapshot snapshot) {
+        MDC.put(DELIVERY_COUNT, Long.toString(snapshot.deliveryCount()));
+        MDC.put(SEQUENCE_NUMBER, Long.toString(snapshot.sequenceNumber()));
     }
 
     /**
@@ -284,10 +359,11 @@ public class InformantRegisterMessageListener {
      * <p>Nothing escapes: a decision is the only thing this method can produce, which is what makes
      * the settlement above unconditional.
      *
-     * <p><strong>Everything the delivery touches is inside this boundary</strong> — the correlation
-     * reads, the store-availability precondition and the run itself. That is a correctness property
-     * and not tidiness. {@code onMessage} has a {@code finally} and no {@code catch}, so anything
-     * thrown out there escapes past {@link #settle} into the processor's error handler with
+     * <p><strong>Everything the delivery touches is inside this boundary</strong> — the message's own
+     * retrieval from the context, the correlation reads, the store-availability precondition and the
+     * run itself. That is a correctness property and not tidiness. {@code onMessage} has a
+     * {@code finally} and no {@code catch}, so anything thrown out there escapes past {@link #settle}
+     * into the processor's error handler with
      * auto-complete disabled: the lock runs to expiry, the message comes back, fails the same way
      * five times, and the broker parks it under its own reason with no processed-request row and no
      * reason from this service — the silent loss the whole design exists to prevent. The
@@ -303,29 +379,68 @@ public class InformantRegisterMessageListener {
     // whole design exists to prevent — so the catch is total and each branch still logs at ERROR and
     // names a settlement: the body that can never be valid is parked, and the fault nothing
     // anticipated is handed back. It is a catch-and-settle, not a catch-and-ignore.
-    private GuardDecision outcomeOf(final ServiceBusReceivedMessage message) {
-        final boolean finalDelivery = isFinalPermittedDelivery(message);
-        GuardDecision decision;
+    private GuardDecision outcomeOf(final ServiceBusReceivedMessageContext context) {
+        ServiceBusReceivedMessage message = null;
+        BrokerDeliverySnapshot snapshot = null;
+        RuntimeException captureFailure = null;
         try {
-            correlateDelivery(message);
-            decision = storeGate.storeAvailable()
-                    ? examine(message) : storeUnavailable(finalDelivery);
-        } catch (ConcurrencyFailureException contention) {
-            decision = lostContentionRace(contention, finalDelivery);
-        } catch (TransientDataAccessException | RecoverableDataAccessException
-                | DataAccessResourceFailureException storeGone) {
-            // The outage classes, and deliberately not the whole DataAccessException hierarchy.
-            // Spring's own transient/non-transient split is the wrong knife here: the exception a
-            // dead store actually produces — DataAccessResourceFailureException, connection
-            // acquisition included — sits on the non-transient side, while a constraint violation
-            // or a broken statement is the store *answering*, over a connection that plainly
-            // worked. Only the store-went-away classes may stop the queue; a per-statement fault
-            // is handed back below without turning one poison message into an intake outage.
-            decision = storeDiedMidRun(finalDelivery);
-        } catch (RuntimeException unexpected) {
-            decision = unexpectedFailure(unexpected, finalDelivery);
+            message = context.getMessage();
+            snapshot = captureDelivery(message);
+        } catch (RuntimeException failure) {
+            captureFailure = failure;
+        }
+
+        final GuardDecision decision;
+        if (captureFailure != null) {
+            decision = unableToCaptureDelivery(captureFailure);
+        } else {
+            correlateDelivery(snapshot);
+            final boolean finalDelivery = snapshot.finalPermittedDelivery();
+            GuardDecision processed;
+            try {
+                processed = storeGate.storeAvailable()
+                        ? examine(message, snapshot) : storeUnavailable(finalDelivery);
+            } catch (ConcurrencyFailureException contention) {
+                processed = lostContentionRace(contention, finalDelivery);
+            } catch (TransientDataAccessException | RecoverableDataAccessException
+                    | DataAccessResourceFailureException storeGone) {
+                // The outage classes, and deliberately not the whole DataAccessException hierarchy.
+                // Spring's own transient/non-transient split is the wrong knife here: the exception
+                // a dead store actually produces — DataAccessResourceFailureException, connection
+                // acquisition included — sits on the non-transient side, while a constraint
+                // violation or a broken statement is the store *answering*, over a connection that
+                // plainly worked. Only the store-went-away classes may stop the queue; a
+                // per-statement fault is handed back below without turning one poison message into
+                // an intake outage.
+                processed = storeDiedMidRun(finalDelivery);
+            } catch (RuntimeException unexpected) {
+                processed = unexpectedFailure(unexpected, finalDelivery);
+            }
+            decision = processed;
         }
         return decision;
+    }
+
+    /**
+     * The one failure that must always be handed back, never parked (spec FR-012).
+     *
+     * <p>Every other failure in this class is handed a known {@code finalPermittedDelivery} and may
+     * escalate to a dead-letter on the final one. This failure cannot: the delivery count that
+     * decides the budget position is exactly what could not be read, so there is no final-delivery
+     * answer to escalate on. The conservative choice — abandon unconditionally, even on what might
+     * be the message's last delivery — is the only one available, and is stated here rather than
+     * guessed at a call site that has already lost the information needed to guess correctly.
+     *
+     * <p>Nothing is written: the body was never read, so there is no key to write a row under, and
+     * nothing before this point claimed one.
+     */
+    private GuardDecision unableToCaptureDelivery(final RuntimeException captureFailed) {
+        LOG.error("Could not read the broker's own facts about this delivery; abandoning it "
+                        + "unconditionally, because whether it was the final permitted delivery "
+                        + "cannot be known. type={} reason={}",
+                FaultSummary.typeChain(captureFailed), ReasonCode.UNEXPECTED_FAILURE.code());
+        metrics.pipelineFailed(FailureClassification.TRANSIENT);
+        return new GuardDecision.Abandon(ReasonCode.UNEXPECTED_FAILURE);
     }
 
     /**
@@ -363,11 +478,12 @@ public class InformantRegisterMessageListener {
      * <p>It is a separate method only so that the body can be a local of the frame that reads it and
      * still reach the validation branch, which needs it for correlation.
      */
-    private GuardDecision examine(final ServiceBusReceivedMessage message) {
+    private GuardDecision examine(
+            final ServiceBusReceivedMessage message, final BrokerDeliverySnapshot snapshot) {
         final String body = message.getBody().toString();
         GuardDecision decision;
         try {
-            decision = process(parser.parse(body), message);
+            decision = process(parser.parse(body), message, snapshot);
         } catch (ContractValidationException invalid) {
             decision = contractInvalid(body, invalid);
         }
@@ -414,7 +530,8 @@ public class InformantRegisterMessageListener {
      * any reader that shows the message and not the structured fields.
      */
     private GuardDecision process(
-            final DistributionCommand command, final ServiceBusReceivedMessage message) {
+            final DistributionCommand command, final ServiceBusReceivedMessage message,
+            final BrokerDeliverySnapshot snapshot) {
         MDC.put(SOURCE, command.source());
         MDC.put(REQUEST_ID, command.requestId().toString());
         MDC.put(HEARING_ID, command.hearingId().toString());
@@ -424,9 +541,9 @@ public class InformantRegisterMessageListener {
                         + "lockedUntil={} finalPermittedDelivery={}",
                 command.source(), command.requestId(), command.hearingId(), command.hearingDay(),
                 command.eventType(), command.sharedTime(), CallerIdentity.of(command).label(),
-                stamp(message.getEnqueuedTime()), stamp(message.getLockedUntil()),
-                isFinalPermittedDelivery(message));
-        return pipeline.process(command, identityOf(message));
+                stamp(snapshot.enqueueTime()), stamp(message.getLockedUntil()),
+                snapshot.finalPermittedDelivery());
+        return pipeline.process(command, identityOf(snapshot));
     }
 
     /**
@@ -694,38 +811,21 @@ public class InformantRegisterMessageListener {
     }
 
     /**
-     * Who is running this delivery: this pod, and this lock.
+     * Who is running this delivery, and the broker facts the core decides with.
      *
-     * <p>The lock token is the delivery half — it is unique to the delivery and changes on every
-     * redelivery, which is exactly the granularity {@code claim_owner} wants.
+     * <p>The lock token is the delivery half of {@code claim_owner} — it is unique to the delivery
+     * and changes on every redelivery, which is exactly the granularity it wants. The sequence
+     * number, delivery count and enqueue time all come from the one snapshot captured for this
+     * delivery; none of them is read from the broker a second time here.
      */
-    private DeliveryIdentity identityOf(final ServiceBusReceivedMessage message) {
+    private DeliveryIdentity identityOf(final BrokerDeliverySnapshot snapshot) {
         return new DeliveryIdentity(
-                message.getMessageId(),
-                INSTANCE + '/' + message.getLockToken(),
-                isFinalPermittedDelivery(message));
-    }
-
-    /**
-     * Whether the queue will deliver this message again after this delivery.
-     *
-     * <p><strong>The count is zero-based.</strong> The broker counts previous <em>unsuccessful</em>
-     * deliveries, so a first delivery has had none and the last delivery a message is entitled to
-     * carries {@code maxDeliveryCount - 1}. That is observed against a real broker in
-     * {@code QueueSettlementIT}, not assumed from the property's name, because both mistakes are
-     * quiet and both are damaging: reading it as {@code maxDeliveryCount} means this service parks
-     * nothing and the broker parks the message a delivery later under its own reason with no FAILED
-     * record behind it, while reading it a delivery early throws away a retry the queue was willing
-     * to give.
-     *
-     * <p>The limit is the configured one rather than a constant, because it mirrors a setting on the
-     * queue itself: the two are changed together or the service is wrong about the broker. The
-     * comparison is {@code >=} so that a message somehow arriving past the budget — a queue
-     * reconfigured downwards while messages were in flight — is still parked rather than never
-     * parked at all.
-     */
-    private boolean isFinalPermittedDelivery(final ServiceBusReceivedMessage message) {
-        return message.getDeliveryCount() >= (long) maxDeliveryCount - 1;
+                snapshot.messageId(),
+                INSTANCE + '/' + snapshot.lockToken(),
+                snapshot.finalPermittedDelivery(),
+                snapshot.sequenceNumber(),
+                snapshot.deliveryCount(),
+                snapshot.enqueueTime() == null ? null : snapshot.enqueueTime().toInstant());
     }
 
     private static void clearCorrelation() {

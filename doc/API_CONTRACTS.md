@@ -135,22 +135,34 @@ version is live in the target environment.
 | `contentType` | `application/json` | |
 | `correlationId` | `hearingId` (recommended) | Cross-service tracing. |
 
-**Replay rule (the exception to the deterministic `messageId`).** A support resubmission of a parked
-message carries the **same body** — the same `requestId`, so it is the same unit of work — but it
-MUST be published under a **fresh `messageId`, distinct from any identity previously used for that
-request**, and never the identity that exhausted the retries. The shape of that fresh identity is
-deliberately not prescribed; distinctness is the whole requirement. Two independent mechanisms
-depend on it:
+**Replay rule (sequence number decides; `messageId` is now optional).** The service identifies
+the delivery that parked a request by the broker's own **sequence number**, assigned on accept,
+not by `messageId`. A support resubmission may therefore re-send the dead-lettered body
+**unchanged, `messageId` included** — which is what the Azure portal's dead-letter "Re-send" does
+— and the service will recognise it as a deliberate resubmission and replay it, provided the
+broker actually accepts and enqueues the re-send as a new message (which is what assigns it a
+fresh sequence number).
 
-- the broker's **duplicate-detection window** would silently discard a resubmission that reused an
-  identity already seen — the replay would simply never arrive;
-- the service uses the **difference in identity** to tell a deliberate resubmission apart from the
-  exhausted message coming round again, and admits the `FAILED` → `RECEIVED` replay only on the
-  former.
+**`messageId` still matters to the broker, not to the service.** If the re-send is made within
+the queue's duplicate-detection window of the last accepted send under that same `messageId`, the
+broker silently discards it and the service never sees it at all — this is unchanged and is not
+something the service can see or work around. Outside that window, a same-`messageId` re-send is
+accepted and enqueued normally, exactly like any other send. A fresh `messageId` is therefore
+still useful — it lets a resubmission bypass the duplicate-detection window immediately rather
+than waiting it out — but it is no longer *required* by this service's own guard, and normal
+producer publishing keeps using the deterministic `messageId` regardless.
+
+**For a request parked before this change** (no recorded parking sequence number), the service
+falls back to a heuristic: a delivery is treated as a resubmission only when the broker's
+delivery count for it is 0 **and** its enqueue time is later than the parking time by more than a
+configured margin (the "legacy margin" in the implementation). A same-`messageId` re-send still
+satisfies this in the ordinary case; the two residual false cases the heuristic accepts are
+documented in the feature spec's assumptions and are not repeated here.
 
 **Re-send the body verbatim.** The resubmission is the dead-lettered body as it stands, byte for
-byte, with the `messageId` the only thing changed. That is not tidiness: **the body carries the
-attribution**. A parked message that named a `userId` replays as that original sharing user, with
+byte, with the `messageId` optionally changed (left exactly as it was, or changed to bypass the
+duplicate-detection window — either way the body is unchanged). That is not tidiness: **the body
+carries the attribution**. A parked message that named a `userId` replays as that original sharing user, with
 nothing recorded server-side and nothing for the operator to remember — while a replay rebuilt by
 hand without the original body names no user and runs under the configured system identity
 (`doc/DEVIATIONS.md` #16). Rebuilding a body from the processed log therefore loses the attribution
@@ -165,18 +177,20 @@ as one rather than dead-lettered as an idempotency collision. Nothing else in th
 any change to `hearingId`, `hearingDay`, `sharedTime` or `eventType` *is* an idempotency collision,
 by design.
 
-Given a fresh identity, the service's `(source, requestId)` processed-log then decides — visibly, and
+Given an accepted send, the service's `(source, requestId)` processed-log then decides — visibly, and
 recorded — whether work is repeated:
 
 - a request in `COMPLETED` is **acknowledged without reprocessing** — nothing is re-POSTed;
-- a request in `FAILED` is **replayable when the replay carries a fresh `messageId`**: the idempotency
-  guard transitions it `FAILED` → `RECEIVED` (attempts preserved, an audit note recording the replay)
-  and reprocesses it. Replaying a dead-lettered request is therefore the supported recovery route.
-  Once the real submission adapter lands, the replay also repeats only the work that failed, skipping
-  every authority already `POSTED` in `processed_output` — that skip is the design for those later
-  stories, not behaviour of this increment, which writes no `processed_output` rows at all. A
-  redelivery under the *original* `messageId` is not a replay: the record stays `FAILED` and
-  dead-lettering is re-attempted.
+- a request in `FAILED` is **replayable when the delivery's broker sequence number differs from the
+  one recorded when the request was parked, whatever its `messageId`**: the idempotency guard
+  transitions it `FAILED` → `RECEIVED` via a compare-and-set against the exact failure generation
+  observed (attempts preserved and incremented once, an audit note recording the replay) and
+  reprocesses it. Replaying a dead-lettered request is therefore the supported recovery route, and
+  it no longer requires a fresh `messageId` — only an accepted, newly-enqueued delivery. Already
+  `POSTED` authorities in `processed_output` are skipped. A delivery carrying the **same** sequence
+  number as the one recorded when the request was parked is not a replay: the record stays `FAILED`
+  and dead-lettering is re-attempted, with the request's own recorded reason and category — never a
+  generic exhaustion reason.
 
 ### Delivery and settlement semantics
 
@@ -202,8 +216,9 @@ delivery therefore gets **no `processed_request` record** — it may not even ca
 | `eventType` not `Hearing_Resulted` | Contract-validation failure → immediate `deadLetter()` with a sanitised reason, no retry, **no `processed_request` record**. |
 | Unknown extra fields | Contract-validation failure (the schema is closed, `additionalProperties: false`) → immediate `deadLetter()` with a sanitised reason, no retry, **no `processed_request` record**. Contract drift must surface loudly, never be ignored. |
 | `(source, requestId)` already `COMPLETED` | Logged, `complete()`, no re-submission. |
-| `(source, requestId)` already `FAILED`, redelivered under the **same** `messageId` that exhausted the retries (e.g. dead-lettering did not settle and the lock expired) | Stays `FAILED`; the pipeline does not run; `deadLetter()` is attempted again. |
-| `(source, requestId)` already `FAILED`, resubmitted with a fresh `messageId` | Transitioned `FAILED` → `RECEIVED` with an audit note (attempts preserved) and reprocessed. (Skipping authorities already `POSTED` is deferred with `processed_output` — see the replay rule above.) |
+| `(source, requestId)` already `FAILED`, delivered with the **same broker sequence number** as the one recorded when it was parked (e.g. dead-lettering did not settle and the lock expired) | Stays `FAILED`; the pipeline does not run; `deadLetter()` is attempted again, with the request's own recorded category and reason. |
+| `(source, requestId)` already `FAILED`, delivered with a **different broker sequence number** from the one recorded when it was parked — whatever its `messageId` | Transitioned `FAILED` → `RECEIVED` via a compare-and-set against the exact failure generation observed; attempts preserved and incremented once; already-`POSTED` authorities skipped; an audit note recorded. If the compare-and-set is not admitted (the record moved underneath the decision), the delivery is handed back for redelivery rather than retried in a loop. |
+| A re-park (either row above) | The dead-letter `reason` is the request's own recorded category (`exhausted` / `non-transient`), and the `description` is the request's own recorded failure reason code — never the generic `DELIVERY_LIMIT_EXHAUSTED` as a substitute for the real cause. A request with no recorded category (parked before this change) is categorised by an explicit, reviewed mapping of its stored reason. A missing or unrecognised stored reason dead-letters as `exhausted` / `UNEXPECTED_FAILURE` and never throws. |
 | `(source, requestId)` matches an existing record but the immutable fields (`hearingId`, `hearingDay`, `sharedTime`, `eventType`) differ | Idempotency collision → `deadLetter()` with a reason; the original record is never overwritten and the pipeline does not run. |
 | `(source, requestId)` is `RECEIVED`/`RETRYING` and the single-runner claim is held by a live runner | Competing delivery → `abandon()` (never `complete()`); no second pipeline run while a run is in flight. On the final permitted delivery, the service instead calls `deadLetter()` with detail `CLAIM_NOT_ACQUIRED`; it does not write the live holder's row. |
 | `(source, requestId)` is `RECEIVED`/`RETRYING` and the claim is absent or expired (e.g. a runner crashed mid-run) | The delivery atomically reclaims the request and the pipeline runs again. |

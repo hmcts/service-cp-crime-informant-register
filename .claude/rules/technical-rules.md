@@ -49,8 +49,10 @@ private RedisHearingPayloadAdapter adapter;
 - Peek-lock, auto-complete disabled; exactly one explicit `complete()` / `abandon()` / `deadLetter()`
   per message on every path
 - `maxDeliveryCount` 5; `maxConcurrentCalls` 2 to start
-- `messageId` = `"{source}:{requestId}"`; broker duplicate detection on; replay tooling always mints a
-  fresh `messageId`
+- `messageId` = `"{source}:{requestId}"`; broker duplicate detection on; a replay is decided by the
+  broker's own sequence number, not `messageId` — a fresh `messageId` is no longer required, only
+  still useful to bypass the duplicate-detection window immediately
+  (`specs/001-replay-by-sequence-number/spec.md`)
 - Persist state **before** settling
 - ASB processor health is registered as a liveness/details indicator only — **never** in the
   readiness group

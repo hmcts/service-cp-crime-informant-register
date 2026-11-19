@@ -99,7 +99,8 @@ class OutcomeWriteExhaustionTest {
     private void theClaimWasReclaimed() {
         when(repository.recordCompleted(any(RunClaim.class), anyString())).thenReturn(false);
         when(repository.recordRetrying(any(RunClaim.class), anyString())).thenReturn(false);
-        when(repository.recordFailed(any(RunClaim.class), anyString())).thenReturn(false);
+        when(repository.recordFailed(any(RunClaim.class), anyString(), any(DeadLetterReason.class)))
+                .thenReturn(false);
     }
 
     private static GuardDecision parkedWith(final ReasonCode reason) {
@@ -114,12 +115,13 @@ class OutcomeWriteExhaustionTest {
     void recordExhaustion_should_preserve_the_failure_reason_in_the_row_and_dead_letter(
             final ReasonCode reason) {
         final RunClaim claim = claimGrantedOn(finalPermittedDelivery());
-        when(repository.recordFailed(claim, reason.code())).thenReturn(true);
+        when(repository.recordFailed(claim, reason.code(), DeadLetterReason.EXHAUSTED))
+                .thenReturn(true);
 
         final GuardDecision decision = guard.recordExhaustion(claim, reason);
 
         assertThat(decision).isEqualTo(parkedWith(reason));
-        verify(repository).recordFailed(claim, reason.code());
+        verify(repository).recordFailed(claim, reason.code(), DeadLetterReason.EXHAUSTED);
     }
 
     @Nested

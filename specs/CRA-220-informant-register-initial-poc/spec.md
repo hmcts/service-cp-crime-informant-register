@@ -96,8 +96,10 @@ single pipeline run; the second delivery is acknowledged with no new processing.
 When processing a request fails (in this increment, a simulated pipeline failure), the service must
 not lose it and must not acknowledge it as done. The request is returned to the queue for retry;
 after the delivery limit for that message is exhausted, it is parked on the dead-letter queue where
-support can see it. Support can resubmit a parked request under a fresh message identity and the
-service will process it afresh.
+support can see it. Support can resubmit a parked request — including by re-sending the
+dead-lettered message unchanged, `messageId` included, via the Azure portal's dead-letter "Re-send"
+— and the service will process it afresh, once the broker accepts the re-send as a new delivery
+(see `specs/001-replay-by-sequence-number/spec.md`).
 
 Retry exhaustion is judged by the current message's delivery count against the queue's limit of 5,
 never by the request's cumulative attempt count. The attempt count is a lifetime tally of pipeline
@@ -110,8 +112,8 @@ but it depends on the P1 spine being in place.
 
 **Independent Test**: Deliver a request that the stub pipeline is configured to fail; observe
 repeated redelivery with the failure recorded each time, then the message parked on the dead-letter
-queue after the fifth delivery with the request recorded as FAILED; resubmit it under a fresh
-message identity and observe successful reprocessing.
+queue after the fifth delivery with the request recorded as FAILED; resubmit it (a fresh `messageId`
+or the unchanged dead-lettered body, either now works) and observe successful reprocessing.
 
 **Acceptance Scenarios**:
 
@@ -125,15 +127,17 @@ message identity and observe successful reprocessing.
    configured delivery limit for that message), **Then** the message is parked on the dead-letter
    queue and the request is recorded as FAILED with the final failure reason and the identity of the
    delivery that exhausted the limit.
-3. **Given** a request recorded as FAILED, **When** a deliberate resubmission for the same source
-   and request id arrives under a message identity different from the one recorded as having
-   exhausted the retries, **Then** the guard transitions the record from FAILED back to RECEIVED
-   (preserving the cumulative attempt count, with an audit note recording the resubmission) and the
-   pipeline runs again.
-4. **Given** a request recorded as FAILED, **When** a redelivery arrives carrying the same message
-   identity that exhausted the retries (for example, dead-lettering did not settle and the delivery
-   lock expired), **Then** the record stays FAILED, the pipeline does not run, and dead-lettering is
-   attempted again.
+3. **Given** a request recorded as FAILED, **When** a delivery for the same source and request id
+   arrives carrying a broker sequence number different from the one recorded as having parked it —
+   whatever its `messageId` — **Then** the guard transitions the record from FAILED back to
+   RECEIVED via a compare-and-set against the exact failure generation observed (preserving the
+   cumulative attempt count, with an audit note recording the resubmission) and the pipeline runs
+   again. (Superseded by `specs/001-replay-by-sequence-number/spec.md` FR-003/FR-004/FR-006, which
+   replace the original messageId-keyed test with this one.)
+4. **Given** a request recorded as FAILED, **When** a redelivery arrives carrying the same broker
+   sequence number that parked it (for example, dead-lettering did not settle and the delivery lock
+   expired), **Then** the record stays FAILED, the pipeline does not run, and dead-lettering is
+   attempted again, reporting the request's own recorded failure reason and category.
 5. **Given** a message whose body is not a valid request (malformed, missing required fields,
    unknown fields, or values outside the agreed contract), **When** it is delivered, **Then** the
    service parks it on the dead-letter queue immediately with a sanitised reason describing the
@@ -188,8 +192,10 @@ reporting the queue connection state.
 - **`source` or `eventType` outside the agreed values**: validation failure → dead-letter
   immediately (scenario US3-5).
 - **Resubmission that reuses the original message identity within the duplicate-detection window**:
-  silently discarded by the broker — the resubmission runbook must use a fresh message identity
-  (recorded operational note; the service cannot detect this case).
+  silently discarded by the broker regardless of how the service decides a replay — a fresh message
+  identity is the only way to bypass that window, though it is no longer *required* for the service
+  to recognise a resubmission at all (recorded operational note; the service cannot detect this
+  case; see `specs/001-replay-by-sequence-number/spec.md`).
 - **Processed-log store unavailable**: store availability is a precondition checked before a
   delivery is validated or processed, so the current delivery is returned to the queue for retry
   (never acknowledged, never dead-lettered as poison) and intake from the queue is suspended until
@@ -252,17 +258,21 @@ reporting the queue connection state.
   | RETRYING | RETRYING | further processing failure with deliveries remaining |
   | RECEIVED or RETRYING | COMPLETED | processing succeeds; an empty output set completes the request with the recorded reason `no-authorities` |
   | RECEIVED or RETRYING | FAILED | processing failure on the final permitted delivery |
-  | FAILED | RECEIVED | only on a deliberate resubmission under a different message identity (FR-007) |
+  | FAILED | RECEIVED | only on a delivery carrying a different broker sequence number from the one that parked the request (FR-007; superseded by `specs/001-replay-by-sequence-number/spec.md`) |
   | COMPLETED | — | terminal: no outbound transitions |
 
 - **FR-006**: A delivery for a request already COMPLETED MUST be acknowledged without reprocessing.
-- **FR-007**: A delivery for a request recorded FAILED MUST be handled according to the identity of
-  the delivering message. When that identity differs from the one recorded as having exhausted the
-  retry limit, the delivery is a deliberate resubmission: the record transitions FAILED → RECEIVED
-  (cumulative attempt count preserved, with an audit note) and is reprocessed. When the identity is
-  the same one that exhausted the limit — for example, dead-lettering did not settle and the
+- **FR-007**: A delivery for a request recorded FAILED MUST be handled according to the broker
+  sequence number of the delivering message, not its `messageId`
+  (`specs/001-replay-by-sequence-number/spec.md` FR-003/FR-004, which supersede the original
+  `messageId`-keyed version of this requirement). When that sequence number differs from the one
+  recorded as having parked the request, the delivery is a deliberate resubmission: the record
+  transitions FAILED → RECEIVED via a compare-and-set against the exact failure generation observed
+  (cumulative attempt count preserved, with an audit note) and is reprocessed. When the sequence
+  number is the same one that parked it — for example, dead-lettering did not settle and the
   delivery lock expired — the record MUST stay FAILED, the pipeline MUST NOT run, and dead-lettering
-  MUST be attempted again.
+  MUST be attempted again, reporting the request's own recorded failure reason and category rather
+  than a generic exhaustion reason.
 - **FR-008**: For any single request, at most one pipeline run may be in flight at a time,
   regardless of concurrent deliveries. The single-runner claim MUST be taken atomically and MUST
   carry an expiry or equivalent liveness marker, so a claim abandoned by a crashed runner can be
@@ -303,8 +313,8 @@ reporting the queue connection state.
 - **FR-016**: Settlement MUST stay unambiguous at its edges. If the acknowledgement fails after
   COMPLETED has been recorded, the record stays COMPLETED and the broker's redelivery is
   acknowledged without any work being repeated. If dead-lettering fails after FAILED has been
-  recorded, the redelivery is handled per FR-007 — same message identity, so the record stays FAILED,
-  no pipeline run occurs, and dead-lettering is attempted again. Loss of the delivery lock MUST be
+  recorded, the redelivery is handled per FR-007 — same broker sequence number, so the record stays
+  FAILED, no pipeline run occurs, and dead-lettering is attempted again. Loss of the delivery lock MUST be
   logged and counted, and recovery then relies on the broker redelivering the message.
 - **FR-017**: Every failure path — processing failure, contract-validation dead-letter, store-outage
   suspension, settlement failure and lock loss — MUST emit a sanitised ERROR log carrying the
@@ -358,8 +368,8 @@ reporting the queue connection state.
   COMPLETED has been durably recorded.
 - **SC-003**: A persistently failing request is parked after exactly 5 deliveries of that message,
   with its state, cumulative attempt count and final reason readable from the processed-log, and is
-  successfully reprocessed after one resubmission under a fresh message identity — leaving the
-  record showing 6 cumulative attempts.
+  successfully reprocessed after one resubmission — a fresh message identity or the unchanged
+  dead-lettered body, either now admitted — leaving the record showing 6 cumulative attempts.
 - **SC-004**: The service, started as a container with its local dependencies, reports ready within
   60 seconds; with the queue stopped it remains ready and resumes consumption within 60 seconds of
   the queue returning, with no restart.
@@ -396,9 +406,11 @@ reporting the queue connection state.
 - `requestId` is minted deterministically by the producer from the share's identity, so a republish
   of the same share carries the same id, while a genuine re-share carries a new one and is
   legitimately processed again.
-- Resubmission of parked messages uses existing queue tooling with a **fresh message identity**
-  (operational runbook note — a resubmission reusing the original identity within the
-  duplicate-detection window is silently discarded by the broker).
+- Resubmission of parked messages uses existing queue tooling — the Azure portal's dead-letter
+  "Re-send", included — and a fresh message identity is no longer *required*, only still useful to
+  bypass the duplicate-detection window immediately (superseded by
+  `specs/001-replay-by-sequence-number/spec.md`; a resubmission reusing the original identity within
+  that window is still silently discarded by the broker regardless).
 - The processed-log lives in a durable store owned by this service; its technology is a planning
   decision, not part of this specification.
 - Message throughput is modest (per resulted hearing, hundreds per day); no volume-driven

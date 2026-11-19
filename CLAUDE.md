@@ -43,6 +43,8 @@ parity-harness presence, and the absence of REST after implementation.
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/CRA-220-informant-register-initial-poc/plan.md` (with `research.md`,
-`data-model.md`, `quickstart.md` and `contracts/` alongside it).
+`specs/001-replay-by-sequence-number/plan.md` (with `research.md`,
+`data-model.md`, `quickstart.md` and `contracts/` alongside it). The prior
+increment's plan remains at
+`specs/CRA-220-informant-register-initial-poc/plan.md`.
 <!-- SPECKIT END -->

@@ -128,7 +128,8 @@ class ConfigurationValidationTest {
                     "informantregister.claim.lease=8m",
                     "informantregister.claim.processing-deadline=7m",
                     "informantregister.store.probe-interval=45s",
-                    "informantregister.stub.payload-failure-mode=TRANSIENT").run(context -> {
+                    "informantregister.stub.payload-failure-mode=TRANSIENT",
+                    "informantregister.replay.legacy-margin=10m").run(context -> {
                         assertThat(context).hasNotFailed();
                         final InformantRegisterProperties properties =
                                 context.getBean(InformantRegisterProperties.class);
@@ -155,6 +156,9 @@ class ConfigurationValidationTest {
 
                         assertThat(properties.stub().payloadFailureMode())
                                 .isEqualTo(PayloadFailureMode.TRANSIENT);
+
+                        assertThat(properties.replay().legacyMargin())
+                                .isEqualTo(Duration.ofMinutes(10));
                     });
         }
     }
@@ -213,10 +217,13 @@ class ConfigurationValidationTest {
         void a_deadline_shorter_than_the_lease_should_start() {
             // The renewal is raised alongside the deadline so this case tests one rule only: at
             // 4m59s the default 5m renewal would break the lock rule, which has its own cases below.
+            // The legacy margin is raised alongside ROOMY_LOCK_DURATION for the same reason: the
+            // default 5m margin would otherwise fail the unrelated margin-vs-lock-duration rule.
             runner.withPropertyValues(CONNECTION_STRING_PROPERTY, ROOMY_LOCK_DURATION,
                     "informantregister.claim.lease=5m",
                     "informantregister.claim.processing-deadline=PT4M59S",
-                    "informantregister.servicebus.max-auto-lock-renew-duration=PT5M29S").run(context ->
+                    "informantregister.servicebus.max-auto-lock-renew-duration=PT5M29S",
+                    "informantregister.replay.legacy-margin=6m").run(context ->
                             assertThat(context).hasNotFailed());
         }
     }
@@ -241,11 +248,13 @@ class ConfigurationValidationTest {
 
         @Test
         void a_renewal_exactly_the_deadline_plus_the_margin_should_start() {
-            // The margin is a fixed 30 seconds, so this is the boundary the rule allows.
+            // The margin is a fixed 30 seconds, so this is the boundary the rule allows. The legacy
+            // margin is raised alongside ROOMY_LOCK_DURATION so this case tests the renewal rule only.
             runner.withPropertyValues(CONNECTION_STRING_PROPERTY, ROOMY_LOCK_DURATION,
                     "informantregister.claim.lease=5m",
                     "informantregister.claim.processing-deadline=4m",
-                    "informantregister.servicebus.max-auto-lock-renew-duration=PT4M30S").run(context ->
+                    "informantregister.servicebus.max-auto-lock-renew-duration=PT4M30S",
+                    "informantregister.replay.legacy-margin=6m").run(context ->
                             assertThat(context).hasNotFailed());
         }
     }

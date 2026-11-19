@@ -257,16 +257,16 @@ class DistributionCommandSchemaCorpusTest {
                 rejected("instant with no offset at all",
                         bodyWith("sharedTime", "\"2026-08-20T09:00:00\"")),
                 rejected("instant that is not a date-time", bodyWith("sharedTime", "\"yesterday\"")),
-                // Java's ISO offset parser is looser than RFC 3339 in four separate ways. Each has
-                // its own case, because each is a way a producer's clock library could drift out of
-                // contract without anything noticing.
+                // Java's ISO offset parser is looser than RFC 3339 in four separate ways; this
+                // service's parser guards against all four. Three are exercised here because both
+                // sides currently reject them. The fourth — a negative zero offset — moved to
+                // documentedValidatorLeniency below once networknt 3.0.9 started accepting it; the
+                // parser's own refusal of it is unchanged.
                 rejected("offset carrying seconds",
                         bodyWith("sharedTime", "\"2026-08-20T09:00:00+01:00:30\"")),
                 rejected("instant with no seconds", bodyWith("sharedTime", "\"2026-08-20T09:00Z\"")),
                 rejected("instant with an expanded year",
                         bodyWith("sharedTime", "\"+12026-08-20T09:00:00Z\"")),
-                rejected("negative zero offset",
-                        bodyWith("sharedTime", "\"2026-08-20T09:00:00-00:00\"")),
                 rejected("fractional part with no digits",
                         bodyWith("sharedTime", "\"2026-08-20T09:00:00.Z\"")),
                 rejected("offset with no colon", bodyWith("sharedTime", "\"2026-08-20T09:00:00+0100\"")),
@@ -281,6 +281,13 @@ class DistributionCommandSchemaCorpusTest {
                         bodyWith("sharedTime", "\"2026-06-30T23:59:60Z\"")),
                 rejected("space separator with no offset",
                         bodyWith("sharedTime", "\"2026-08-20 09:00:00\"")),
+                // These two used to be a documented validator leniency (networknt <=3.0.8 accepted
+                // them); 3.0.9 tightened date-time to the strict RFC 3339 ABNF and now refuses them
+                // too, so they moved here as ordinary agreement cases.
+                rejected("space-separated date-time, zulu",
+                        bodyWith("sharedTime", "\"2026-08-20 09:00:00Z\"")),
+                rejected("space-separated date-time, numeric offset",
+                        bodyWith("sharedTime", "\"2026-08-20 09:00:00+01:00\"")),
 
                 // --- rejected: empties, nulls and wrong types ---------------------------
                 rejected("empty source", bodyWith("source", "\"\"")),
@@ -343,24 +350,23 @@ class DistributionCommandSchemaCorpusTest {
      * in <em>both</em> directions — validator accepts, parser rejects — so if a validator upgrade
      * changes its mind, this fails too and the case gets reclassified rather than quietly rotting.
      *
-     * <p>The validator here is networknt 3.0.7, which delegates {@code date-time} to
-     * {@code com.ethlo.time:itu}. Both leniencies below were confirmed by running them through it,
-     * not inferred from its documentation.
+     * <p>The validator here is networknt 3.0.9, which delegates {@code date-time} to
+     * {@code com.ethlo.time:itu}. 3.0.9 tightened the space-separated date-time forms to the strict
+     * RFC 3339 ABNF — the validator now refuses them too, so those two cases moved into
+     * {@link #corpus()} as ordinary agreement cases — and loosened its handling of the
+     * negative-zero-offset form, which is why that case moved the other way, into this list. Each
+     * entry below was confirmed by running it through the validator directly, not inferred from its
+     * documentation.
      */
     static Stream<LenientCase> documentedValidatorLeniency() {
         return Stream.of(
-                new LenientCase("space-separated date-time, zulu",
-                        bodyWith("sharedTime", "\"2026-08-20 09:00:00Z\""),
-                        "RFC 3339's grammar is date-time = full-date \"T\" full-time. The space form "
-                                + "appears only in a readability note in section 5.6, which permits "
-                                + "applications to accept it — it is not the ABNF, and draft-07's "
-                                + "date-time format means the ABNF. Accepting it here would widen this "
-                                + "service's contract past what the schema document states."),
-                new LenientCase("space-separated date-time, numeric offset",
-                        bodyWith("sharedTime", "\"2026-08-20 09:00:00+01:00\""),
-                        "Same as above; listed separately because the separator and the offset form "
-                                + "are independent, and a fix that handled one and not the other would "
-                                + "otherwise go unnoticed."),
+                new LenientCase("negative zero offset",
+                        bodyWith("sharedTime", "\"2026-08-20T09:00:00-00:00\""),
+                        "RFC 3339 section 4.3 permits \"-00:00\" only to flag an unknown local offset "
+                                + "on a human-authored timestamp, not as a generally valid offset form; "
+                                + "networknt 3.0.9 now accepts it structurally regardless, but this "
+                                + "service's parser keeps refusing it, consistent with the other ways "
+                                + "Java's ISO offset parser is looser than RFC 3339 (see corpus())."),
                 new LenientCase("verified leap second, 31 December 2016",
                         bodyWith("sharedTime", "\"2016-12-31T23:59:60Z\""),
                         "Grammatical under RFC 3339, but unrepresentable in java.time: there is no "

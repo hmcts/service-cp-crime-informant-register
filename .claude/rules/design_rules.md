@@ -104,13 +104,17 @@ Rules:
 - `COMPLETED` and `FAILED` are **terminal**, but they are not treated alike on a resubmission:
   - `COMPLETED` — acknowledged and `complete()`d without reprocessing. Nothing is re-POSTed and no
     state changes.
-  - `FAILED` — **replayable**. A resubmitted message (fresh broker `messageId`, same `requestId`)
-    makes the guard transition `FAILED` → `RECEIVED`, preserving `attempts` and writing an audit
-    note recording the replay, then reprocess. Authorities already `POSTED` in `processed_output`
-    are skipped, so only the work that failed is repeated. This is the supported way to recover a
-    dead-lettered request — there is no operator-remembered flag and no manual row edit.
-  - Ordinary broker redelivery of the *same* message is unaffected: it is a redelivery, not a
-    resubmission, and a terminal request short-circuits it.
+  - `FAILED` — **replayable**. A resubmitted message — the dead-lettered body re-sent unchanged,
+    `messageId` included, or under a fresh `messageId`, either now works — makes the guard
+    transition `FAILED` → `RECEIVED` once the broker assigns it a sequence number different from
+    the one that parked the request, preserving `attempts` and writing an audit note recording the
+    replay, then reprocess. Authorities already `POSTED` in `processed_output` are skipped, so only
+    the work that failed is repeated. This is the supported way to recover a dead-lettered request —
+    there is no operator-remembered flag and no manual row edit (see
+    `specs/001-replay-by-sequence-number/spec.md`).
+  - Ordinary broker redelivery of the *same* message — same sequence number — is unaffected: it is a
+    redelivery, not a resubmission, and a terminal request short-circuits it, re-parking with its
+    own recorded reason rather than a generic one.
 - A hearing that legitimately produces no authorities still ends `COMPLETED`, with the reason
   `no-authorities` recorded — it is a business outcome, not an error, and it is not a status of its
   own.
@@ -135,9 +139,12 @@ Queue **`informantregister.requests`** (+ its dead-letter queue), owned by this 
 - **Broker duplicate detection is ON.** `messageId` = `"{source}:{requestId}"`. Publishers must set
   it; the service must not depend on it alone — the `(source, requestId)` processed-log is the real
   guard.
-- **Replay tooling always mints a fresh `messageId`** (and keeps the original `requestId`), so a
-  deliberate replay is never swallowed by the broker's duplicate-detection window. A replay is then
-  filtered by the processed-log, which is the intended, observable behaviour.
+- **A fresh `messageId` is no longer required for a replay, only still useful.** The guard decides
+  a resubmission by the broker's own **sequence number**, not `messageId`
+  (`specs/001-replay-by-sequence-number/spec.md`), so the dead-lettered body may be re-sent
+  unchanged — the Azure portal's dead-letter "Re-send" does exactly this. Minting a fresh
+  `messageId` still bypasses the broker's duplicate-detection window immediately rather than
+  waiting it out, and normal producer publishing keeps the deterministic `messageId` regardless.
 - `maxConcurrentCalls` starts at **2** (parity with the function app's Durable throttle). Raise only
   once golden-parity tests prove the pipeline is stateless.
 - Lock renewal must cover the worst-case pipeline duration; a lock-lost exception is transient.

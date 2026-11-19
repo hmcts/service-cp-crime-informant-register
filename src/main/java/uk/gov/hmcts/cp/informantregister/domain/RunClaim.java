@@ -21,7 +21,10 @@ import java.util.UUID;
  * <p>The delivery's message identity travels with the claim rather than being handed separately to
  * the write that parks a request. The identity recorded as having exhausted the retries has to be the
  * delivery that was running, and carrying it here makes any other identity unrepresentable instead of
- * merely wrong.
+ * merely wrong. The delivery's <strong>sequence number</strong> travels the same way, for the same
+ * reason: the delivery that acquired this claim is by definition the one whose failure parks the
+ * request, and it is the sequence number — not {@code messageId} — that the FAILED-branch decision
+ * is now made on (spec 001-replay-by-sequence-number, FR-001).
  *
  * <p>The delivery's <strong>budget position</strong> travels with it for the same reason. Whether
  * the queue will send this message again is known at admission and needed on the way out: an outcome
@@ -35,8 +38,9 @@ import java.util.UUID;
  * @param requestId the record's key, part 2
  * @param owner     the runner identity stamped in {@code claim_owner}
  * @param token     the token minted for this acquisition
- * @param messageId the broker identity of the delivery that acquired this claim
+ * @param messageId the broker identity of the delivery that acquired this claim, kept for audit
  * @param finalPermittedDelivery whether the queue will deliver this message again after this run
+ * @param sequenceNumber the broker sequence number of the delivery that acquired this claim
  */
 public record RunClaim(
         String source,
@@ -44,16 +48,18 @@ public record RunClaim(
         String owner,
         UUID token,
         String messageId,
-        boolean finalPermittedDelivery) {
+        boolean finalPermittedDelivery,
+        long sequenceNumber) {
 
     /**
-     * A claim held by a delivery with retries still to come.
+     * A claim held by a delivery with retries still to come, for a caller with no sequence number
+     * of its own to supply.
      *
-     * <p>The ordinary case, and the one most of the guard's behaviour is indifferent to: what an
-     * outcome write records is decided the same way whether or not this is the last chance — the
-     * budget changes only what happens when the write finds the claim gone. A caller with no opinion
-     * does not have to invent one, exactly as with
-     * {@link DeliveryIdentity#DeliveryIdentity(String, String)}.
+     * <p>{@code sequenceNumber} is derived from {@code messageId}, for the same reason and with the
+     * same safety as {@link DeliveryIdentity#DeliveryIdentity(String, String, boolean)}: it keeps
+     * every caller outside this feature's own suites and the guard's admission path — which always
+     * carries the claim's sequence number forward from the admitting {@link DeliveryIdentity} —
+     * behaviourally unchanged.
      *
      * @param source    the record's key, part 1
      * @param requestId the record's key, part 2
@@ -63,6 +69,6 @@ public record RunClaim(
      */
     public RunClaim(final String source, final UUID requestId, final String owner,
             final UUID token, final String messageId) {
-        this(source, requestId, owner, token, messageId, false);
+        this(source, requestId, owner, token, messageId, false, messageId.hashCode());
     }
 }

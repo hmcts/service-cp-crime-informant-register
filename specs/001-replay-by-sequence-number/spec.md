@@ -200,6 +200,21 @@ trigger a re-park, and read the dead-letter reason and description on the re-par
   once the consumer is back.
 - **Rolling deployment**: while an older consumer is still running it can park requests without
   recording the new fields. Those rows are handled exactly like requests parked before the change.
+  That accepted-risk statement covers an older consumer parking a row **for the first time** during
+  the overlap — `parking_sequence_number`/`parking_category` start and stay `NULL`, so the legacy
+  heuristic applies. It does **not** cover an older consumer **re-parking** a row a newer consumer
+  already parked: the older consumer's own `FAILED → RECEIVED → FAILED` cycle (its pre-feature,
+  `messageId`-based replay path) does not mention the new columns at all, so a prior parking's
+  `parking_sequence_number`/`parking_category` survive unchanged underneath it — now describing a
+  parking event that is no longer the row's most recent one. A newer consumer reading that row
+  afterwards can then misread the request's **actual, current** parking delivery as a resubmission
+  of the stale one and run it again, rather than re-parking it under its stored reason. There is no
+  in-band signal that distinguishes this from a genuine resubmission, so it is **not** mitigated in
+  code: the rollout for this migration MUST ensure no older consumer of
+  `informantregister.requests` remains in service once any pod is running the version that records
+  these fields — a straight rolling upgrade with pods draining in both directions (e.g. a failed
+  rollout that rolls back) can reintroduce the overlap, so the deployment process must not allow an
+  older image to resume consuming after a newer one has started.
 
 ## Requirements *(mandatory)*
 
@@ -225,7 +240,8 @@ trigger a re-park, and read the dead-letter reason and description on the re-par
 - **FR-005**: For a `FAILED` request with **no** recorded parking sequence number, a delivery MUST be
   treated as a resubmission only when **both** hold: its broker delivery count is 0, **and** its broker
   enqueue time is later than the time the request was parked by more than a configured safety margin
-  (default 5 minutes, at least the queue's lock duration). Otherwise, including when the enqueue time
+  (the "legacy margin" in the implementation; default 5 minutes, at least the queue's lock duration).
+  Otherwise, including when the enqueue time
   is absent, it MUST be re-parked. Neither condition is proof on its own and the rule is an explicitly
   accepted compatibility heuristic: the broker does not increment the delivery count when a message is
   released by a closed connection, and the enqueue-time test compares broker time with database time.
@@ -235,7 +251,15 @@ trigger a re-park, and read the dead-letter reason and description on the re-par
 - **FR-006**: A replay MUST be a compare-and-set against the failure generation the delivery observed:
   it succeeds only if the record is still `FAILED` with the same attempt count and the same parking
   sequence number (compared null-safely, so "still none" matches for a legacy record) that were read.
-  If it does not succeed, the delivery MUST be handed back with `REPLAY_NOT_ADMITTED`.
+  If it does not succeed, the delivery MUST be handed back with `REPLAY_NOT_ADMITTED` — subject to the
+  pre-existing delivery-budget exhaustion rule this service already applies to every admission
+  hand-back (CRA-220, "leave no delivery unaccounted for"): on the **final** permitted delivery, the
+  hand-back is escalated to a dead-letter of this service's own, under `exhausted` /
+  `REPLAY_NOT_ADMITTED`, rather than left for a redelivery the broker will not grant. This is not a
+  new rule for this story — `REPLAY_NOT_ADMITTED` is simply the third reason code the existing
+  exhaustion rule was already written to carry alongside `CLAIM_NOT_ACQUIRED` and `RECORD_ABSENT` —
+  and it is unchanged by this change (data-model.md's state table says so explicitly). Proved by
+  `AdmissionExhaustionTest.ReplayNotAdmitted`.
 - **FR-007**: A replay MUST keep today's semantics: `FAILED → RECEIVED`, lifetime attempt count
   carried forward and incremented, audit note written, parking `messageId`, sequence number and
   category cleared, and already-submitted authorities skipped.

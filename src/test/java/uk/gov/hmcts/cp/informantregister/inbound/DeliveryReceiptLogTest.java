@@ -29,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -340,6 +341,82 @@ class DeliveryReceiptLogTest {
                                     .contains(ReasonCode.UNEXPECTED_FAILURE.code());
                         });
             }
+        }
+
+        /**
+         * The sharpest case (spec FR-012): every other failure in this class is hand-back-or-park
+         * depending on the delivery budget, but this one has no budget answer available at all — the
+         * accessor that failed is read before the budget position is even known to the caller. It
+         * must abandon unconditionally, even stamped as the message's last permitted delivery, never
+         * escalate to {@code deadLetter()} on the strength of a guess.
+         */
+        @Test
+        @DisplayName("is abandoned, never parked, even stamped as the final permitted delivery")
+        void should_abandon_unconditionally_even_on_the_final_permitted_delivery() {
+            final ServiceBusReceivedMessage message = stampedMessage(validBody());
+            when(message.getDeliveryCount()).thenReturn((long) MAX_DELIVERY_COUNT - 1);
+            when(message.getSequenceNumber())
+                    .thenThrow(new ClassCastException("annotation is not a Long"));
+            final ServiceBusReceivedMessageContext context = deliveryOf(message);
+
+            listener().onMessage(context);
+
+            verify(context).abandon();
+            verify(context, never()).complete();
+            verify(context, never()).deadLetter(any());
+        }
+
+        /**
+         * Spec FR-011: every broker accessor this class reads is read at most once per delivery,
+         * whatever the outcome. Verified on both a successful run and a dead-lettered one, since the
+         * two settle through different branches of {@link InformantRegisterMessageListener#settle}.
+         */
+        @Test
+        @DisplayName("each broker accessor is read at most once on a successful delivery")
+        void should_read_each_broker_accessor_at_most_once_on_success() {
+            final ServiceBusReceivedMessage message = stampedMessage(validBody());
+
+            listener().onMessage(deliveryOf(message));
+
+            verify(message, times(1)).getSequenceNumber();
+            verify(message, times(1)).getDeliveryCount();
+            verify(message, times(1)).getMessageId();
+            verify(message, times(1)).getLockToken();
+            verify(message, times(1)).getEnqueuedTime();
+        }
+
+        @Test
+        @DisplayName("each broker accessor is read at most once on a dead-lettered delivery")
+        void should_read_each_broker_accessor_at_most_once_when_parked() {
+            // An invalid body dead-letters without a pipeline run, exercising the other settlement
+            // branch with the same capture.
+            final ServiceBusReceivedMessage message = stampedMessage("not json");
+
+            listener().onMessage(deliveryOf(message));
+
+            verify(message, times(1)).getSequenceNumber();
+            verify(message, times(1)).getDeliveryCount();
+            verify(message, times(1)).getMessageId();
+            verify(message, times(1)).getLockToken();
+            verify(message, times(1)).getEnqueuedTime();
+        }
+
+        /**
+         * Spec FR-012: a missing {@code enqueuedTime} annotation is recorded as absent and the
+         * delivery continues normally — it is never treated as a capture failure.
+         */
+        @Test
+        @DisplayName("an absent enqueue time settles the delivery normally")
+        void should_settle_normally_when_the_enqueue_time_annotation_is_absent() {
+            final ServiceBusReceivedMessage message = stampedMessage(validBody());
+            when(message.getEnqueuedTime()).thenReturn(null);
+            final ServiceBusReceivedMessageContext context = deliveryOf(message);
+
+            listener().onMessage(context);
+
+            verify(context).complete();
+            verify(context, never()).abandon();
+            verify(context, never()).deadLetter(any());
         }
     }
 

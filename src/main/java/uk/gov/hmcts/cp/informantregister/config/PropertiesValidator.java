@@ -73,6 +73,7 @@ public class PropertiesValidator implements InitializingBean {
     private static final String RESULTS_MAX_ATTEMPTS = "informantregister.results.max-attempts";
     private static final String INITIAL_BACKOFF = "informantregister.results.initial-backoff";
     private static final String MAX_BACKOFF = "informantregister.results.max-backoff";
+    private static final String LEGACY_MARGIN = "informantregister.replay.legacy-margin";
 
     /** Shared so the wording of a lower-bound refusal is one string and not four. */
     private static final String MUST_BE_AT_LEAST = ") must be at least ";
@@ -174,6 +175,29 @@ public class PropertiesValidator implements InitializingBean {
         validateThePayloadSourceCanFetch(properties);
         validateTheSubscriptionsSourceCanFetch(properties);
         validateTheRetryPolicyCanPost(properties);
+        validateTheLegacyMarginCoversALockDuration(properties);
+    }
+
+    /**
+     * The legacy-record replay heuristic's own floor (spec FR-005; 001-replay-by-sequence-number).
+     *
+     * <p>The spec's own assumption section states the margin "is therefore at least the lock
+     * duration" — a release without a delivery-count increment (which the broker does not count, on
+     * a closed connection) must not be mistaken for a resubmission inside one lock's lifetime, and a
+     * margin shorter than that lifetime cannot rule it out. A configuration that violates its own
+     * documented precondition fails loudly at startup rather than silently widening the already
+     * accepted residual false-replay risk.
+     */
+    private static void validateTheLegacyMarginCoversALockDuration(
+            final InformantRegisterProperties properties) {
+        final Duration legacyMargin = properties.replay().legacyMargin();
+        final Duration lockDuration = properties.servicebus().lockDuration();
+        if (legacyMargin.compareTo(lockDuration) < 0) {
+            throw new IllegalStateException(
+                    LEGACY_MARGIN + " (" + legacyMargin + MUST_BE_AT_LEAST + LOCK_DURATION
+                            + " (" + lockDuration + "), or a release without a delivery-count "
+                            + "increment inside one lock's lifetime could be read as a resubmission");
+        }
     }
 
     private static void validateTheDeliveryBudgetPermitsProcessing(

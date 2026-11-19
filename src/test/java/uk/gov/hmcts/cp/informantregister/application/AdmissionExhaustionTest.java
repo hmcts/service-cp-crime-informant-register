@@ -23,6 +23,7 @@ import uk.gov.hmcts.cp.informantregister.persistence.ProcessedRequestRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -54,6 +55,13 @@ import static org.mockito.Mockito.when;
  * that never held the claim is less entitled to write than a superseded one. What the budget buys is
  * therefore attribution, not state: the parking becomes ours, with a bounded reason, a metric and a
  * log line, and the row is left to whoever owns it.
+ *
+ * <p><strong>{@code REPLAY_NOT_ADMITTED} and spec FR-006.</strong> FR-006
+ * ({@code specs/001-replay-by-sequence-number/spec.md}) requires a lost replay compare-and-set to be
+ * handed back under {@code REPLAY_NOT_ADMITTED} — the escalation this suite predates and still
+ * applies unconditionally to that hand-back is the reconciliation FR-006 itself calls out: on the
+ * final permitted delivery it still becomes a dead-letter of this service's own, not a seventh
+ * abandon the broker has no budget left to grant. {@link ReplayNotAdmitted} is that proof.
  */
 class AdmissionExhaustionTest {
 
@@ -95,7 +103,8 @@ class AdmissionExhaustionTest {
 
     /** Nothing terminal was written, by any route. */
     private void assertNothingWasParked() {
-        verify(repository, never()).recordFailed(any(RunClaim.class), anyString());
+        verify(repository, never())
+                .recordFailed(any(RunClaim.class), anyString(), any(DeadLetterReason.class));
         verify(repository, never()).recordRetrying(any(RunClaim.class), anyString());
         verify(repository, never()).recordCompleted(any(RunClaim.class), anyString());
     }
@@ -113,7 +122,10 @@ class AdmissionExhaustionTest {
                     null,
                     1,
                     HELD_BY_ANOTHER,
-                    Instant.parse("2026-08-20T09:04:30Z")));
+                    Instant.parse("2026-08-20T09:04:30Z"),
+                    null,
+                    null,
+                    Instant.parse("2026-08-20T09:04:00Z")));
             when(repository.reclaimStaleClaim(any(RunClaim.class))).thenReturn(false);
         }
 
@@ -150,6 +162,12 @@ class AdmissionExhaustionTest {
         }
     }
 
+    /**
+     * Spec FR-006's own reconciliation: a lost replay compare-and-set is handed back under
+     * {@code REPLAY_NOT_ADMITTED}, but on the final permitted delivery that hand-back is still
+     * escalated to a dead-letter of this service's own — the pre-existing exhaustion rule above,
+     * unchanged by this story (data-model.md: "unchanged from today").
+     */
     @Nested
     @DisplayName("a parked record moved under the replay")
     class ReplayNotAdmitted {
@@ -163,8 +181,16 @@ class AdmissionExhaustionTest {
                     "RESULTS:the-delivery-that-exhausted-the-budget",
                     5,
                     null,
-                    null));
-            when(repository.replayFailed(any(RunClaim.class), anyString())).thenReturn(false);
+                    null,
+                    // Different from the admitting delivery's own sequence number (derived from
+                    // MESSAGE_ID), so the decision is "different -> attempt replay", which the
+                    // mocked replayFailed below then refuses — simulating the record moving
+                    // underneath the decision.
+                    (long) MESSAGE_ID.hashCode() + 1,
+                    "EXHAUSTED",
+                    Instant.parse("2026-08-20T09:04:00Z")));
+            when(repository.replayFailed(any(RunClaim.class), anyInt(), any(), anyString()))
+                    .thenReturn(false);
         }
 
         @Test
