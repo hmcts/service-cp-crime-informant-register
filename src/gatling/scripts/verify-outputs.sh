@@ -3,8 +3,10 @@
 # measures end-to-end latency (message publish → Results POST received by WireMock).
 #
 # Correlation: every published message has a unique hearingId (duplicates reuse
-# their original's). The hearing-payload stub echoes it back as hearing.id, so each
-# Results POST body carries {hearingId, prosecutionAuthorityId}. The expected
+# their original's). The hearing payload the service fetches carries it as
+# hearing.id — seeded into Redis for cache hits, or a per-hearing WireMock stub
+# registered by Gatling for the query fallback — so each Results POST body
+# carries {hearingId, prosecutionAuthorityId}. The expected
 # authorities are read from the stub itself (wiremock/mappings/hearing-payload.json).
 #
 # Gates (any failure exits 1):

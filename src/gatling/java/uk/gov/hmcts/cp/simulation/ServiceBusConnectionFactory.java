@@ -2,7 +2,11 @@ package uk.gov.hmcts.cp.simulation;
 
 import com.azure.identity.DefaultAzureCredentialBuilder;
 import com.azure.servicebus.jms.ServiceBusJmsConnectionFactory;
+import jakarta.jms.Connection;
 import jakarta.jms.ConnectionFactory;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -50,6 +54,28 @@ final class ServiceBusConnectionFactory {
         throw new IllegalStateException(
                 "Set -Dgatling.connectionString or ASB_EMULATOR_KEY (emulator/local) "
                 + "or -Dgatling.asbNamespace (DEV/STE, requires az login)");
+    }
+
+    /**
+     * Fails fast, before any load, if this run cannot publish to the queue.
+     *
+     * <p>Opens a connection, a session and a producer on the queue — the producer attach is where
+     * the broker checks the credential's token and the entity's send rights — then closes them
+     * without sending. Without it a credential the namespace rejects surfaces only as every publish
+     * failing for the whole simulation (build 962633: thirteen minutes of {@code InvalidIssuer}).
+     *
+     * @param queueName the queue the simulation publishes to
+     * @throws IllegalStateException if the connection or the producer cannot be opened
+     */
+    static void verifyCanSend(String queueName) {
+        try (Connection connection = create().createConnection();
+             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+             MessageProducer producer = session.createProducer(session.createQueue(queueName))) {
+            LOG.info("ASB publish check passed: producer opened on {}", queueName);
+        } catch (JMSException e) {
+            throw new IllegalStateException("ABORTING: cannot publish to " + queueName + ": "
+                    + e.getMessage(), e);
+        }
     }
 
     private static ConnectionFactory fromDefaultCredential(String namespace) {
