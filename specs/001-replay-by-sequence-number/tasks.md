@@ -207,10 +207,17 @@ dead-lettered message unchanged, and observe `FAILED → RECEIVED` and a re-run.
       `src/test/java/uk/gov/hmcts/cp/informantregister/inbound/DeliveryReceiptLogTest.java`, a
       replay's log line names the parked delivery's sequence number,
       the replaying delivery's sequence number, and no PII (FR-008; Acceptance Scenario US1-4)
-- [X] T023 [P] [US1] Test: in
-      `src/test/java/uk/gov/hmcts/cp/informantregister/e2e/QueueSettlementIT.java`, add the
-      emulator-backed end-to-end path: park via five real deliveries, re-send the DLQ message
-      unchanged after the duplicate-detection window, observe the run complete
+- [X] T023 [P] [US1] Test: `src/test/java/uk/gov/hmcts/cp/informantregister/e2e/UnchangedResendRecoveryIT.java`
+      (not `QueueSettlementIT.java` as first scoped — that suite mocks `DistributionPipeline`
+      deliberately, so it cannot exercise the real `FAILED → RECEIVED → COMPLETED` recovery this task
+      needs; a new, real-`@SpringBootTest` suite was added instead, alongside `DeliveryExhaustionIT`
+      and `DuplicateDetectionIT`). Parks via five real deliveries, re-sends the message unchanged
+      (same `messageId`, same body) after the duplicate-detection window elapses, and observes the
+      run complete. Runs against a second, test-only queue
+      (`informantregister.requests.resend-window-test`, `docker/servicebus-emulator/config.json`)
+      with a ten-second window rather than the production-mirroring queue's five minutes, so the
+      wait is practical in CI; `DuplicateDetectionIT` keeps asserting the real five-minute value
+      against the real queue, so production fidelity there is unchanged
 
 ### Implementation for User Story 1
 

@@ -37,6 +37,16 @@ public final class ServiceBusEmulatorTestSupport {
 
     public static final String QUEUE_NAME = "informantregister.requests";
 
+    /**
+     * A second queue, identical to {@link #QUEUE_NAME} except for a short
+     * {@code DuplicateDetectionHistoryTimeWindow} (ten seconds, not five minutes). Dedicated to the
+     * one suite that needs the window to actually elapse during a test; every other suite's claim
+     * about duplicate detection is about the real, production-mirroring window on {@link
+     * #QUEUE_NAME} and must not be weakened by this one.
+     */
+    public static final String RESEND_WINDOW_TEST_QUEUE_NAME =
+            "informantregister.requests.resend-window-test";
+
     /** How many messages one peek reads. The search pages, so this bounds a round trip, not a scan. */
     private static final int PEEK_PAGE_SIZE = 32;
 
@@ -244,10 +254,18 @@ public final class ServiceBusEmulatorTestSupport {
      */
     public static Optional<ServiceBusReceivedMessage> peekFor(
             final String messageId, final SubQueue subQueue) {
+        return peekFor(QUEUE_NAME, messageId, subQueue);
+    }
+
+    /**
+     * {@link #peekFor(String, SubQueue)}, against a named queue rather than {@link #QUEUE_NAME}.
+     */
+    public static Optional<ServiceBusReceivedMessage> peekFor(
+            final String queueName, final String messageId, final SubQueue subQueue) {
         try (ServiceBusReceiverClient receiver = new ServiceBusClientBuilder()
                 .connectionString(connectionString())
                 .receiver()
-                .queueName(QUEUE_NAME)
+                .queueName(queueName)
                 .subQueue(subQueue)
                 .buildClient()) {
             return pageFor(receiver, messageId);

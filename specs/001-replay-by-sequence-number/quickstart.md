@@ -25,10 +25,15 @@ are containers (`docker/servicebus-emulator/config.json`, mounted by both `docke
 # and (this feature) that a re-send gets a new sequence number while a redelivery keeps the old one.
 ./gradlew test --tests 'uk.gov.hmcts.cp.informantregister.e2e.DeliveryExhaustionIT'
 ./gradlew test --tests 'uk.gov.hmcts.cp.informantregister.e2e.QueueSettlementIT'
+
+# Against a real emulator, the defect itself: five real deliveries park the request, an unchanged
+# re-send (same messageId, same body) after the duplicate-detection window elapses recovers it to
+# COMPLETED. Runs against a second, short-window test queue — see the suite's own javadoc for why.
+./gradlew test --tests 'uk.gov.hmcts.cp.informantregister.e2e.UnchangedResendRecoveryIT'
 ```
 
-All four need Docker; the first two do not need the Service Bus emulator specifically (they drive
-the guard and the repository directly against Testcontainers Postgres), the last two do.
+All five need Docker; the first two do not need the Service Bus emulator specifically (they drive
+the guard and the repository directly against Testcontainers Postgres), the last three do.
 
 ## Manually proving the fix end to end (what support will actually do)
 
