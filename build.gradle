@@ -128,7 +128,7 @@ dependencies {
   // Gatling has its own compile classpath. Keep the Redis seeder's dependencies explicit;
   // these versions match the service's Spring Boot-managed runtime dependencies.
   gatlingImplementation 'io.lettuce:lettuce-core:7.9.0.RELEASE'
-  gatlingImplementation 'tools.jackson.core:jackson-databind:3.2.4'
+  gatlingImplementation 'tools.jackson.core:jackson-databind:3.3.0'
   // Qpid JMS: AMQP 1.0 transport for the SAS/emulator path.
   gatlingImplementation 'org.apache.qpid:qpid-jms-client:2.11.0'
   // Azure Service Bus JMS (Jakarta): CBS token auth for Entra-only namespaces.
